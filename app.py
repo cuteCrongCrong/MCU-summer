@@ -8,8 +8,12 @@
 import json
 import re
 import os
+import base64
 import sqlite3
+import threading
+import webbrowser
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request, jsonify, send_from_directory
 import fitz  # pymupdf
 from openai import OpenAI, AuthenticationError, RateLimitError
@@ -18,6 +22,25 @@ app = Flask(__name__, static_folder=".")
 
 GATEWAY_BASE_URL = "https://factchat-cloud.mindlogic.ai/v1/gateway"
 DEFAULT_MODEL    = "claude-sonnet-4-5"
+
+# 강의/기출 텍스트를 LLM에 넣기 전 문서당 최대 글자 수.
+# (기존 8000 → 상향. 토큰 비용·속도와의 절충값이므로 필요 시 조정)
+MAX_TEXT_CHARS = 100000
+
+# 이미지/스캔 페이지 → Vision LLM으로 '무슨 이미지인지' 설명 생성 (토큰 비용 상한용)
+IMAGE_DESC_MAX = 15          # 설명할 이미지 페이지 최대 개수
+SPARSE_TEXT_THRESHOLD = 20   # 페이지 텍스트가 이보다 짧으면 이미지 페이지로 간주
+IMAGE_RENDER_DPI = 150       # 페이지 렌더 해상도
+
+# 문제 유형 4분류 (집계·few-shot·생성에서 공통 사용)
+QUESTION_TYPES = ["객관식", "빈칸채우기", "단답형", "서술형"]
+# 유형별 정의 (프롬프트에 주입 — 분류 기준 통일)
+TYPE_DEFINITIONS = (
+    "- 객관식: 선택지(①②③④⑤ 등) 중에서 답을 고르는 문제\n"
+    "- 빈칸채우기: 문장 속 빈칸(____, 괄호 등)에 들어갈 말을 채우는 문제\n"
+    "- 단답형: 선택지 없이 단어·구·수치 등 짧은 답을 쓰는 문제\n"
+    "- 서술형: 여러 문장으로 설명·기술·논술하는 문제"
+)
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
 DB_PATH = os.path.join(_BASE_DIR, "sessions.db")
@@ -50,9 +73,34 @@ def init_db():
                 type_stats TEXT
             )"""
         )
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS generations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                count INTEGER,
+                weight INTEGER,
+                model TEXT,
+                type_targets TEXT,
+                questions TEXT,
+                raw TEXT
+            )"""
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_gen_session ON generations(session_id)"
+        )
+        # 마이그레이션: 기존 DB에 없을 수 있는 컬럼 추가 (원문 반영 범위)
+        _ensure_column(conn, "sessions", "source_info", "TEXT")
         conn.commit()
     finally:
         conn.close()
+
+
+def _ensure_column(conn, table: str, col: str, decl: str):
+    """CREATE TABLE IF NOT EXISTS는 기존 테이블에 컬럼을 못 넣으므로 ALTER로 보강."""
+    cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+    if col not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
 
 
 def save_session(name: str, model: str, analysis: dict) -> int:
@@ -62,8 +110,8 @@ def save_session(name: str, model: str, analysis: dict) -> int:
         cur = conn.execute(
             """INSERT INTO sessions
                (name, model, created_at, concepts, sample_questions,
-                format_analysis, exam_concepts, priority_topics, type_stats)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
+                format_analysis, exam_concepts, priority_topics, type_stats, source_info)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (
                 name,
                 model,
@@ -74,6 +122,7 @@ def save_session(name: str, model: str, analysis: dict) -> int:
                 json.dumps(analysis.get("exam_concepts", {}), ensure_ascii=False),
                 json.dumps(analysis.get("priority_topics", []), ensure_ascii=False),
                 json.dumps(analysis.get("type_stats", {}), ensure_ascii=False),
+                json.dumps(analysis.get("source_info", {}), ensure_ascii=False),
             ),
         )
         conn.commit()
@@ -102,6 +151,7 @@ def load_session(sid: int):
         "exam_concepts": json.loads(row["exam_concepts"] or "{}"),
         "priority_topics": json.loads(row["priority_topics"] or "[]"),
         "type_stats": json.loads(row["type_stats"] or "{}"),
+        "source_info": json.loads((row["source_info"] if "source_info" in row.keys() else None) or "{}"),
     }
 
 
@@ -129,6 +179,7 @@ def list_sessions() -> list:
 def delete_session(sid: int):
     conn = get_conn()
     try:
+        conn.execute("DELETE FROM generations WHERE session_id=?", (sid,))  # 이력도 함께 삭제
         conn.execute("DELETE FROM sessions WHERE id=?", (sid,))
         conn.commit()
     finally:
@@ -144,26 +195,205 @@ def rename_session(sid: int, name: str):
         conn.close()
 
 
+# ── 생성 문제 이력 ──
+
+def save_generation(session_id: int, count: int, weight: int, model: str,
+                    type_targets: dict, questions: list, raw: str) -> int:
+    """한 번의 문제 생성 결과를 세션에 연결해 이력으로 저장."""
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """INSERT INTO generations
+               (session_id, created_at, count, weight, model, type_targets, questions, raw)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (
+                session_id,
+                datetime.now().strftime("%Y-%m-%d %H:%M"),
+                count,
+                weight,
+                model,
+                json.dumps(type_targets or {}, ensure_ascii=False),
+                json.dumps(questions or [], ensure_ascii=False),
+                raw or "",
+            ),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def list_generations(session_id: int) -> list:
+    """세션의 생성 이력 목록(가벼운 메타데이터). 최신순."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """SELECT id, created_at, count, weight, model, type_targets, questions
+               FROM generations WHERE session_id=? ORDER BY id DESC""",
+            (session_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    out = []
+    for r in rows:
+        qs = json.loads(r["questions"] or "[]")
+        out.append({
+            "id": r["id"],
+            "created_at": r["created_at"],
+            "count": r["count"],
+            "weight": r["weight"],
+            "model": r["model"],
+            "type_targets": json.loads(r["type_targets"] or "{}"),
+            "num_questions": len(qs),
+        })
+    return out
+
+
+def load_generation(gid: int):
+    """이력 하나를 전체 복원(문제 리스트 포함). 없으면 None."""
+    conn = get_conn()
+    try:
+        r = conn.execute("SELECT * FROM generations WHERE id=?", (gid,)).fetchone()
+    finally:
+        conn.close()
+    if not r:
+        return None
+    return {
+        "id": r["id"],
+        "session_id": r["session_id"],
+        "created_at": r["created_at"],
+        "count": r["count"],
+        "weight": r["weight"],
+        "model": r["model"],
+        "type_targets": json.loads(r["type_targets"] or "{}"),
+        "questions": json.loads(r["questions"] or "[]"),
+        "raw": r["raw"] or "",
+    }
+
+
+def delete_generation(gid: int):
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM generations WHERE id=?", (gid,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 # ──────────────────────────────────────────────
 # 유틸 함수
 # ──────────────────────────────────────────────
 
-def extract_text_from_pdf(file_storage) -> str:
+def describe_image(png_bytes: bytes, api_key: str, model: str) -> str:
+    """
+    Vision LLM으로 이미지가 '무엇인지' 한국어로 설명 생성.
+    전체 전사가 아니라, 그림·그래프·표·해부도·검사 소견 등 핵심 내용을 요약.
+    게이트웨이가 이미지 입력을 지원하지 않으면 예외 → 호출부에서 폴백 처리.
+    """
+    b64 = base64.b64encode(png_bytes).decode()
+    client = OpenAI(api_key=api_key, base_url=GATEWAY_BASE_URL)
+    resp = client.chat.completions.create(
+        model=model,
+        max_tokens=1024,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": (
+                    "이 이미지는 의대 강의자료 또는 기출문제의 한 페이지/그림입니다. "
+                    "무엇을 나타내는 이미지인지 한국어로 간결히 설명하세요. "
+                    "의학적으로 중요한 내용(그래프·표·해부도·검사 소견·수치 등)이 있으면 핵심을 요약하고, "
+                    "이미지 안에 글자가 보이면 핵심 텍스트도 함께 옮겨 적으세요. "
+                    "설명 외의 사족은 쓰지 마세요."
+                )},
+                {"type": "image_url",
+                 "image_url": {"url": f"data:image/png;base64,{b64}"}},
+            ],
+        }],
+    )
+    return (resp.choices[0].message.content or "").strip()
+
+
+def extract_text_from_pdf(file_storage, api_key: str = None, model: str = None,
+                          describe_images: bool = True) -> str:
+    """
+    PDF에서 텍스트 레이어를 추출하고, 이미지/스캔 페이지는 Vision LLM으로
+    '무슨 이미지인지' 설명을 생성해 텍스트로 함께 남긴다.
+    - 텍스트가 거의 없는 페이지(스캔·사진) 또는 그림이 포함된 페이지를 이미지 설명 대상으로 선정
+    - 비용 상한: 최대 IMAGE_DESC_MAX개 페이지만 설명, 이미지 설명은 병렬 처리
+    """
     pdf_bytes = file_storage.read()
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    pages_text = []
+
+    pages = []       # {idx, text, png(optional), desc}
+    img_jobs = []    # 설명 대상 페이지 (엔트리 참조)
     for i, page in enumerate(doc):
         text = page.get_text()
-        if text.strip():
-            pages_text.append(f"[페이지 {i+1}]\n{text}")
+        entry = {"idx": i, "text": text if text.strip() else "", "desc": None}
+        want_img = (
+            describe_images and api_key
+            and len(img_jobs) < IMAGE_DESC_MAX
+            and (len(text.strip()) < SPARSE_TEXT_THRESHOLD or bool(page.get_images()))
+        )
+        if want_img:
+            try:
+                pix = page.get_pixmap(dpi=IMAGE_RENDER_DPI)
+                entry["png"] = pix.tobytes("png")
+                img_jobs.append(entry)
+            except Exception:
+                pass
+        pages.append(entry)
     doc.close()
-    return "\n\n".join(pages_text)
+
+    # 이미지 설명 병렬 생성 (게이트웨이가 이미지 미지원이면 폴백 문구)
+    if img_jobs:
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            futs = {ex.submit(describe_image, e["png"], api_key, model): e for e in img_jobs}
+            for fut, e in futs.items():
+                try:
+                    e["desc"] = fut.result()
+                except Exception:
+                    e["desc"] = "(이미지 설명 생성 실패 — 게이트웨이 이미지 미지원일 수 있음)"
+
+    parts = []
+    for e in pages:
+        block = []
+        if e["text"]:
+            block.append(f"[페이지 {e['idx']+1}]\n{e['text']}")
+        if e.get("desc"):
+            block.append(f"[페이지 {e['idx']+1} 이미지 설명]\n{e['desc']}")
+        if block:
+            parts.append("\n".join(block))
+
+    if len(img_jobs) >= IMAGE_DESC_MAX:
+        parts.append(f"...(이미지 설명은 최대 {IMAGE_DESC_MAX}개까지만 생성됨)")
+
+    return "\n\n".join(parts)
 
 
-def truncate(text: str, max_chars: int = 8000) -> str:
+def truncate(text: str, max_chars: int = MAX_TEXT_CHARS) -> str:
+    """
+    상한 초과 시 앞부분만 남기던 방식 → 앞(70%)+뒤(30%) 보존.
+    기출 뒤쪽 문제·강의 마무리 내용이 통째로 사라지지 않도록 함.
+    """
     if len(text) <= max_chars:
         return text
-    return text[:max_chars] + "\n\n...(이하 생략)"
+    head = int(max_chars * 0.7)
+    tail = max_chars - head
+    return text[:head] + "\n\n...(중략: 분량 초과로 일부 생략)...\n\n" + text[-tail:]
+
+
+def build_source_info(raw_text: str) -> dict:
+    """원문 추출 글자수 대비 LLM에 실제 반영된 범위 (truncate 여부·비율)."""
+    chars = len(raw_text or "")
+    truncated = chars > MAX_TEXT_CHARS
+    used = MAX_TEXT_CHARS if truncated else chars
+    return {
+        "chars": chars,
+        "used": used,
+        "limit": MAX_TEXT_CHARS,
+        "truncated": truncated,
+        "coverage": (round(used / chars * 100) if chars else 100),
+    }
 
 
 def call_llm(prompt: str, api_key: str, model: str) -> str:
@@ -180,50 +410,76 @@ def call_llm(prompt: str, api_key: str, model: str) -> str:
 # 기출 유형 통계 (정규식 — LLM 미사용, 0 토큰)
 # ──────────────────────────────────────────────
 
+def normalize_type_stats(raw: dict) -> dict:
+    """
+    LLM/정규식이 준 유형 카운트를 4분류 표준 형태로 정규화.
+    키 표기 흔들림(예: '빈칸 채우기' → '빈칸채우기')을 흡수. 반환에 '총문항' 포함.
+    """
+    stats = {t: 0 for t in QUESTION_TYPES}
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            key = str(k).replace(" ", "")
+            if key in stats:
+                try:
+                    stats[key] = max(0, int(v))
+                except (TypeError, ValueError):
+                    pass
+    stats["총문항"] = sum(stats[t] for t in QUESTION_TYPES)
+    return stats
+
+
 def count_question_types(exam_text: str) -> dict:
     """
-    기출 전문을 정규식으로 스캔해 객관식/주관식 문항 수를 집계 (LLM 호출 없음 → 0 토큰).
-    - 객관식 수: 첫 선택지 기호 '①' 개수 (문항당 정확히 1개 → 가장 안정적인 신호)
-    - 전체 문항 수: 줄머리 문제번호 패턴('1.', '문제 2)', '[3]' 등)
-    - 주관식 수: 전체 − 객관식 (음수 방지)
-    반환: {"객관식", "주관식", "총문항", "판별근거"}
+    정규식 폴백 집계 (LLM 4분류가 없을 때만 사용, 0 토큰).
+    - 객관식: 줄머리 '①' 개수 (문항당 1개 → 안정적). '정답: ①' 표기는 제외.
+    - 전체 문항: 줄머리 문제번호 패턴
+    - 비객관식은 4분류를 정규식으로 가릴 수 없어 '단답형'으로 일괄 분류(부정확)
     """
     text = exam_text or ""
-    # 객관식: 문항마다 반드시 등장하는 첫 선택지 기호 '①' 개수.
-    # 줄머리 '①'만 집계 → 정답 표기('정답: ①')의 ①은 제외.
     objective = len(re.findall(r"(?m)^\s*①", text))
-    # 전체 문항: 줄머리 문제번호 (선택지 번호 '1)'와의 혼동을 줄이려 줄머리로 한정)
     markers = re.findall(r"(?m)^\s*(?:문제\s*)?\d{1,3}\s*[.)\]]", text)
     total = max(len(markers), objective)
-    subjective = max(0, total - objective)
+    non_obj = max(0, total - objective)
 
+    stats = {"객관식": objective, "빈칸채우기": 0, "단답형": non_obj, "서술형": 0}
+    stats["총문항"] = total
     if total == 0:
-        basis = "문항 구분 실패 — 통계 신뢰 낮음"
-    elif len(markers) == 0:
-        basis = "선택지 기호(①) 기준 집계 — 문제번호 미검출"
+        stats["판별근거"] = "문항 구분 실패 — 통계 신뢰 낮음"
+    elif non_obj:
+        stats["판별근거"] = "정규식 추정 — 비객관식은 단답형으로 일괄 분류(부정확)"
     else:
-        basis = "문제번호·선택지 기호 기준 집계 (근사치)"
+        stats["판별근거"] = "정규식 추정 (객관식만)"
+    return stats
 
-    return {
-        "객관식": objective,
-        "주관식": subjective,
-        "총문항": total,
-        "판별근거": basis,
-    }
+
+def resolve_type_stats(exam_concepts: dict, exam_text: str) -> dict:
+    """LLM 4분류(exam_concepts.유형통계) 우선, 없으면 정규식 폴백."""
+    stats = normalize_type_stats((exam_concepts or {}).get("유형통계"))
+    if stats["총문항"] > 0:
+        stats["판별근거"] = "LLM 유형 분류"
+        return stats
+    return count_question_types(exam_text)
 
 
 def compute_type_targets(type_stats: dict, count: int) -> dict:
     """
-    기출 유형 통계 비율을 생성 문제 수(count)에 그대로 투영해
-    '객관식 몇 개 / 주관식 몇 개'를 산출. 통계가 없으면 빈 dict(→ 기존 예시 비율 유지).
+    기출 유형 통계 비율을 생성 문제 수(count)에 그대로 투영 (4분류).
+    최대잉여법(largest remainder)으로 합이 정확히 count가 되게 배분.
+    통계가 없으면 빈 dict(→ 기존 예시 비율 유지).
     """
-    obj = max(0, int((type_stats or {}).get("객관식", 0) or 0))
-    subj = max(0, int((type_stats or {}).get("주관식", 0) or 0))
-    total = obj + subj
+    counts = {t: max(0, int((type_stats or {}).get(t, 0) or 0)) for t in QUESTION_TYPES}
+    total = sum(counts.values())
     if total == 0:
         return {}
-    obj_n = max(0, min(count, round(count * obj / total)))
-    return {"객관식": obj_n, "주관식": count - obj_n}
+
+    raw = {t: count * counts[t] / total for t in QUESTION_TYPES}
+    targets = {t: int(raw[t]) for t in QUESTION_TYPES}          # 내림
+    remainder = count - sum(targets.values())
+    # 남은 몫은 소수부가 큰 유형부터 1개씩 (소수부 0인 유형은 사실상 제외됨)
+    order = sorted(QUESTION_TYPES, key=lambda t: raw[t] - targets[t], reverse=True)
+    for i in range(remainder):
+        targets[order[i % len(order)]] += 1
+    return targets
 
 
 # ──────────────────────────────────────────────
@@ -233,44 +489,41 @@ def compute_type_targets(type_stats: dict, count: int) -> dict:
 def extract_sample_questions(exam_text: str, api_key: str, model: str,
                              type_stats: dict = None) -> str:
     """
-    기출 PDF에서 **대표성 있는** 문제를 최대 5개까지 원문 그대로 추출.
+    기출 PDF에서 **대표성 있는** 문제를 최대 5개까지 원문 그대로 추출 (4분류).
     선택 기준:
-    - 존재하는 각 유형(객관식/주관식)마다 최소 2개씩 포함 (해당 유형이 2개 이상 있을 때)
+    - 존재하는 각 유형(객관식/빈칸채우기/단답형/서술형)마다 최소 1개씩 포함
     - 총 최대 5개
     - 앞쪽 순서가 아니라, 그 시험에서 '가장 전형적·대표적'인 문제를 판단해 선택
-    유형별 추출 규칙:
-    - 객관식: 문제 + 선택지 + 정답
-    - 주관식: 문제 + 정답
     """
     stats_hint = ""
     if type_stats and type_stats.get("총문항"):
-        stats_hint = (
-            f"\n참고 — 이 기출의 대략적 유형 구성: "
-            f"객관식 약 {type_stats.get('객관식', 0)}문항, "
-            f"주관식 약 {type_stats.get('주관식', 0)}문항.\n"
+        present = ", ".join(
+            f"{t} 약 {type_stats.get(t, 0)}문항"
+            for t in QUESTION_TYPES if type_stats.get(t, 0)
         )
+        if present:
+            stats_hint = f"\n참고 — 이 기출의 대략적 유형 구성: {present}.\n"
 
     prompt = f"""아래는 의대 기출문제 PDF에서 추출한 텍스트입니다.
 이 텍스트에서 **그 시험을 가장 잘 대표하는** 완전한 문제를 골라 원문 그대로 추출해주세요.
 {stats_hint}
-먼저 각 문제의 유형을 판별하세요:
-- 객관식: 선택지(①②③④⑤ 등)가 있는 문제
-- 주관식: 선택지 없이 서술·단답으로 답하는 문제
+## 문제 유형 4분류 (먼저 각 문제의 유형을 판별)
+{TYPE_DEFINITIONS}
 
 ## 선택 기준 (중요)
 - **총 최대 5개**까지 선택.
-- 텍스트에 **두 유형이 모두 있으면, 각 유형마다 최소 2개씩** 포함하세요.
-  (단, 해당 유형 문항이 2개 미만이면 있는 만큼만.)
-- 한 유형만 있으면 그 유형에서 대표성 있는 문제를 최대 5개까지.
-- **앞에서부터 순서대로 고르지 말고**, 형식·출제 방식이 그 시험에서 **전형적(대표적)**인
-  문제를 우선 선택하세요. 특이하거나 예외적인 형식의 문제는 피하세요.
+- 텍스트에 존재하는 **각 유형마다 최소 1개씩** 반드시 포함하세요.
+  (해당 유형이 하나도 없으면 생략, 있으면 최소 1개 보장.)
+- 5개 한도 안에서, 문항이 많은 유형은 1개보다 많이 넣어 실제 비중을 반영해도 좋습니다.
+- **앞에서부터 순서대로 고르지 말고**, 그 시험에서 **전형적(대표적)**인 문제를 우선 선택하세요.
+  특이하거나 예외적인 형식의 문제는 피하세요.
 
-## 유형별 추출 규칙 (공통: 해설·부연설명 등 답이 아닌 내용은 절대 포함하지 말 것)
-- [객관식] 문제 번호, 지문(증례), 선택지 ①②③④⑤, 정답만 원문 그대로 추출.
-- [주관식] 문제와 정답(모범답안)만 추출.
+## 추출 규칙 (공통: 해설·부연설명 등 답이 아닌 내용은 절대 포함하지 말 것)
+- [객관식] 문제 번호, 지문(증례), 선택지 ①②③④⑤, 정답만 원문 그대로.
+- [빈칸채우기/단답형/서술형] 문제와 정답(모범답안)만. (선택지 없음)
 
-## 출력 형식 (각 문제마다)
-[유형: 객관식] 또는 [유형: 주관식]
+## 출력 형식 (각 문제마다 — 유형 라벨은 4분류 중 하나 정확히)
+[유형: 객관식] / [유형: 빈칸채우기] / [유형: 단답형] / [유형: 서술형]
 (문제 원문 — 위 규칙대로)
 
 기타 조건:
@@ -293,10 +546,10 @@ def analyze_format(sample_questions: str, api_key: str, model: str) -> str:
 산문 설명 없이, 각 항목을 반드시 "라벨: 키워드1, 키워드2, ..." 한 줄 형태로만 작성하세요.
 
 항목 (해당 없으면 '해당없음'):
-문제유형: (객관식/주관식 비율 키워드)
+문제유형: (객관식/빈칸채우기/단답형/서술형 비율 키워드)
 증례제시: (나이/성별/주소/검사 제시 순서 키워드)
 문체: (어투, 문장 길이, 전문용어 사용 키워드)
-선택지구성: (객관식 선택지 길이·구조 키워드 / 주관식이면 '해당없음')
+선택지구성: (객관식 선택지 길이·구조 키워드 / 비객관식이면 '해당없음')
 질문형태: (진단/치료/다음단계 등 키워드)
 기타: (특이사항 키워드)
 
@@ -310,16 +563,22 @@ def extract_exam_concepts(exam_text: str, api_key: str, model: str) -> str:
     """
     기출 전문에서 '무엇을 물었는가(출제 개념·경향)'를 추출.
     형식(how)이 아니라 내용(what)에 집중 → 강의개념 가중치 계산에 사용.
+    + 유형통계(4분류)도 같은 호출에서 집계 (추가 토큰 최소).
     """
     prompt = f"""아래는 의대 기출문제 PDF에서 추출한 전문입니다.
-이 기출에서 **실제로 출제된 핵심 개념·주제와 출제 경향**을 추출하세요.
-문제 형식이 아니라 '무엇을 물었는가(내용)'에 집중하세요.
+이 기출에서 **실제로 출제된 핵심 개념·주제와 출제 경향**을 추출하고,
+**각 문제의 유형을 아래 4분류로 세어** 함께 반환하세요.
+
+## 문제 유형 4분류
+{TYPE_DEFINITIONS}
 
 다음 JSON 형식으로만 반환하세요 (코드블록 없이 JSON만):
 {{
   "기출출제개념": ["출제된 개념/주제1", "개념/주제2"],
-  "빈출포인트": ["반복 출제되거나 강조된 포인트1", "포인트2"]
+  "빈출포인트": ["반복 출제되거나 강조된 포인트1", "포인트2"],
+  "유형통계": {{"객관식": 0, "빈칸채우기": 0, "단답형": 0, "서술형": 0}}
 }}
+- 유형통계는 기출 전체 문항을 4분류로 **빠짐없이** 센 개수입니다(합 = 전체 문항 수).
 
 ## 기출문제 텍스트
 {exam_text}"""
@@ -441,15 +700,13 @@ def build_question_generation_prompt(
             "형식은 큰 틀만 느슨하게 맞춥니다."
         )
 
-    # 유형 구성 지시 (기출 유형 통계 → 생성 문제 수 배분)
+    # 유형 구성 지시 (기출 유형 통계 → 생성 문제 수 배분, 4분류)
     if type_targets:
-        type_rule = (
-            f"**객관식 {type_targets.get('객관식', 0)}개, "
-            f"주관식 {type_targets.get('주관식', 0)}개**로 출제 "
-            f"(기출 유형 구성 비율 반영)"
-        )
+        parts = [f"{t} {type_targets.get(t, 0)}개"
+                 for t in QUESTION_TYPES if type_targets.get(t, 0) > 0]
+        type_rule = "**" + ", ".join(parts) + "**로 출제 (기출 유형 구성 비율 반영, 합계 준수)"
     else:
-        type_rule = "**기출문제 예시에 나타난 유형(객관식/주관식) 비율을 그대로 유지**할 것"
+        type_rule = "**기출문제 예시에 나타난 유형 비율을 그대로 유지**할 것"
 
     weight_block = f"""━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## [0] 기출 반영 강도: {weight}/10
@@ -479,8 +736,11 @@ def build_question_generation_prompt(
 """
 
     return f"""당신은 한국 의과대학 중간/기말고사 출제위원입니다.
-아래 [기출문제 예시]의 형식과 **유형(객관식/주관식)**을 참고하여 새로운 예상 문제를 생성하세요.
+아래 [기출문제 예시]의 형식과 **유형(4분류)**을 참고하여 새로운 예상 문제를 생성하세요.
 단, 아래 [0] 기출 반영 강도에 따라 기출을 얼마나 강하게 반영할지 조절하세요.
+
+## 문제 유형 4분류
+{TYPE_DEFINITIONS}
 
 {weight_block}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -507,7 +767,11 @@ def build_question_generation_prompt(
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 - 문제 수: {count}개
 - 유형 구성: {type_rule}
-- 객관식은 선택지 ①②③④⑤ 포함, 주관식은 선택지 없이 서술·단답형으로 출제
+- 유형별 형식:
+  · 객관식 → 선택지 ①②③④⑤ 포함
+  · 빈칸채우기 → 문제 문장에 빈칸 '____'를 두고, 선택지 없이 빈칸에 들어갈 답 제시
+  · 단답형 → 선택지 없이 단어·구·수치로 답
+  · 서술형 → 선택지 없이 여러 문장으로 서술하는 모범답안 제시
 - 문체·구조·선택지 형식은 위 [0] 기출 반영 강도({weight}/10)에 맞춰 반영
 - 기출문제와 내용이 동일한 문제는 출제 금지
 - 각 문제에 해설과 함정포인트 포함
@@ -530,11 +794,11 @@ def build_question_generation_prompt(
 함정포인트: [핵심 함정]
 ---END---
 
-[주관식 문제일 때]
+[비객관식(빈칸채우기/단답형/서술형)일 때 — 유형 라벨만 바꿔 사용]
 ---QUESTION---
-유형: 주관식
+유형: 단답형
 번호: 2
-문제: [문제 전체]
+문제: [문제 전체 — 빈칸채우기는 문장에 '____' 포함]
 정답: [모범 답안]
 해설: [상세 해설]
 함정포인트: [핵심 함정]
@@ -601,13 +865,31 @@ def parse_questions(raw_text: str) -> list:
         flush_buffer(current_key, buffer)
         if choice_lines:
             q["선택지"] = choice_lines
-        # 유형이 없으면 선택지 유무로 자동 판별
-        if not q.get("유형"):
-            q["유형"] = "객관식" if choice_lines else "주관식"
+        q["유형"] = normalize_question_type(q.get("유형"), choice_lines, q.get("문제", ""))
         if q.get("문제"):
             questions.append(q)
 
     return questions
+
+
+def normalize_question_type(raw_type: str, choice_lines: list, question_text: str) -> str:
+    """
+    생성 문제의 유형을 4분류 표준값으로 정규화.
+    라벨이 있으면 표기 흔들림을 흡수, 없으면 선택지·빈칸 유무로 추정.
+    """
+    if raw_type:
+        key = raw_type.replace(" ", "")
+        for t in QUESTION_TYPES:
+            if t in key:            # '객관식', '빈칸채우기', '단답형', '서술형' 부분일치
+                return t
+        if "객관" in key:
+            return "객관식"
+    if choice_lines:
+        return "객관식"
+    # 빈칸 기호(____, □, ( ))가 있으면 빈칸채우기로 추정, 아니면 단답형
+    if re.search(r"_{2,}|□{2,}|\(\s*\)", question_text or ""):
+        return "빈칸채우기"
+    return "단답형"
 
 
 def safe_parse_json(text: str) -> dict:
@@ -627,14 +909,26 @@ def safe_parse_json(text: str) -> dict:
 # ──────────────────────────────────────────────
 
 def run_analysis(lecture_text: str, exam_text: str, api_key: str, model: str) -> dict:
-    """강의·기출을 분석해 재사용 자산을 생성 (LLM 4~5회 호출)."""
-    concepts = safe_parse_json(
-        call_llm(build_concept_extraction_prompt(lecture_text), api_key, model)
-    )
-    type_stats = count_question_types(exam_text)  # 정규식, 0 토큰
+    """
+    강의·기출을 분석해 재사용 자산을 생성.
+    의존성 없는 두 LLM 호출을 병렬 실행해 대기시간 단축 (결과·동작은 순차 실행과 동일):
+      [동시] ① 강의 핵심개념  ┐
+      [동시] ② 기출 개념+유형통계 ┘ → ③ 예시추출 → ④ 형식분석
+    (④ 형식분석은 ③ 결과를 입력받으므로 ③에 의존 → 병렬 불가)
+    """
+    # ①·② 동시 실행 (서로 독립)
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        f_concepts = ex.submit(
+            call_llm, build_concept_extraction_prompt(lecture_text), api_key, model
+        )
+        f_exam = ex.submit(extract_exam_concepts, exam_text, api_key, model)
+        concepts = safe_parse_json(f_concepts.result())
+        exam_concepts = safe_parse_json(f_exam.result())
+
+    # ③ 예시추출 (②의 유형통계를 힌트로 사용) → ④ 형식분석 (③에 의존)
+    type_stats = resolve_type_stats(exam_concepts, exam_text)  # LLM 4분류 우선, 정규식 폴백
     sample_questions = extract_sample_questions(exam_text, api_key, model, type_stats)
     format_analysis = analyze_format(sample_questions, api_key, model)
-    exam_concepts = safe_parse_json(extract_exam_concepts(exam_text, api_key, model))
     priority_topics = compute_priority_topics(concepts, exam_concepts)
     return {
         "concepts": concepts,
@@ -685,6 +979,27 @@ def session_rename(sid):
     return jsonify({"success": True})
 
 
+# ── 생성 이력 ──
+
+@app.route("/session/<int:sid>/generations", methods=["GET"])
+def generations_list(sid):
+    return jsonify({"generations": list_generations(sid)})
+
+
+@app.route("/generation/<int:gid>", methods=["GET"])
+def generation_get(gid):
+    gen = load_generation(gid)
+    if not gen:
+        return jsonify({"error": "생성 이력을 찾을 수 없습니다."}), 404
+    return jsonify(gen)
+
+
+@app.route("/generation/<int:gid>", methods=["DELETE"])
+def generation_delete(gid):
+    delete_generation(gid)
+    return jsonify({"success": True})
+
+
 @app.route("/models", methods=["GET"])
 def get_models():
     api_key = request.headers.get("X-Api-Key", "")
@@ -728,9 +1043,21 @@ def generate():
             if not lecture_file or not exam_file:
                 return jsonify({"error": "강의자료와 기출문제 파일을 모두 업로드해주세요."}), 400
 
-            lecture_text = truncate(extract_text_from_pdf(lecture_file))
-            exam_text    = truncate(extract_text_from_pdf(exam_file))
+            # 강의자료: 텍스트만 추출 (이미지 설명 생략)
+            lecture_raw = extract_text_from_pdf(lecture_file, api_key, model,
+                                                describe_images=False)
+            # 기출문제: 이미지/그림 페이지는 Vision LLM 설명으로 보존
+            #  (예: 신체 부위 그림 → 부위 이름 쓰기 문제 등)
+            exam_raw    = extract_text_from_pdf(exam_file, api_key, model,
+                                                describe_images=True)
+            lecture_text = truncate(lecture_raw)
+            exam_text    = truncate(exam_raw)
             analysis = run_analysis(lecture_text, exam_text, api_key, model)
+            # 원문 반영 범위(전체 읽었는지/일부만인지) 기록
+            analysis["source_info"] = {
+                "lecture": build_source_info(lecture_raw),
+                "exam":    build_source_info(exam_raw),
+            }
 
             # 세션 저장 (이름: 사용자 지정 or 파일명+시각)
             base = (lecture_file.filename or "강의자료").rsplit(".", 1)[0]
@@ -755,16 +1082,23 @@ def generate():
         question_raw = call_llm(question_prompt, api_key, model)
         questions    = parse_questions(question_raw)
 
+        # 생성 이력 저장 (세션에 연결)
+        generation_id = save_generation(
+            int(session_id), count, weight, model, type_targets, questions, question_raw
+        )
+
         return jsonify({
             "success":          True,
             "session_id":       session_id,          # 재사용용 세션 id
             "session_name":     analysis.get("name", ""),
+            "generation_id":    generation_id,       # 방금 저장된 이력 id
             "reused":           reused,              # 저장된 세션 재사용 여부
             "concepts":         analysis.get("concepts", {}),
             "exam_concepts":    analysis.get("exam_concepts", {}),
             "priority_topics":  analysis.get("priority_topics", []),
             "type_stats":       type_stats,
             "type_targets":     type_targets,
+            "source_info":      analysis.get("source_info", {}),  # 원문 반영 범위
             "sample_questions": analysis.get("sample_questions", ""),
             "format_analysis":  analysis.get("format_analysis", ""),
             "questions":        questions,
@@ -789,5 +1123,18 @@ if __name__ == "__main__":
     print("  접속 주소: http://localhost:5000")
     print(f"  LLM 게이트웨이: {GATEWAY_BASE_URL}")
     print(f"  기본 모델: {DEFAULT_MODEL}")
+    print("  브라우저가 자동으로 열립니다. (창을 닫으면 서버 종료)")
     print("=" * 55)
-    app.run(debug=True, port=5000)
+    # 브라우저 자동 열기 (리로더를 끄므로 단일 프로세스 → 중복/좀비 없음)
+    threading.Timer(1.5, lambda: webbrowser.open("http://localhost:5000")).start()
+    try:
+        # use_reloader=False: 프로세스 2중 실행·좀비 프로세스로 포트가 붙잡히는 문제 방지
+        app.run(host="127.0.0.1", port=5000, debug=True, use_reloader=False)
+    except OSError as e:
+        print("\n" + "=" * 55)
+        print("  [오류] 포트 5000을 사용할 수 없습니다.")
+        print("  이미 서버가 실행 중일 수 있습니다.")
+        print("  → 열려 있는 브라우저 탭(http://localhost:5000)을 먼저 확인하세요.")
+        print("  → 그래도 안 되면 작업 관리자에서 'python.exe'를 모두 종료 후 다시 실행하세요.")
+        print(f"  (상세: {e})")
+        print("=" * 55)

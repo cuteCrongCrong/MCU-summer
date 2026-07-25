@@ -2,7 +2,38 @@
   "permissions": {
     "allow": [
       "Bash(py -3 test_types.py)",
-      "Bash(py -3 -c \"import py_compile; py_compile.compile\\('app.py', doraise=True\\); print\\('app.py OK'\\)\")"
+      "Bash(py -3 -c \"import py_compile; py_compile.compile\\('app.py', doraise=True\\); print\\('app.py OK'\\)\")",
+      "Bash(py -3 test_4types.py)",
+      "Bash(node -e ' *)",
+      "Bash(py -3 test_sessions.py)",
+      "Bash(py -3 test_parallel.py)",
+      "Bash(py -3 test_sourceinfo.py)",
+      "Bash(xxd)",
+      "Bash(powershell -Command \"Get-CimInstance Win32_Process -Filter \\\\\"Name='python.exe' OR Name='py.exe'\\\\\" | Where-Object { \\\\$_.CommandLine -like '*app.py*' } | Select-Object ProcessId, ParentProcessId, CommandLine | Format-Table -AutoSize -Wrap\" 2>&1)",
+      "Bash(py -3 -c \"import py_compile; py_compile.compile\\('app.py', doraise=True\\); print\\('compile OK'\\)\")",
+      "Bash(py -3 app.py)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:5000/)",
+      "Bash(powershell -Command '\\(Get-CimInstance Win32_Process -Filter \"Name='\\\\''python.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*app.py*'\\\\'' }\\).Count')",
+      "Bash(where py *)",
+      "Read(//c/Users/Huey/AppData/Local/Programs/Python/Python313/**)",
+      "Bash(powershell -Command '[Environment]::GetEnvironmentVariable\\('\\\\''PATH'\\\\'','\\\\''User'\\\\''\\) + '\\\\'';'\\\\'' + [Environment]::GetEnvironmentVariable\\('\\\\''PATH'\\\\'','\\\\''Machine'\\\\''\\) -split '\\\\'';'\\\\'' | Where-Object { $_ -like '\\\\''*Python*'\\\\'' -or $_ -like '\\\\''*WindowsApps*'\\\\'' }')",
+      "Bash(\"/c/Users/Huey/AppData/Local/Programs/Python/Launcher/py.exe\" --version)",
+      "Bash(\"/c/Users/Huey/AppData/Local/Programs/Python/Python313/python.exe\" --version)",
+      "Bash(cat)",
+      "Bash(cmd //c \"set \\\\\"PATH=C:\\\\Windows\\\\System32;C:\\\\Windows\\\\\" && C:\\\\Users\\\\Huey\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\detect_test.bat\")",
+      "Bash(cmd //c \"echo LocalAppData=%LOCALAPPDATA% & if exist \\\\\"%LOCALAPPDATA%\\\\Programs\\\\Python\\\\Launcher\\\\py.exe\\\\\" \\(echo [OK] Launcher py.exe 존재\\) else \\(echo [X] Launcher 없음\\) & set \\\\\"FOUND=\\\\\" & for /d %%D in \\(\\\\\"%LOCALAPPDATA%\\\\Programs\\\\Python\\\\Python3*\\\\\"\\) do if exist \\\\\"%%D\\\\python.exe\\\\\" set \\\\\"FOUND=%%D\\\\python.exe\\\\\" & echo for-loop 결과: %FOUND%\" 2>&1)",
+      "Bash(cmd //c \"if exist \\\\\"%LOCALAPPDATA%\\\\Programs\\\\Python\\\\Launcher\\\\py.exe\\\\\" \\(echo [OK] Launcher py.exe 존재함\\) else \\(echo [X] 없음\\)\")",
+      "Bash(cmd //c \"for /d %D in \\(\\\\\"%LOCALAPPDATA%\\\\Programs\\\\Python\\\\Python3*\\\\\"\\) do @if exist \\\\\"%D\\\\python.exe\\\\\" echo [OK] 발견: %D\\\\python.exe\")",
+      "Bash(cmd //c C:\\\\\\\\Users\\\\\\\\Huey\\\\\\\\AppData\\\\\\\\Local\\\\\\\\Temp\\\\\\\\claude\\\\\\\\detect2.bat)",
+      "Bash(powershell -Command \"& 'C:\\\\Users\\\\Huey\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\detect2.bat'\" 2>&1)",
+      "Read(//c/Users/Huey/AppData/Local/Programs/Python/Launcher/**)",
+      "Bash(echo \"[OK] Launcher\\\\\\\\py.exe 존재\")",
+      "Read(//c/Users/Huey/AppData/Local/Programs/Python/**)",
+      "Bash(py -3 -c ' *)",
+      "Bash(py -3 -c \"d=open\\('_detect_test.bat','rb'\\).read\\(\\).replace\\(b'\\\\r\\\\n',b'\\\\n'\\).replace\\(b'\\\\n',b'\\\\r\\\\n'\\); open\\('_detect_test.bat','wb'\\).write\\(d\\)\")",
+      "Bash(powershell -Command \"& {Set-Location 'C:\\\\Users\\\\Huey\\\\OneDrive\\\\바탕 화면\\\\MCU_Claude\\\\yama'; cmd /c '_detect_test.bat'}\")",
+      "Bash(powershell -Command \"& 'C:\\\\Users\\\\Huey\\\\OneDrive\\\\바탕 화면\\\\MCU_Claude\\\\yama\\\\_detect_test.bat'\" 2>&1)",
+      "Bash(py -3 test_ocr.py)"
     ]
   }
 }

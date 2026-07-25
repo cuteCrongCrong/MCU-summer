@@ -205,8 +205,11 @@
       padding: 2px 9px; border-radius: 999px;
       margin-left: 6px; vertical-align: middle;
     }
-    .type-obj  { background: #dbeafe; color: #1d4ed8; }
-    .type-subj { background: #ede9fe; color: #7c3aed; }
+    .type-obj   { background: #dbeafe; color: #1d4ed8; }  /* 객관식 */
+    .type-blank { background: #dcfce7; color: #15803d; }  /* 빈칸 채우기 */
+    .type-short { background: #fef3c7; color: #b45309; }  /* 단답형 */
+    .type-essay { background: #ede9fe; color: #7c3aed; }  /* 서술형 */
+    .type-subj  { background: #ede9fe; color: #7c3aed; }  /* (구) 주관식 폴백 */
     .q-text { font-size: 0.97rem; line-height: 1.7; white-space: pre-wrap; }
     .subj-input {
       width: 100%; margin-top: 14px;
@@ -298,6 +301,12 @@
     <div id="session-list" style="margin-top:6px;font-size:0.88rem;color:#64748b;">불러오는 중…</div>
   </div>
 
+  <!-- ⓪-b 생성 이력 (활성 세션 있을 때만) -->
+  <div class="card" id="history-card" style="display:none;">
+    <div class="card-title">🗂️ 생성 이력 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 이 세션에서 만든 문제 모음</span></div>
+    <div id="history-list" style="margin-top:6px;font-size:0.88rem;color:#64748b;"></div>
+  </div>
+
   <!-- ① 업로드 카드 -->
   <div class="card">
     <div class="card-title">파일 업로드 및 설정</div>
@@ -336,16 +345,18 @@
     <!-- API 키 -->
     <div style="margin-top:20px;">
       <label>🔑 전북대 LLM 플랫폼 API Key</label>
-      <input type="password" id="api-key" placeholder="플랫폼에서 발급받은 API 키 입력" autocomplete="off" />
+      <input type="password" id="api-key" placeholder="플랫폼에서 발급받은 API 키 입력" autocomplete="off" onchange="loadModels()" />
+      <div style="font-size:0.75rem;color:#64748b;margin-top:4px;">키를 입력하면 사용 가능한 모델 목록을 자동으로 불러옵니다.</div>
     </div>
 
     <!-- 모델 선택 -->
     <div style="margin-top:20px;">
-      <label>🤖 사용할 모델 <span id="model-load-msg" style="font-weight:400;color:#0ea5e9;"></span></label>
+      <label style="display:flex;align-items:center;gap:8px;">
+        🤖 사용할 모델 <span id="model-load-msg" style="font-weight:400;font-size:0.8rem;color:#0ea5e9;"></span>
+        <button type="button" onclick="loadModels()" title="모델 목록 새로고침" style="margin-left:auto;font-size:0.76rem;padding:4px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
+      </label>
       <select id="model-select" style="width:100%;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:0.95rem;font-family:inherit;color:#1e293b;background:#fff;">
         <option value="claude-sonnet-4-5">claude-sonnet-4-5 (기본)</option>
-        <option value="gpt-4o-mini">gpt-4o-mini</option>
-        <option value="gemini-1.5-flash">gemini-1.5-flash</option>
       </select>
     </div>
 
@@ -483,12 +494,14 @@ function setActiveSession(id, name) {
   document.getElementById('lecture-name').textContent = '';
   document.getElementById('exam-name').textContent = '';
   updateSessionListHighlight();
+  loadHistory(id);
 }
 
 function clearSession() {
   currentSessionId = null;
   document.getElementById('active-session-bar').style.display = 'none';
   document.getElementById('generate-btn').textContent = '✨ 예상문제 생성하기';
+  document.getElementById('history-card').style.display = 'none';
   updateSessionListHighlight();
 }
 
@@ -563,8 +576,11 @@ async function generate() {
       loadSessions();
     }
 
-    renderAnalysis(data.concepts, data.sample_questions, data.format_analysis, data.exam_concepts, data.priority_topics, data.type_stats, data.type_targets);
+    renderAnalysis(data.concepts, data.sample_questions, data.format_analysis, data.exam_concepts, data.priority_topics, data.type_stats, data.type_targets, data.source_info);
     renderQuestions(data.questions, data.raw);
+
+    // 생성 이력 갱신 (방금 결과가 저장됨)
+    if (currentSessionId) loadHistory(currentSessionId);
 
   } catch (err) {
     showError('서버 연결에 실패했습니다. Flask 서버가 실행 중인지 확인하세요.\n' + err.message);
@@ -596,7 +612,7 @@ function renderSessionList() {
   }
   listEl.innerHTML = sessionCache.map(s => {
     const ts = s.type_stats || {};
-    const compo = ts['총문항'] ? `객${ts['객관식']}·주${ts['주관식']}` : '';
+    const compo = ts['총문항'] ? formatTypeCounts(ts) : '';
     const active = (s.id === currentSessionId);
     return `
     <div class="session-row" data-id="${s.id}" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1.5px solid ${active ? '#6ee7b7' : '#e2e8f0'};background:${active ? '#ecfdf5' : '#fff'};border-radius:10px;margin-top:8px;">
@@ -624,7 +640,7 @@ async function useSessionRow(id) {
     const s = await resp.json();
     if (!resp.ok || s.error) return alert(s.error || '세션을 불러오지 못했습니다.');
     setActiveSession(s.id, s.name);
-    renderAnalysis(s.concepts, s.sample_questions, s.format_analysis, s.exam_concepts, s.priority_topics, s.type_stats, {});
+    renderAnalysis(s.concepts, s.sample_questions, s.format_analysis, s.exam_concepts, s.priority_topics, s.type_stats, {}, s.source_info);
     document.getElementById('session-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (err) {
     alert('세션을 불러오지 못했습니다.');
@@ -643,13 +659,114 @@ async function renameSessionRow(id) {
 }
 
 async function deleteSessionRow(id) {
-  if (!confirm('이 세션을 삭제할까요? 저장된 분석 결과가 사라집니다.')) return;
+  if (!confirm('이 세션을 삭제할까요? 저장된 분석 결과와 생성 이력이 모두 사라집니다.')) return;
   await fetch('/session/' + id, { method: 'DELETE' });
   if (id === currentSessionId) clearSession();
   await loadSessions();
 }
 
+// ── 생성 이력 ──
+async function loadHistory(sid) {
+  const card = document.getElementById('history-card');
+  const listEl = document.getElementById('history-list');
+  card.style.display = 'block';
+  listEl.textContent = '불러오는 중…';
+  try {
+    const resp = await fetch('/session/' + sid + '/generations');
+    const data = await resp.json();
+    renderHistory(data.generations || []);
+  } catch (err) {
+    listEl.textContent = '생성 이력을 불러오지 못했습니다.';
+  }
+}
+
+function renderHistory(gens) {
+  const listEl = document.getElementById('history-list');
+  if (!gens.length) {
+    listEl.innerHTML = '<span style="color:#94a3b8;">아직 생성 이력이 없습니다. 문제를 생성하면 여기에 저장됩니다.</span>';
+    return;
+  }
+  listEl.innerHTML = gens.map(g => {
+    const tt = g.type_targets || {};
+    const hasTt = Object.keys(TYPE_BADGE).some(t => (tt[t] || 0) > 0);
+    const compo = hasTt ? formatTypeCounts(tt) : '';
+    return `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1.5px solid #e2e8f0;background:#fff;border-radius:10px;margin-top:8px;">
+      <div style="min-width:0;flex:1;">
+        <div style="font-weight:600;color:#1e293b;">${escHtml(g.created_at || '')} · ${g.num_questions}문제</div>
+        <div style="font-size:0.75rem;color:#94a3b8;margin-top:2px;">강도 ${g.weight}/10 · ${escHtml(g.model || '')}${compo ? ' · ' + compo : ''}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button onclick="viewGeneration(${g.id})" style="font-size:0.78rem;padding:5px 12px;border:none;border-radius:7px;background:#0ea5e9;color:#fff;cursor:pointer;">보기</button>
+        <button onclick="deleteGeneration(${g.id})" title="삭제" style="font-size:0.78rem;padding:5px 8px;border:1px solid #fecaca;border-radius:7px;background:#fff;color:#dc2626;cursor:pointer;">🗑️</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function viewGeneration(gid) {
+  try {
+    const resp = await fetch('/generation/' + gid);
+    const g = await resp.json();
+    if (!resp.ok || g.error) return alert(g.error || '이력을 불러오지 못했습니다.');
+    renderQuestions(g.questions, g.raw);
+    document.getElementById('result-box').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) {
+    alert('이력을 불러오지 못했습니다.');
+  }
+}
+
+async function deleteGeneration(gid) {
+  if (!confirm('이 생성 이력을 삭제할까요?')) return;
+  await fetch('/generation/' + gid, { method: 'DELETE' });
+  if (currentSessionId) loadHistory(currentSessionId);
+}
+
+// ── 모델 목록 (/models 자동 로드) ──
+const DEFAULT_MODEL = 'claude-sonnet-4-5';
+
+async function loadModels() {
+  const apiKey = document.getElementById('api-key').value.trim();
+  const msg = document.getElementById('model-load-msg');
+  if (!apiKey) {
+    msg.textContent = '(API 키 입력 시 자동 로드)';
+    msg.style.color = '#94a3b8';
+    return;
+  }
+  msg.textContent = '불러오는 중…';
+  msg.style.color = '#0ea5e9';
+  try {
+    const resp = await fetch('/models', { headers: { 'X-Api-Key': apiKey } });
+    const data = await resp.json();
+    const models = data.models || [];
+    if (models.length) {
+      populateModels(models);
+      msg.textContent = data.error ? '기본 목록 (조회 실패)' : `${models.length}개 모델`;
+      msg.style.color = data.error ? '#d97706' : '#16a34a';
+    } else {
+      msg.textContent = '사용 가능한 모델이 없습니다';
+      msg.style.color = '#d97706';
+    }
+  } catch (err) {
+    msg.textContent = '모델 목록을 불러오지 못했습니다';
+    msg.style.color = '#dc2626';
+  }
+}
+
+function populateModels(models) {
+  const sel = document.getElementById('model-select');
+  const prev = sel.value;                       // 기존 선택 유지 시도
+  sel.innerHTML = models.map(m => {
+    const label = (m === DEFAULT_MODEL) ? `${m} (기본)` : m;
+    return `<option value="${escHtml(m)}">${escHtml(label)}</option>`;
+  }).join('');
+  // 선택값 복원: 이전 선택 > 기본모델 > 첫 항목
+  if (models.includes(prev))                sel.value = prev;
+  else if (models.includes(DEFAULT_MODEL))  sel.value = DEFAULT_MODEL;
+}
+
 loadSessions();
+loadModels();
 
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -660,7 +777,7 @@ function showError(msg) {
 }
 
 // ── 분석 결과 렌더링 ──
-function renderAnalysis(concepts, sampleQuestions, formatAnalysis, examConcepts, priorityTopics, typeStats, typeTargets) {
+function renderAnalysis(concepts, sampleQuestions, formatAnalysis, examConcepts, priorityTopics, typeStats, typeTargets, sourceInfo) {
   const box = document.getElementById('analysis-box');
   const content = document.getElementById('analysis-content');
   concepts = concepts || {};
@@ -668,16 +785,20 @@ function renderAnalysis(concepts, sampleQuestions, formatAnalysis, examConcepts,
   priorityTopics = priorityTopics || [];
   typeStats = typeStats || {};
   typeTargets = typeTargets || {};
+  sourceInfo = sourceInfo || {};
 
-  // 기출 유형 통계 + 생성 유형 구성 배너
+  const sourceBanner = renderSourceInfo(sourceInfo);
+
+  // 기출 유형 통계 + 생성 유형 구성 배너 (4분류)
   let typeBanner = '';
   if (typeStats['총문항']) {
-    const targetTxt = (typeTargets['객관식'] != null)
-      ? ` &nbsp;→&nbsp; <b>생성 구성:</b> 객관식 ${typeTargets['객관식']} · 주관식 ${typeTargets['주관식']}`
+    const hasTarget = Object.keys(TYPE_BADGE).some(t => (typeTargets[t] || 0) > 0);
+    const targetTxt = hasTarget
+      ? ` &nbsp;→&nbsp; <b>생성 구성:</b> ${formatTypeCounts(typeTargets)}`
       : '';
     typeBanner = `
     <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:0.86rem;color:#1e3a8a;">
-      <b>📊 기출 유형 구성</b> (정규식 자동 집계): 객관식 ${typeStats['객관식']} · 주관식 ${typeStats['주관식']} (총 ${typeStats['총문항']})${targetTxt}
+      <b>📊 기출 유형 구성</b>: ${formatTypeCounts(typeStats)} (총 ${typeStats['총문항']})${targetTxt}
       <div style="font-size:0.75rem;color:#64748b;margin-top:4px;">${escHtml(typeStats['판별근거'] || '')}</div>
     </div>`;
   }
@@ -699,6 +820,7 @@ function renderAnalysis(concepts, sampleQuestions, formatAnalysis, examConcepts,
     </div>` : '';
 
   content.innerHTML = `
+    ${sourceBanner}
     ${typeBanner}
     ${priorityBanner}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;">
@@ -765,15 +887,14 @@ function renderQuestions(questions, raw) {
   questions.forEach((q, idx) => {
     const choices = q['선택지'] || [];
     // 유형 판별: 명시된 유형 우선, 없으면 선택지 유무로 추정
-    const isObjective = (q['유형'] ? q['유형'].includes('객관') : choices.length > 0);
+    const rawType = (q['유형'] || '').replace(/\s/g, '');
+    const isObjective = (rawType ? rawType.includes('객관') : choices.length > 0);
 
     const card = document.createElement('div');
     card.className = 'question-card';
     card.id = `qcard-${idx}`;
 
-    const typeBadge = isObjective
-      ? `<span class="type-badge type-obj">객관식</span>`
-      : `<span class="type-badge type-subj">주관식</span>`;
+    const typeBadge = typeBadgeHtml(rawType, isObjective);
 
     const answerBlock = `
       <div class="answer-section" id="ans-${idx}">
@@ -841,6 +962,64 @@ function checkAnswer(qIdx, answerIdx) {
   }
 
   document.getElementById(`ans-${qIdx}`).style.display = 'block';
+}
+
+// 유형 → 배지 (4분류 + 구 주관식 폴백)
+const TYPE_BADGE = {
+  '객관식':   ['type-obj',   '객관식'],
+  '빈칸채우기': ['type-blank', '빈칸 채우기'],
+  '단답형':   ['type-short', '단답형'],
+  '서술형':   ['type-essay', '서술형'],
+};
+// 원문 반영 범위 배너 (전체 읽음 / 일부만 반영)
+function renderSourceInfo(sourceInfo) {
+  const docs = [['lecture', '📄 강의자료'], ['exam', '📝 기출문제']];
+  const rows = [];
+  let anyTrunc = false;
+  for (const [key, label] of docs) {
+    const s = sourceInfo[key];
+    if (!s || typeof s.chars !== 'number') continue;
+    const nf = n => n.toLocaleString('ko-KR');
+    if (s.truncated) {
+      anyTrunc = true;
+      rows.push(`<div style="margin-top:4px;">⚠️ <b>${label}</b>: 추출 ${nf(s.chars)}자 중 <b>약 ${nf(s.used)}자(${s.coverage}%)</b>만 반영 — 분량 초과로 앞·뒤 일부만 사용, 중간 생략`);
+    } else {
+      rows.push(`<div style="margin-top:4px;">✅ <b>${label}</b>: 추출 ${nf(s.chars)}자 <b>전체 반영</b>`);
+    }
+  }
+  if (!rows.length) return '';
+  const bg = anyTrunc ? '#fffbeb' : '#f0fdf4';
+  const bd = anyTrunc ? '#fcd34d' : '#86efac';
+  const fg = anyTrunc ? '#92400e' : '#166534';
+  return `
+    <div style="background:${bg};border:1.5px solid ${bd};border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:0.84rem;color:${fg};">
+      <b>📥 원문 반영 범위</b> ${anyTrunc ? '(일부 문서가 잘렸습니다)' : '(파일 전체가 반영되었습니다)'}
+      ${rows.join('')}
+      ${anyTrunc ? `<div style="font-size:0.75rem;color:#a16207;margin-top:6px;">더 많이 반영하려면 파일을 나눠 올리거나, 서버의 상한(현재 ${(100000).toLocaleString('ko-KR')}자)을 높이면 됩니다.</div>` : ''}
+    </div>`;
+}
+
+// 유형별 개수를 "객관식 6 · 단답형 3" 형태로 (0인 유형 생략)
+function formatTypeCounts(obj) {
+  obj = obj || {};
+  const parts = [];
+  for (const key in TYPE_BADGE) {
+    const n = obj[key] || 0;
+    if (n > 0) parts.push(`${TYPE_BADGE[key][1]} ${n}`);
+  }
+  return parts.length ? parts.join(' · ') : '해당 없음';
+}
+function typeBadgeHtml(rawType, isObjective) {
+  for (const key in TYPE_BADGE) {
+    if (rawType && rawType.includes(key)) {
+      const [cls, label] = TYPE_BADGE[key];
+      return `<span class="type-badge ${cls}">${label}</span>`;
+    }
+  }
+  // 라벨이 없거나 구형 '주관식' → 선택지 유무로
+  return isObjective
+    ? `<span class="type-badge type-obj">객관식</span>`
+    : `<span class="type-badge type-short">단답형</span>`;
 }
 
 function escHtml(str) {
