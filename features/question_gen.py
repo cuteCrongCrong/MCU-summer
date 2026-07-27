@@ -1,0 +1,378 @@
+"""
+문제 생성 기능 — 세션(분석 자산)·생성 이력의 DB 접근 + HTTP 라우트.
+
+담당 테이블: sessions, generations
+연결 계약: 생성 문제 dict의 키(문제/선택지/정답/해설/함정포인트/유형)는
+           오답노트가 그대로 저장·렌더링하므로 이름을 바꾸지 말 것. (CONTRIBUTING.md 4-B)
+"""
+
+import json
+from datetime import datetime
+
+from flask import Blueprint, request, jsonify
+from openai import OpenAI, AuthenticationError, RateLimitError
+
+from db import get_conn
+from llm import (
+    GATEWAY_BASE_URL, DEFAULT_MODEL,
+    extract_text_from_pdf, truncate, build_source_info,
+    run_analysis, compute_type_targets,
+    build_question_generation_prompt, call_llm, parse_questions,
+)
+
+gen_bp = Blueprint("gen", __name__)
+
+
+# ──────────────────────────────────────────────
+# 세션 저장 (분석 결과 캐싱 → 재분석 없이 재생성)
+# ──────────────────────────────────────────────
+
+def save_session(name: str, model: str, analysis: dict) -> int:
+    """분석 결과(재사용 자산)를 한 세션으로 저장하고 id 반환."""
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """INSERT INTO sessions
+               (name, model, created_at, concepts, sample_questions,
+                format_analysis, exam_concepts, priority_topics, type_stats, source_info)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (
+                name,
+                model,
+                datetime.now().strftime("%Y-%m-%d %H:%M"),
+                json.dumps(analysis.get("concepts", {}), ensure_ascii=False),
+                analysis.get("sample_questions", ""),
+                analysis.get("format_analysis", ""),
+                json.dumps(analysis.get("exam_concepts", {}), ensure_ascii=False),
+                json.dumps(analysis.get("priority_topics", []), ensure_ascii=False),
+                json.dumps(analysis.get("type_stats", {}), ensure_ascii=False),
+                json.dumps(analysis.get("source_info", {}), ensure_ascii=False),
+            ),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def load_session(sid: int):
+    """세션 하나를 분석 자산 dict로 복원. 없으면 None."""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM sessions WHERE id=?", (sid,)).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return None
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "model": row["model"],
+        "created_at": row["created_at"],
+        "concepts": json.loads(row["concepts"] or "{}"),
+        "sample_questions": row["sample_questions"] or "",
+        "format_analysis": row["format_analysis"] or "",
+        "exam_concepts": json.loads(row["exam_concepts"] or "{}"),
+        "priority_topics": json.loads(row["priority_topics"] or "[]"),
+        "type_stats": json.loads(row["type_stats"] or "{}"),
+        "source_info": json.loads((row["source_info"] if "source_info" in row.keys() else None) or "{}"),
+    }
+
+
+def list_sessions() -> list:
+    """세션 목록(가벼운 메타데이터만). 최신순."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT id, name, model, created_at, type_stats FROM sessions ORDER BY id DESC"
+        ).fetchall()
+    finally:
+        conn.close()
+    return [
+        {
+            "id": r["id"],
+            "name": r["name"],
+            "model": r["model"],
+            "created_at": r["created_at"],
+            "type_stats": json.loads(r["type_stats"] or "{}"),
+        }
+        for r in rows
+    ]
+
+
+def delete_session(sid: int):
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM generations WHERE session_id=?", (sid,))  # 이력도 함께 삭제
+        conn.execute("DELETE FROM sessions WHERE id=?", (sid,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def rename_session(sid: int, name: str):
+    conn = get_conn()
+    try:
+        conn.execute("UPDATE sessions SET name=? WHERE id=?", (name, sid))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ── 생성 문제 이력 ──
+
+def save_generation(session_id: int, count: int, weight: int, model: str,
+                    type_targets: dict, questions: list, raw: str) -> int:
+    """한 번의 문제 생성 결과를 세션에 연결해 이력으로 저장."""
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """INSERT INTO generations
+               (session_id, created_at, count, weight, model, type_targets, questions, raw)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (
+                session_id,
+                datetime.now().strftime("%Y-%m-%d %H:%M"),
+                count,
+                weight,
+                model,
+                json.dumps(type_targets or {}, ensure_ascii=False),
+                json.dumps(questions or [], ensure_ascii=False),
+                raw or "",
+            ),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def list_generations(session_id: int) -> list:
+    """세션의 생성 이력 목록(가벼운 메타데이터). 최신순."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """SELECT id, created_at, count, weight, model, type_targets, questions
+               FROM generations WHERE session_id=? ORDER BY id DESC""",
+            (session_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    out = []
+    for r in rows:
+        qs = json.loads(r["questions"] or "[]")
+        out.append({
+            "id": r["id"],
+            "created_at": r["created_at"],
+            "count": r["count"],
+            "weight": r["weight"],
+            "model": r["model"],
+            "type_targets": json.loads(r["type_targets"] or "{}"),
+            "num_questions": len(qs),
+        })
+    return out
+
+
+def load_generation(gid: int):
+    """이력 하나를 전체 복원(문제 리스트 포함). 없으면 None."""
+    conn = get_conn()
+    try:
+        r = conn.execute("SELECT * FROM generations WHERE id=?", (gid,)).fetchone()
+    finally:
+        conn.close()
+    if not r:
+        return None
+    return {
+        "id": r["id"],
+        "session_id": r["session_id"],
+        "created_at": r["created_at"],
+        "count": r["count"],
+        "weight": r["weight"],
+        "model": r["model"],
+        "type_targets": json.loads(r["type_targets"] or "{}"),
+        "questions": json.loads(r["questions"] or "[]"),
+        "raw": r["raw"] or "",
+    }
+
+
+def delete_generation(gid: int):
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM generations WHERE id=?", (gid,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ──────────────────────────────────────────────
+# 라우트: 세션 CRUD
+# ──────────────────────────────────────────────
+
+@gen_bp.route("/sessions", methods=["GET"])
+def sessions_list():
+    return jsonify({"sessions": list_sessions()})
+
+
+@gen_bp.route("/session/<int:sid>", methods=["GET"])
+def session_get(sid):
+    sess = load_session(sid)
+    if not sess:
+        return jsonify({"error": "세션을 찾을 수 없습니다."}), 404
+    return jsonify(sess)
+
+
+@gen_bp.route("/session/<int:sid>", methods=["DELETE"])
+def session_delete(sid):
+    delete_session(sid)
+    return jsonify({"success": True})
+
+
+@gen_bp.route("/session/<int:sid>/rename", methods=["POST"])
+def session_rename(sid):
+    name = request.form.get("name", "").strip()
+    if not name:
+        return jsonify({"error": "세션 이름을 입력하세요."}), 400
+    rename_session(sid, name)
+    return jsonify({"success": True})
+
+
+# ── 라우트: 생성 이력 ──
+
+@gen_bp.route("/session/<int:sid>/generations", methods=["GET"])
+def generations_list(sid):
+    return jsonify({"generations": list_generations(sid)})
+
+
+@gen_bp.route("/generation/<int:gid>", methods=["GET"])
+def generation_get(gid):
+    gen = load_generation(gid)
+    if not gen:
+        return jsonify({"error": "생성 이력을 찾을 수 없습니다."}), 404
+    return jsonify(gen)
+
+
+@gen_bp.route("/generation/<int:gid>", methods=["DELETE"])
+def generation_delete(gid):
+    delete_generation(gid)
+    return jsonify({"success": True})
+
+
+# ── 라우트: 모델 목록 ──
+
+@gen_bp.route("/models", methods=["GET"])
+def get_models():
+    api_key = request.headers.get("X-Api-Key", "")
+    if not api_key:
+        return jsonify({"error": "API 키가 필요합니다."}), 400
+    try:
+        client = OpenAI(api_key=api_key, base_url=GATEWAY_BASE_URL)
+        models = client.models.list()
+        model_ids = sorted([m.id for m in models.data])
+        return jsonify({"models": model_ids})
+    except Exception as e:
+        return jsonify({"models": [DEFAULT_MODEL], "error": str(e)})
+
+
+# ──────────────────────────────────────────────
+# 라우트: 예상문제 생성
+# ──────────────────────────────────────────────
+
+@gen_bp.route("/generate", methods=["POST"])
+def generate():
+    try:
+        api_key    = request.form.get("api_key", "").strip()
+        count      = int(request.form.get("count", 5))
+        weight     = int(request.form.get("weight", 5))
+        model      = request.form.get("model", DEFAULT_MODEL).strip()
+        session_id = request.form.get("session_id", "").strip()
+
+        if not api_key:
+            return jsonify({"error": "API 키를 입력해주세요."}), 400
+        if not (1 <= count <= 30):
+            return jsonify({"error": "문제 수는 1~30개 사이로 설정해주세요."}), 400
+        if not (1 <= weight <= 10):
+            return jsonify({"error": "기출 반영 강도는 1~10 사이로 설정해주세요."}), 400
+
+        # ── 경로 A: 저장된 세션 재사용 (분석 LLM 호출 0회 → 토큰 절약) ──
+        if session_id:
+            analysis = load_session(int(session_id))
+            if not analysis:
+                return jsonify({"error": "세션을 찾을 수 없습니다. 새로 분석해주세요."}), 404
+            reused = True
+        # ── 경로 B: 새 파일 업로드 → 분석 후 세션 저장 ──
+        else:
+            lecture_file = request.files.get("lecture")
+            exam_file    = request.files.get("exam")
+            if not lecture_file or not exam_file:
+                return jsonify({"error": "강의자료와 기출문제 파일을 모두 업로드해주세요."}), 400
+
+            # 강의자료: 텍스트만 추출 (이미지 설명 생략)
+            lecture_raw = extract_text_from_pdf(lecture_file, api_key, model,
+                                                describe_images=False)
+            # 기출문제: 이미지/그림 페이지는 Vision LLM 설명으로 보존
+            #  (예: 신체 부위 그림 → 부위 이름 쓰기 문제 등)
+            exam_raw    = extract_text_from_pdf(exam_file, api_key, model,
+                                                describe_images=True)
+            lecture_text = truncate(lecture_raw)
+            exam_text    = truncate(exam_raw)
+            analysis = run_analysis(lecture_text, exam_text, api_key, model)
+            # 원문 반영 범위(전체 읽었는지/일부만인지) 기록
+            analysis["source_info"] = {
+                "lecture": build_source_info(lecture_raw),
+                "exam":    build_source_info(exam_raw),
+            }
+
+            # 세션 저장 (이름: 사용자 지정 or 파일명+시각)
+            base = (lecture_file.filename or "강의자료").rsplit(".", 1)[0]
+            name = request.form.get("name", "").strip() or \
+                   f"{base} · {datetime.now().strftime('%m/%d %H:%M')}"
+            session_id = save_session(name, model, analysis)
+            analysis["name"] = name
+            reused = False
+
+        # ── 공통: 예상문제 생성 (분석 자산 재사용, LLM 1회) ──
+        type_stats   = analysis.get("type_stats", {})
+        type_targets = compute_type_targets(type_stats, count)
+        question_prompt = build_question_generation_prompt(
+            analysis.get("concepts", {}),
+            analysis.get("sample_questions", ""),
+            analysis.get("format_analysis", ""),
+            count,
+            analysis.get("exam_concepts", {}),
+            analysis.get("priority_topics", []),
+            weight, type_targets,
+        )
+        question_raw = call_llm(question_prompt, api_key, model)
+        questions    = parse_questions(question_raw)
+
+        # 생성 이력 저장 (세션에 연결)
+        generation_id = save_generation(
+            int(session_id), count, weight, model, type_targets, questions, question_raw
+        )
+
+        return jsonify({
+            "success":          True,
+            "session_id":       session_id,          # 재사용용 세션 id
+            "session_name":     analysis.get("name", ""),
+            "generation_id":    generation_id,       # 방금 저장된 이력 id
+            "reused":           reused,              # 저장된 세션 재사용 여부
+            "concepts":         analysis.get("concepts", {}),
+            "exam_concepts":    analysis.get("exam_concepts", {}),
+            "priority_topics":  analysis.get("priority_topics", []),
+            "type_stats":       type_stats,
+            "type_targets":     type_targets,
+            "source_info":      analysis.get("source_info", {}),  # 원문 반영 범위
+            "sample_questions": analysis.get("sample_questions", ""),
+            "format_analysis":  analysis.get("format_analysis", ""),
+            "questions":        questions,
+            "raw":              question_raw,
+            "model":            model,
+            "weight":           weight,
+        })
+
+    except AuthenticationError:
+        return jsonify({"error": "API 키가 올바르지 않습니다. 플랫폼에서 키를 확인해주세요."}), 401
+    except RateLimitError:
+        return jsonify({"error": "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요."}), 429
+    except Exception as e:
+        return jsonify({"error": f"서버 오류: {str(e)}"}), 500
