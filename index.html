@@ -269,6 +269,76 @@
       display: none;
     }
 
+    /* ── 문제 헤더 (번호 + 오답 버튼) ── */
+    .q-header {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 14px; flex-wrap: wrap;
+    }
+    .q-header .q-number { margin-bottom: 0; }
+    .wrong-add-btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 10px; border-radius: 999px;
+      border: 1.5px solid #fca5a5; background: #fff;
+      color: var(--danger); font-size: 0.76rem; font-weight: 700;
+      font-family: inherit; cursor: pointer; transition: all 0.15s;
+      margin-left: auto;
+    }
+    .wrong-add-btn:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
+    .wrong-add-btn.saved { background: #fee2e2; color: var(--danger); cursor: default; }
+    .wrong-remove-btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 10px; border-radius: 999px;
+      border: 1.5px solid var(--border); background: #fff;
+      color: var(--text-muted); font-size: 0.76rem; font-weight: 700;
+      font-family: inherit; cursor: pointer; transition: all 0.15s;
+      margin-left: auto;
+    }
+    .wrong-remove-btn:hover { background: #fee2e2; color: var(--danger); border-color: #fca5a5; }
+
+    /* ── 오답 노트 모달 ── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 1000;
+      background: rgba(15,23,42,0.45);
+      align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface); border-radius: var(--radius);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+      width: 100%; max-width: 460px; max-height: 85vh;
+      overflow-y: auto; padding: 24px;
+    }
+    .modal h3 { font-size: 1.05rem; color: var(--text); margin-bottom: 4px; }
+    .modal .modal-sub { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 16px; }
+    .modal .q-preview {
+      background: #f8fafc; border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 12px; font-size: 0.82rem; color: var(--text-muted);
+      line-height: 1.5; margin-bottom: 16px;
+      max-height: 80px; overflow: hidden;
+    }
+    .folder-pick {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px;
+      margin-bottom: 8px; cursor: pointer; transition: all 0.15s;
+    }
+    .folder-pick:hover { border-color: var(--danger); background: #fef2f2; }
+    .folder-pick .fp-name { font-weight: 600; font-size: 0.9rem; color: var(--text); }
+    .folder-pick .fp-count { font-size: 0.76rem; color: var(--text-muted); }
+    .modal .new-folder-row { display: flex; gap: 8px; margin-top: 14px; }
+    .modal .new-folder-row input { flex: 1; }
+    .modal .btn-danger {
+      padding: 10px 16px; border: none; border-radius: 8px;
+      background: var(--danger); color: #fff; font-weight: 700; font-size: 0.85rem;
+      font-family: inherit; cursor: pointer; white-space: nowrap;
+    }
+    .modal .btn-danger:hover { background: #b91c1c; }
+    .modal .modal-close {
+      margin-top: 18px; width: 100%; padding: 10px;
+      border: 1px solid var(--border); border-radius: 8px; background: #fff;
+      color: var(--text-muted); font-size: 0.85rem; font-family: inherit; cursor: pointer;
+    }
+    .modal .divider { text-align: center; font-size: 0.76rem; color: #94a3b8; margin: 14px 0 4px; }
+
     /* ── 원본 텍스트 폴드 ── */
     details { margin-top: 12px; }
     details summary {
@@ -305,6 +375,15 @@
   <div class="card" id="history-card" style="display:none;">
     <div class="card-title">🗂️ 생성 이력 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 이 세션에서 만든 문제 모음</span></div>
     <div id="history-list" style="margin-top:6px;font-size:0.88rem;color:#64748b;"></div>
+  </div>
+
+  <!-- ⓪-c 오답 노트 -->
+  <div class="card" id="wrong-card">
+    <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+      <span>❌ 오답 노트 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 틀린/헷갈린 문제를 폴더로 모아두기</span></span>
+      <button onclick="loadWrongFolders()" style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
+    </div>
+    <div id="wrong-folder-list" style="margin-top:6px;font-size:0.88rem;color:#64748b;">불러오는 중…</div>
   </div>
 
   <!-- ① 업로드 카드 -->
@@ -425,13 +504,29 @@
 
   <!-- ⑤ 생성된 문제 -->
   <div id="result-box">
-    <div class="card-title" style="padding: 0 4px; margin-bottom:16px;">
+    <div class="card-title" id="result-title" style="padding: 0 4px; margin-bottom:16px;">
       📋 생성된 예상문제
     </div>
     <div id="questions-container"></div>
   </div>
 
 </main>
+
+<!-- 오답 노트 저장 모달 -->
+<div class="modal-overlay" id="wrong-modal" onclick="if(event.target===this)closeWrongModal()">
+  <div class="modal">
+    <h3>❌ 오답 노트에 저장</h3>
+    <div class="modal-sub">기존 폴더를 선택하거나, 새 폴더를 만들어 이 문제를 담아두세요.</div>
+    <div class="q-preview" id="wrong-modal-preview"></div>
+    <div id="wrong-modal-folders"></div>
+    <div class="divider">— 또는 새 폴더 만들기 —</div>
+    <div class="new-folder-row">
+      <input type="text" id="wrong-new-folder-name" placeholder="새 폴더 이름 (예: 순환기 오답)" />
+      <button class="btn-danger" onclick="createFolderAndSave()">만들어 저장</button>
+    </div>
+    <button class="modal-close" onclick="closeWrongModal()">닫기</button>
+  </div>
+</div>
 
 <script>
 // ── 파일 드래그앤드롭 UX ──
@@ -869,9 +964,23 @@ function renderFormatKeywords(text) {
 }
 
 // ── 문제 렌더링 ──
-function renderQuestions(questions, raw) {
+// viewOpts.folder = {id, items} 이면 오답 폴더 보기 모드 (넣기 버튼 대신 빼기 버튼)
+let currentQuestions = [];
+function renderQuestions(questions, raw, viewOpts) {
+  viewOpts = viewOpts || {};
+  const folder = viewOpts.folder || null;
+  currentQuestions = questions || [];
+
   const container = document.getElementById('questions-container');
   container.innerHTML = '';
+
+  // 결과 영역 제목 (오답 폴더 보기면 폴더명으로 교체)
+  const titleEl = document.getElementById('result-title');
+  if (titleEl) {
+    titleEl.textContent = folder
+      ? `❌ 오답 노트 — ${folder.name}`
+      : '📋 생성된 예상문제';
+  }
 
   if (!questions || questions.length === 0) {
     // 파싱 실패 시 원본 텍스트 그대로 표시
@@ -896,6 +1005,18 @@ function renderQuestions(questions, raw) {
 
     const typeBadge = typeBadgeHtml(rawType, isObjective);
 
+    // 헤더: 문제 번호 + (넣기 / 빼기) 버튼
+    let actionBtn;
+    if (folder) {
+      const item = (folder.items || [])[idx];
+      const itemId = item ? item.id : null;
+      actionBtn = `<button class="wrong-remove-btn" onclick="removeWrongItem(${itemId}, ${folder.id})" title="이 폴더에서 빼기">🗑️ 폴더에서 빼기</button>`;
+    } else {
+      actionBtn = `<button class="wrong-add-btn" id="wbtn-${idx}" onclick="openWrongModal(${idx})" title="오답 노트에 넣기">🔖 오답에 넣기</button>`;
+    }
+    const headerHtml =
+      `<div class="q-header"><span class="q-number">문제 ${idx + 1} ${typeBadge}</span>${actionBtn}</div>`;
+
     const answerBlock = `
       <div class="answer-section" id="ans-${idx}">
         <div class="answer-badge">✅ 정답: ${escHtml(q['정답'] || '-')}</div>
@@ -910,7 +1031,7 @@ function renderQuestions(questions, raw) {
         `<li data-idx="${i}" onclick="selectChoice(this, ${idx}, ${answerIdx})">${escHtml(c)}</li>`
       ).join('');
       card.innerHTML = `
-        <div class="q-number">문제 ${idx + 1} ${typeBadge}</div>
+        ${headerHtml}
         <div class="q-text">${escHtml(q['문제'] || '')}</div>
         <ul class="choices" id="choices-${idx}">${choiceHtml}</ul>
         <button class="check-btn" onclick="checkAnswer(${idx}, ${answerIdx})">정답 확인</button>
@@ -919,7 +1040,7 @@ function renderQuestions(questions, raw) {
     } else {
       // 주관식: 선택지 없이 답안 작성란 + 정답 공개
       card.innerHTML = `
-        <div class="q-number">문제 ${idx + 1} ${typeBadge}</div>
+        ${headerHtml}
         <div class="q-text">${escHtml(q['문제'] || '')}</div>
         <textarea class="subj-input" id="subj-${idx}" placeholder="답을 작성해 보세요..." rows="3"></textarea>
         <button class="check-btn" onclick="revealAnswer(${idx})">정답 확인</button>
@@ -929,10 +1050,12 @@ function renderQuestions(questions, raw) {
     container.appendChild(card);
   });
 
-  // 원본 펼치기
-  const raw_section = document.createElement('details');
-  raw_section.innerHTML = `<summary>📄 LLM 원본 응답 보기</summary><pre>${escHtml(raw)}</pre>`;
-  container.appendChild(raw_section);
+  // 원본 펼치기 (오답 폴더 보기 모드에서는 원본 응답이 없으므로 생략)
+  if (raw) {
+    const raw_section = document.createElement('details');
+    raw_section.innerHTML = `<summary>📄 LLM 원본 응답 보기</summary><pre>${escHtml(raw)}</pre>`;
+    container.appendChild(raw_section);
+  }
 
   document.getElementById('result-box').style.display = 'block';
   document.getElementById('result-box').scrollIntoView({ behavior: 'smooth' });
@@ -1021,6 +1144,167 @@ function typeBadgeHtml(rawType, isObjective) {
     ? `<span class="type-badge type-obj">객관식</span>`
     : `<span class="type-badge type-short">단답형</span>`;
 }
+
+// ══════════════════════════════════════════════
+// 오답 노트 (폴더 목록 + 저장 모달 + 폴더 보기)
+// ══════════════════════════════════════════════
+let wrongFolderCache = [];
+let wrongPendingIdx = null;   // 저장 대기 중인 문제의 인덱스
+
+async function loadWrongFolders() {
+  const listEl = document.getElementById('wrong-folder-list');
+  try {
+    const resp = await fetch('/wrong-folders');
+    const data = await resp.json();
+    wrongFolderCache = data.folders || [];
+    renderWrongFolderList();
+  } catch (err) {
+    listEl.textContent = '오답 폴더를 불러오지 못했습니다.';
+  }
+}
+
+function renderWrongFolderList() {
+  const listEl = document.getElementById('wrong-folder-list');
+  if (!wrongFolderCache.length) {
+    listEl.innerHTML = '<span style="color:#94a3b8;">아직 오답 폴더가 없습니다. 생성된 문제의 <b>🔖 오답에 넣기</b> 버튼으로 폴더를 만들어 보세요.</span>';
+    return;
+  }
+  listEl.innerHTML = wrongFolderCache.map(f => `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1.5px solid #fecaca;background:#fff;border-radius:10px;margin-top:8px;">
+      <div style="min-width:0;flex:1;">
+        <div style="font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📁 ${escHtml(f.name)}</div>
+        <div style="font-size:0.75rem;color:#94a3b8;margin-top:2px;">${escHtml(f.created_at || '')} · 문제 ${f.item_count}개</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button onclick="viewWrongFolder(${f.id})" style="font-size:0.78rem;padding:5px 12px;border:none;border-radius:7px;background:#dc2626;color:#fff;cursor:pointer;">보기</button>
+        <button onclick="renameWrongFolderRow(${f.id})" title="이름 변경" style="font-size:0.78rem;padding:5px 8px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;">✏️</button>
+        <button onclick="deleteWrongFolderRow(${f.id})" title="삭제" style="font-size:0.78rem;padding:5px 8px;border:1px solid #fecaca;border-radius:7px;background:#fff;color:#dc2626;cursor:pointer;">🗑️</button>
+      </div>
+    </div>`).join('');
+}
+
+async function viewWrongFolder(fid) {
+  try {
+    const resp = await fetch('/wrong-folders/' + fid);
+    const f = await resp.json();
+    if (!resp.ok || f.error) return alert(f.error || '폴더를 불러오지 못했습니다.');
+    if (!f.questions.length) {
+      alert('이 폴더에는 아직 담긴 문제가 없습니다.');
+      return;
+    }
+    renderQuestions(f.questions, '', { folder: { id: f.id, name: f.name, items: f.items } });
+    document.getElementById('result-box').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) {
+    alert('폴더를 불러오지 못했습니다.');
+  }
+}
+
+async function renameWrongFolderRow(fid) {
+  const cur = (wrongFolderCache.find(f => f.id === fid) || {}).name || '';
+  const name = prompt('새 폴더 이름을 입력하세요.', cur);
+  if (name == null || !name.trim()) return;
+  const form = new FormData();
+  form.append('name', name.trim());
+  await fetch('/wrong-folders/' + fid + '/rename', { method: 'POST', body: form });
+  await loadWrongFolders();
+}
+
+async function deleteWrongFolderRow(fid) {
+  if (!confirm('이 오답 폴더를 삭제할까요? 담긴 문제가 모두 사라집니다.')) return;
+  await fetch('/wrong-folders/' + fid, { method: 'DELETE' });
+  await loadWrongFolders();
+}
+
+async function removeWrongItem(itemId, folderId) {
+  if (itemId == null) return;
+  if (!confirm('이 문제를 폴더에서 뺄까요?')) return;
+  await fetch('/wrong-items/' + itemId, { method: 'DELETE' });
+  await loadWrongFolders();
+  viewWrongFolder(folderId);   // 보기 갱신
+}
+
+// ── 저장 모달 ──
+function openWrongModal(idx) {
+  wrongPendingIdx = idx;
+  const q = currentQuestions[idx] || {};
+  document.getElementById('wrong-modal-preview').textContent =
+    `문제 ${idx + 1}. ${(q['문제'] || '').slice(0, 120)}${(q['문제'] || '').length > 120 ? '…' : ''}`;
+  document.getElementById('wrong-new-folder-name').value = '';
+  renderModalFolders();
+  document.getElementById('wrong-modal').classList.add('open');
+  // 최신 폴더 목록 확보 후 다시 렌더
+  loadWrongFoldersForModal();
+}
+
+function closeWrongModal() {
+  document.getElementById('wrong-modal').classList.remove('open');
+  wrongPendingIdx = null;
+}
+
+async function loadWrongFoldersForModal() {
+  try {
+    const resp = await fetch('/wrong-folders');
+    const data = await resp.json();
+    wrongFolderCache = data.folders || [];
+  } catch (err) { /* 캐시 사용 */ }
+  renderModalFolders();
+}
+
+function renderModalFolders() {
+  const box = document.getElementById('wrong-modal-folders');
+  if (!wrongFolderCache.length) {
+    box.innerHTML = '<div style="font-size:0.82rem;color:#94a3b8;padding:4px 0;">기존 폴더가 없습니다. 아래에서 새 폴더를 만들어 주세요.</div>';
+    return;
+  }
+  box.innerHTML = wrongFolderCache.map(f => `
+    <div class="folder-pick" onclick="saveToFolder(${f.id})">
+      <span class="fp-name">📁 ${escHtml(f.name)}</span>
+      <span class="fp-count">문제 ${f.item_count}개 · 여기에 담기 →</span>
+    </div>`).join('');
+}
+
+async function saveToFolder(fid) {
+  if (wrongPendingIdx == null) return;
+  const q = currentQuestions[wrongPendingIdx] || {};
+  const form = new FormData();
+  form.append('question', JSON.stringify(q));
+  try {
+    const resp = await fetch('/wrong-folders/' + fid + '/items', { method: 'POST', body: form });
+    const data = await resp.json();
+    if (!resp.ok || data.error) return alert(data.error || '저장에 실패했습니다.');
+    markSaved(wrongPendingIdx);
+    if (data.duplicate) alert('이미 이 폴더에 담겨 있는 문제입니다.');
+    closeWrongModal();
+    loadWrongFolders();
+  } catch (err) {
+    alert('저장에 실패했습니다.');
+  }
+}
+
+async function createFolderAndSave() {
+  const name = document.getElementById('wrong-new-folder-name').value.trim();
+  if (!name) return alert('새 폴더 이름을 입력해주세요.');
+  const form = new FormData();
+  form.append('name', name);
+  try {
+    const resp = await fetch('/wrong-folders', { method: 'POST', body: form });
+    const data = await resp.json();
+    if (!resp.ok || data.error) return alert(data.error || '폴더 생성에 실패했습니다.');
+    await saveToFolder(data.id);
+  } catch (err) {
+    alert('폴더 생성에 실패했습니다.');
+  }
+}
+
+function markSaved(idx) {
+  const btn = document.getElementById('wbtn-' + idx);
+  if (btn) {
+    btn.classList.add('saved');
+    btn.textContent = '✅ 오답에 저장됨';
+  }
+}
+
+loadWrongFolders();
 
 function escHtml(str) {
   return String(str)

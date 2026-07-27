@@ -33,7 +33,11 @@
       "Bash(py -3 -c \"d=open\\('_detect_test.bat','rb'\\).read\\(\\).replace\\(b'\\\\r\\\\n',b'\\\\n'\\).replace\\(b'\\\\n',b'\\\\r\\\\n'\\); open\\('_detect_test.bat','wb'\\).write\\(d\\)\")",
       "Bash(powershell -Command \"& {Set-Location 'C:\\\\Users\\\\Huey\\\\OneDrive\\\\바탕 화면\\\\MCU_Claude\\\\yama'; cmd /c '_detect_test.bat'}\")",
       "Bash(powershell -Command \"& 'C:\\\\Users\\\\Huey\\\\OneDrive\\\\바탕 화면\\\\MCU_Claude\\\\yama\\\\_detect_test.bat'\" 2>&1)",
-      "Bash(py -3 test_ocr.py)"
+      "Bash(py -3 test_ocr.py)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app.py',encoding='utf-8'\\).read\\(\\)\\); print\\('app.py OK'\\)\")",
+      "Bash(pip show *)",
+      "PowerShell(Stop-Process -Id 20108 -Force -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 800; \\(Get-NetTCPConnection -LocalPort 5000 -State Listen -ErrorAction SilentlyContinue | Measure-Object\\).Count)",
+      "Bash(python app.py)"
     ]
   }
 }
