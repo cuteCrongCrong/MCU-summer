@@ -27,6 +27,7 @@ sessions.db
 *api*.txt
 *API*.txt
 전북대 llm api.txt
+secret_config.py
 
 # 대화/세션 내보내기 파일 (API 키가 포함될 수 있음)
 *this-session*.txt

@@ -8,7 +8,8 @@
 </head>
 <body>
 
-<header>
+<header style="position:relative;">
+  <div id="auth-widget" style="position:absolute;top:14px;right:18px;color:#fff;"></div>
   <h1>🩺 의대 예상문제 생성기</h1>
   <p>강의자료 + 기출문제를 업로드하면 AI가 새로운 예상문제를 만들어줍니다 </p>
 </header>
@@ -82,6 +83,7 @@
       <label>🔑 전북대 LLM 플랫폼 API Key</label>
       <input type="password" id="api-key" placeholder="플랫폼에서 발급받은 API 키 입력" autocomplete="off" onchange="loadModels()" />
       <div style="font-size:0.75rem;color:#64748b;margin-top:4px;">키를 입력하면 사용 가능한 모델 목록을 자동으로 불러옵니다.</div>
+      <div style="font-size:0.75rem;color:#16a34a;margin-top:4px;">🔒 입력한 키는 <b>서버·브라우저에 저장되지 않고</b>, 문제 생성 요청 시에만 사용된 뒤 폐기됩니다.</div>
     </div>
 
     <!-- 모델 선택 -->
@@ -222,9 +224,9 @@
 </div>
 
 <!-- ── 스크립트 (로드 순서 중요: common → 각 기능) ── -->
-<!-- 새 기능(예: 로그인)은 여기에 <script src="/static/js/auth.js"></script> 한 줄만 추가하세요. -->
 <script src="/static/js/common.js"></script>
 <script src="/static/js/question_gen.js"></script>
 <script src="/static/js/wrong_note.js"></script>
+<script src="/static/js/auth.js"></script>
 </body>
 </html>

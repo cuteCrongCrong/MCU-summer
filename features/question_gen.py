@@ -2,6 +2,9 @@
 문제 생성 기능 — 세션(분석 자산)·생성 이력의 DB 접근 + HTTP 라우트.
 
 담당 테이블: sessions, generations
+사용자별 분리: 각 조회/저장은 current_user_id()로 소유자를 필터한다.
+  - 로그인 사용자: 본인 소유(user_id=id)만
+  - 게스트(비로그인): user_id IS NULL 만
 연결 계약: 생성 문제 dict의 키(문제/선택지/정답/해설/함정포인트/유형)는
            오답노트가 그대로 저장·렌더링하므로 이름을 바꾸지 말 것. (CONTRIBUTING.md 4-B)
 """
@@ -12,7 +15,8 @@ from datetime import datetime
 from flask import Blueprint, request, jsonify
 from openai import OpenAI, AuthenticationError, RateLimitError
 
-from db import get_conn
+from db import get_conn, owner_clause
+from features.auth import current_user_id
 from llm import (
     GATEWAY_BASE_URL, DEFAULT_MODEL,
     extract_text_from_pdf, truncate, build_source_info,
@@ -24,18 +28,19 @@ gen_bp = Blueprint("gen", __name__)
 
 
 # ──────────────────────────────────────────────
-# 세션 저장 (분석 결과 캐싱 → 재분석 없이 재생성)
+# 세션 저장 (분석 결과 캐싱 → 재분석 없이 재생성) — 사용자별 격리
 # ──────────────────────────────────────────────
 
-def save_session(name: str, model: str, analysis: dict) -> int:
-    """분석 결과(재사용 자산)를 한 세션으로 저장하고 id 반환."""
+def save_session(name: str, model: str, analysis: dict, user_id=None) -> int:
+    """분석 결과(재사용 자산)를 한 세션으로 저장하고 id 반환. 소유자=user_id(게스트=None)."""
     conn = get_conn()
     try:
         cur = conn.execute(
             """INSERT INTO sessions
                (name, model, created_at, concepts, sample_questions,
-                format_analysis, exam_concepts, priority_topics, type_stats, source_info)
-               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                format_analysis, exam_concepts, priority_topics, type_stats,
+                source_info, user_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 name,
                 model,
@@ -47,6 +52,7 @@ def save_session(name: str, model: str, analysis: dict) -> int:
                 json.dumps(analysis.get("priority_topics", []), ensure_ascii=False),
                 json.dumps(analysis.get("type_stats", {}), ensure_ascii=False),
                 json.dumps(analysis.get("source_info", {}), ensure_ascii=False),
+                user_id,
             ),
         )
         conn.commit()
@@ -55,11 +61,14 @@ def save_session(name: str, model: str, analysis: dict) -> int:
         conn.close()
 
 
-def load_session(sid: int):
-    """세션 하나를 분석 자산 dict로 복원. 없으면 None."""
+def load_session(sid: int, user_id=None):
+    """세션 하나를 분석 자산 dict로 복원. 소유자만 접근. 없으면 None."""
+    frag, params = owner_clause(user_id)
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM sessions WHERE id=?", (sid,)).fetchone()
+        row = conn.execute(
+            f"SELECT * FROM sessions WHERE id=? AND {frag}", [sid] + params
+        ).fetchone()
     finally:
         conn.close()
     if not row:
@@ -79,12 +88,15 @@ def load_session(sid: int):
     }
 
 
-def list_sessions() -> list:
-    """세션 목록(가벼운 메타데이터만). 최신순."""
+def list_sessions(user_id=None) -> list:
+    """세션 목록(가벼운 메타데이터만). 소유자 것만, 최신순."""
+    frag, params = owner_clause(user_id)
     conn = get_conn()
     try:
         rows = conn.execute(
-            "SELECT id, name, model, created_at, type_stats FROM sessions ORDER BY id DESC"
+            f"""SELECT id, name, model, created_at, type_stats
+                FROM sessions WHERE {frag} ORDER BY id DESC""",
+            params,
         ).fetchall()
     finally:
         conn.close()
@@ -100,26 +112,36 @@ def list_sessions() -> list:
     ]
 
 
-def delete_session(sid: int):
+def delete_session(sid: int, user_id=None):
+    """소유한 세션만 삭제(연결된 이력도 함께)."""
+    frag, params = owner_clause(user_id)
     conn = get_conn()
     try:
-        conn.execute("DELETE FROM generations WHERE session_id=?", (sid,))  # 이력도 함께 삭제
-        conn.execute("DELETE FROM sessions WHERE id=?", (sid,))
+        conn.execute(
+            f"""DELETE FROM generations WHERE session_id IN
+                (SELECT id FROM sessions WHERE id=? AND {frag})""",
+            [sid] + params,
+        )
+        conn.execute(f"DELETE FROM sessions WHERE id=? AND {frag}", [sid] + params)
         conn.commit()
     finally:
         conn.close()
 
 
-def rename_session(sid: int, name: str):
+def rename_session(sid: int, name: str, user_id=None):
+    """소유한 세션만 이름 변경."""
+    frag, params = owner_clause(user_id)
     conn = get_conn()
     try:
-        conn.execute("UPDATE sessions SET name=? WHERE id=?", (name, sid))
+        conn.execute(
+            f"UPDATE sessions SET name=? WHERE id=? AND {frag}", [name, sid] + params
+        )
         conn.commit()
     finally:
         conn.close()
 
 
-# ── 생성 문제 이력 ──
+# ── 생성 문제 이력 (소유한 세션을 통해서만 접근) ──
 
 def save_generation(session_id: int, count: int, weight: int, model: str,
                     type_targets: dict, questions: list, raw: str) -> int:
@@ -147,14 +169,17 @@ def save_generation(session_id: int, count: int, weight: int, model: str,
         conn.close()
 
 
-def list_generations(session_id: int) -> list:
-    """세션의 생성 이력 목록(가벼운 메타데이터). 최신순."""
+def list_generations(session_id: int, user_id=None) -> list:
+    """세션의 생성 이력 목록. 세션을 소유한 경우에만 반환(아니면 빈 목록)."""
+    frag, params = owner_clause(user_id)
     conn = get_conn()
     try:
         rows = conn.execute(
-            """SELECT id, created_at, count, weight, model, type_targets, questions
-               FROM generations WHERE session_id=? ORDER BY id DESC""",
-            (session_id,),
+            f"""SELECT id, created_at, count, weight, model, type_targets, questions
+                FROM generations
+                WHERE session_id=? AND session_id IN (SELECT id FROM sessions WHERE {frag})
+                ORDER BY id DESC""",
+            [session_id] + params,
         ).fetchall()
     finally:
         conn.close()
@@ -173,11 +198,16 @@ def list_generations(session_id: int) -> list:
     return out
 
 
-def load_generation(gid: int):
-    """이력 하나를 전체 복원(문제 리스트 포함). 없으면 None."""
+def load_generation(gid: int, user_id=None):
+    """이력 하나를 전체 복원. 소유한 세션의 이력만. 없으면 None."""
+    frag, params = owner_clause(user_id)
     conn = get_conn()
     try:
-        r = conn.execute("SELECT * FROM generations WHERE id=?", (gid,)).fetchone()
+        r = conn.execute(
+            f"""SELECT * FROM generations
+                WHERE id=? AND session_id IN (SELECT id FROM sessions WHERE {frag})""",
+            [gid] + params,
+        ).fetchone()
     finally:
         conn.close()
     if not r:
@@ -195,27 +225,33 @@ def load_generation(gid: int):
     }
 
 
-def delete_generation(gid: int):
+def delete_generation(gid: int, user_id=None):
+    """소유한 세션의 이력만 삭제."""
+    frag, params = owner_clause(user_id)
     conn = get_conn()
     try:
-        conn.execute("DELETE FROM generations WHERE id=?", (gid,))
+        conn.execute(
+            f"""DELETE FROM generations
+                WHERE id=? AND session_id IN (SELECT id FROM sessions WHERE {frag})""",
+            [gid] + params,
+        )
         conn.commit()
     finally:
         conn.close()
 
 
 # ──────────────────────────────────────────────
-# 라우트: 세션 CRUD
+# 라우트: 세션 CRUD (current_user_id()로 소유자 분리)
 # ──────────────────────────────────────────────
 
 @gen_bp.route("/sessions", methods=["GET"])
 def sessions_list():
-    return jsonify({"sessions": list_sessions()})
+    return jsonify({"sessions": list_sessions(current_user_id())})
 
 
 @gen_bp.route("/session/<int:sid>", methods=["GET"])
 def session_get(sid):
-    sess = load_session(sid)
+    sess = load_session(sid, current_user_id())
     if not sess:
         return jsonify({"error": "세션을 찾을 수 없습니다."}), 404
     return jsonify(sess)
@@ -223,7 +259,7 @@ def session_get(sid):
 
 @gen_bp.route("/session/<int:sid>", methods=["DELETE"])
 def session_delete(sid):
-    delete_session(sid)
+    delete_session(sid, current_user_id())
     return jsonify({"success": True})
 
 
@@ -232,7 +268,7 @@ def session_rename(sid):
     name = request.form.get("name", "").strip()
     if not name:
         return jsonify({"error": "세션 이름을 입력하세요."}), 400
-    rename_session(sid, name)
+    rename_session(sid, name, current_user_id())
     return jsonify({"success": True})
 
 
@@ -240,12 +276,12 @@ def session_rename(sid):
 
 @gen_bp.route("/session/<int:sid>/generations", methods=["GET"])
 def generations_list(sid):
-    return jsonify({"generations": list_generations(sid)})
+    return jsonify({"generations": list_generations(sid, current_user_id())})
 
 
 @gen_bp.route("/generation/<int:gid>", methods=["GET"])
 def generation_get(gid):
-    gen = load_generation(gid)
+    gen = load_generation(gid, current_user_id())
     if not gen:
         return jsonify({"error": "생성 이력을 찾을 수 없습니다."}), 404
     return jsonify(gen)
@@ -253,7 +289,7 @@ def generation_get(gid):
 
 @gen_bp.route("/generation/<int:gid>", methods=["DELETE"])
 def generation_delete(gid):
-    delete_generation(gid)
+    delete_generation(gid, current_user_id())
     return jsonify({"success": True})
 
 
@@ -285,6 +321,7 @@ def generate():
         weight     = int(request.form.get("weight", 5))
         model      = request.form.get("model", DEFAULT_MODEL).strip()
         session_id = request.form.get("session_id", "").strip()
+        uid        = current_user_id()
 
         if not api_key:
             return jsonify({"error": "API 키를 입력해주세요."}), 400
@@ -295,7 +332,7 @@ def generate():
 
         # ── 경로 A: 저장된 세션 재사용 (분석 LLM 호출 0회 → 토큰 절약) ──
         if session_id:
-            analysis = load_session(int(session_id))
+            analysis = load_session(int(session_id), uid)   # 본인 세션만 재사용 가능
             if not analysis:
                 return jsonify({"error": "세션을 찾을 수 없습니다. 새로 분석해주세요."}), 404
             reused = True
@@ -322,11 +359,11 @@ def generate():
                 "exam":    build_source_info(exam_raw),
             }
 
-            # 세션 저장 (이름: 사용자 지정 or 파일명+시각)
+            # 세션 저장 (이름: 사용자 지정 or 파일명+시각) — 현재 사용자 소유
             base = (lecture_file.filename or "강의자료").rsplit(".", 1)[0]
             name = request.form.get("name", "").strip() or \
                    f"{base} · {datetime.now().strftime('%m/%d %H:%M')}"
-            session_id = save_session(name, model, analysis)
+            session_id = save_session(name, model, analysis, uid)
             analysis["name"] = name
             reused = False
 
