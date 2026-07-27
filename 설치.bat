@@ -23,10 +23,10 @@ if not defined PYEXE (
 echo ============================================
 echo   최초 1회 설정 - 필요한 패키지를 설치합니다
 echo   사용 Python: %PYEXE%
-echo   (flask, pymupdf, openai)
+echo   (requirements.txt 기준: flask, pymupdf, openai, authlib, requests)
 echo ============================================
 "%PYEXE%" -m pip install --upgrade pip
-"%PYEXE%" -m pip install flask pymupdf openai
+"%PYEXE%" -m pip install -r requirements.txt
 echo.
 echo 설치가 끝났습니다. 이제 "실행.bat" 을 더블클릭해 앱을 실행하세요.
 pause
