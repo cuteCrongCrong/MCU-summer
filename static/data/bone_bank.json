@@ -1,0 +1,29 @@
+{
+  "_설명": "뼈 문제은행 데이터. 문제 하나 = 아래 배열의 항목 하나.",
+  "_사용법": [
+    "1) static/images/bones/ 에 실제 뼈 그림을 넣으세요 (예: femur.png).",
+    "2) 아래 questions 배열에 { image, answers, hint } 를 추가하세요.",
+    "3) image = 그림 경로, answers = 정답으로 인정할 이름들(한글/영문/동의어 모두), hint = 힌트(선택).",
+    "※ answers에 여러 개를 넣으면 그중 하나만 맞아도 정답 처리됩니다 (대소문자·띄어쓰기 무시)."
+  ],
+  "questions": [
+    {
+      "id": "femur",
+      "image": "/static/images/bones/_placeholder.svg",
+      "answers": ["대퇴골", "넙다리뼈", "femur"],
+      "hint": "허벅지에 있는, 몸에서 가장 길고 강한 뼈"
+    },
+    {
+      "id": "tibia",
+      "image": "/static/images/bones/_placeholder.svg",
+      "answers": ["경골", "정강뼈", "tibia"],
+      "hint": "종아리 안쪽의 굵은 뼈 (정강이)"
+    },
+    {
+      "id": "humerus",
+      "image": "/static/images/bones/_placeholder.svg",
+      "answers": ["상완골", "위팔뼈", "humerus"],
+      "hint": "어깨와 팔꿈치 사이, 위팔의 뼈"
+    }
+  ]
+}
