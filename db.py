@@ -27,6 +27,20 @@ def _ensure_column(conn, table: str, col: str, decl: str):
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
 
 
+def owner_clause(user_id, col: str = "user_id"):
+    """
+    사용자별 데이터 분리용 WHERE 조각과 파라미터를 반환.
+      - 로그인 사용자(user_id 존재) → "user_id = ?", [user_id]
+      - 게스트(None)              → "user_id IS NULL", []
+    사용 예:
+        frag, params = owner_clause(uid)
+        conn.execute(f"SELECT ... WHERE {frag}", params)
+    """
+    if user_id is None:
+        return f"{col} IS NULL", []
+    return f"{col} = ?", [user_id]
+
+
 def init_db():
     """앱 로드 시 모든 테이블/인덱스/마이그레이션을 보장."""
     conn = get_conn()
@@ -81,11 +95,22 @@ def init_db():
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_wrong_folder ON wrong_items(folder_id)"
         )
+        # ── 로그인: 구글 계정 사용자 ──
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                google_sub TEXT UNIQUE NOT NULL,   -- 구글 계정 고유 id
+                email TEXT,
+                name TEXT,
+                picture TEXT,
+                created_at TEXT NOT NULL
+            )"""
+        )
         # ── 마이그레이션: 기존 DB에 없을 수 있는 컬럼 보강 ──
         _ensure_column(conn, "sessions", "source_info", "TEXT")
-        # 예) 로그인 기능 추가 시 아래 패턴으로 (담당자가 자기 섹션에 추가):
-        # _ensure_column(conn, "sessions", "user_id", "INTEGER")
-        # _ensure_column(conn, "wrong_folders", "user_id", "INTEGER")
+        # 사용자별 데이터 분리 (로그인=본인 소유, 비로그인=NULL 게스트 소유)
+        _ensure_column(conn, "sessions", "user_id", "INTEGER")
+        _ensure_column(conn, "wrong_folders", "user_id", "INTEGER")
         conn.commit()
     finally:
         conn.close()
