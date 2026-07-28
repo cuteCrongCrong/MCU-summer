@@ -32,8 +32,10 @@ class Provider(ABC):
     key_placeholder = ""
 
     @abstractmethod
-    def complete(self, prompt: str, api_key: str, model: str) -> str:
-        """프롬프트 하나를 보내고 텍스트 응답을 받는다."""
+    def complete(self, prompt: str, api_key: str, model: str,
+                 max_tokens: int = None) -> str:
+        """프롬프트 하나를 보내고 텍스트 응답을 받는다.
+        max_tokens=None 이면 프로바이더 기본값을 쓴다."""
 
     @abstractmethod
     def describe_image(self, png_bytes: bytes, api_key: str, model: str) -> str:

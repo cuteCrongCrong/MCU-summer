@@ -23,12 +23,18 @@ from providers.factory import (
     DEFAULT_PROVIDER, UnknownProviderError, get_provider, list_providers,
 )
 from llm import (
+    QUESTION_TYPES,
     extract_text_from_pdf, truncate, build_source_info,
     run_analysis, compute_type_targets,
     build_question_generation_prompt, call_llm, parse_questions,
 )
 
 gen_bp = Blueprint("gen", __name__)
+
+# 문제 생성 LLM 호출을 나누는 단위(문제 수) — 한 번에 너무 많이 요청하면
+# 응답이 max_tokens에서 잘려 파싱이 실패하므로 배치로 나눠 호출한다.
+GEN_BATCH_SIZE = 4
+GEN_MAX_TOKENS = 8000
 
 
 # ──────────────────────────────────────────────
@@ -350,7 +356,6 @@ def get_models():
 def generate():
     try:
         api_key    = request.form.get("api_key", "").strip()
-        count      = int(request.form.get("count", 5))
         weight     = int(request.form.get("weight", 5))
         session_id = request.form.get("session_id", "").strip()
         uid        = current_user_id()
@@ -363,6 +368,30 @@ def generate():
 
         if not api_key:
             return jsonify({"error": "API 키를 입력해주세요."}), 400
+
+        # 유형별 개수 직접 지정(수동 모드) — 있으면 count/type_targets를 여기서 확정
+        manual_targets = None
+        type_targets_raw = request.form.get("type_targets", "").strip()
+        if type_targets_raw:
+            try:
+                parsed = json.loads(type_targets_raw)
+            except (TypeError, ValueError):
+                return jsonify({"error": "유형별 개수 형식이 올바르지 않습니다."}), 400
+            if not isinstance(parsed, dict):
+                return jsonify({"error": "유형별 개수 형식이 올바르지 않습니다."}), 400
+            manual_targets = {}
+            for t in QUESTION_TYPES:
+                try:
+                    v = int(parsed.get(t, 0) or 0)
+                except (TypeError, ValueError):
+                    return jsonify({"error": "유형별 개수는 정수여야 합니다."}), 400
+                if v < 0:
+                    return jsonify({"error": "유형별 개수는 0 이상이어야 합니다."}), 400
+                manual_targets[t] = v
+            count = sum(manual_targets.values())
+        else:
+            count = int(request.form.get("count", 5))
+
         if not (1 <= count <= 30):
             return jsonify({"error": "문제 수는 1~30개 사이로 설정해주세요."}), 400
         if not (1 <= weight <= 10):
@@ -405,20 +434,52 @@ def generate():
             analysis["name"] = name
             reused = False
 
-        # ── 공통: 예상문제 생성 (분석 자산 재사용, LLM 1회) ──
+        # ── 공통: 예상문제 생성 (분석 자산 재사용) ──
+        # 문제마다 증례 지문+선택지+해설+함정포인트를 요구하는 출력 포맷이라
+        # count가 커지면 한 번의 LLM 호출로는 max_tokens을 넘겨 응답이 잘리고
+        # (---END--- 누락) parse_questions()가 전부 버려버리는 문제가 있었다.
+        # → GEN_BATCH_SIZE 문제씩 여러 번 호출해 잘림을 방지하고 결과를 합친다.
         type_stats   = analysis.get("type_stats", {})
-        type_targets = compute_type_targets(type_stats, count)
-        question_prompt = build_question_generation_prompt(
-            analysis.get("concepts", {}),
-            analysis.get("sample_questions", ""),
-            analysis.get("format_analysis", ""),
-            count,
-            analysis.get("exam_concepts", {}),
-            analysis.get("priority_topics", []),
-            weight, type_targets,
-        )
-        question_raw = call_llm(question_prompt, api_key, model, provider)
-        questions    = parse_questions(question_raw)
+        type_targets = manual_targets if manual_targets is not None else compute_type_targets(type_stats, count)
+
+        # 유형별 목표를 슬롯 리스트로 펼쳐서 배치 단위로 잘라내면(비율 재계산 없이)
+        # 각 유형의 합계가 배치를 나눠도 원래 type_targets와 정확히 일치한다.
+        type_slots = None
+        if type_targets:
+            type_slots = []
+            for t in QUESTION_TYPES:
+                type_slots.extend([t] * type_targets.get(t, 0))
+
+        questions = []
+        raw_parts = []
+        remaining = count
+        offset = 0
+        while remaining > 0:
+            batch_count  = min(GEN_BATCH_SIZE, remaining)
+            if type_slots is not None:
+                batch_slice = type_slots[offset: offset + batch_count]
+                batch_targets = {t: batch_slice.count(t) for t in QUESTION_TYPES if batch_slice.count(t) > 0}
+            else:
+                batch_targets = {}
+            batch_prompt = build_question_generation_prompt(
+                analysis.get("concepts", {}),
+                analysis.get("sample_questions", ""),
+                analysis.get("format_analysis", ""),
+                batch_count,
+                analysis.get("exam_concepts", {}),
+                analysis.get("priority_topics", []),
+                weight, batch_targets,
+            )
+            batch_raw = call_llm(batch_prompt, api_key, model,
+                                 provider=provider, max_tokens=GEN_MAX_TOKENS)
+            raw_parts.append(batch_raw)
+            questions.extend(parse_questions(batch_raw))
+            offset += batch_count
+            remaining -= batch_count
+
+        for i, q in enumerate(questions, start=1):
+            q["번호"] = str(i)
+        question_raw = "\n\n".join(raw_parts)
 
         # 생성 이력 저장 (세션에 연결)
         generation_id = save_generation(

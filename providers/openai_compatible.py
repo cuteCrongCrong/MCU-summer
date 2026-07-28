@@ -68,12 +68,13 @@ class OpenAICompatibleProvider(Provider):
     def _client(self, api_key: str) -> OpenAI:
         return OpenAI(api_key=api_key, base_url=self.base_url)
 
-    def complete(self, prompt: str, api_key: str, model: str) -> str:
+    def complete(self, prompt: str, api_key: str, model: str,
+                 max_tokens: int = None) -> str:
         with _translate_errors(self.label):
             response = self._client(api_key).chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=self.max_tokens,
+                max_tokens=max_tokens or self.max_tokens,
             )
         return response.choices[0].message.content
 

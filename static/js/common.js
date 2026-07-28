@@ -132,6 +132,12 @@ function renderQuestions(questions, raw, viewOpts) {
     // 유형 판별: 명시된 유형 우선, 없으면 선택지 유무로 추정
     const rawType = (q['유형'] || '').replace(/\s/g, '');
     const isObjective = (rawType ? rawType.includes('객관') : choices.length > 0);
+    const isBlank = rawType.includes('빈칸');
+    // 빈칸(____, □□, ( )) 개수와 '정답'을 ' | '로 나눈 개수가 일치할 때만
+    // 빈칸별 입력칸으로 분리. 안 맞으면(구형 데이터·형식 이탈) 기존 textarea로 대체.
+    const blankCount = isBlank ? ((q['문제'] || '').match(/_{2,}|□{2,}|\(\s*\)/g) || []).length : 0;
+    const blankAnswers = isBlank ? (q['정답'] || '').split('|').map(s => s.trim()).filter(Boolean) : [];
+    const useBlankInputs = isBlank && blankCount >= 2 && blankAnswers.length === blankCount;
 
     const card = document.createElement('div');
     card.className = 'question-card';
@@ -151,11 +157,21 @@ function renderQuestions(questions, raw, viewOpts) {
     const headerHtml =
       `<div class="q-header"><span class="q-number">문제 ${idx + 1} ${typeBadge}</span>${actionBtn}</div>`;
 
+    // 문제에 그림이 있으면 표시 (골학 문제은행 오답 등)
+    const imageHtml = q['이미지']
+      ? `<div style="text-align:center;margin:6px 0 12px;"><img class="q-image" src="${escHtml(q['이미지'])}" alt="문제 그림" /></div>`
+      : '';
+    // 원본(이름 표시) 그림이 있으면 정답 영역에 '원본 보기' 버튼
+    const origBtn = q['원본이미지']
+      ? `<button class="check-btn" style="margin-top:10px;" data-src="${escHtml(q['원본이미지'])}" data-title="${escHtml(q['문제'] || '')}" onclick="viewOriginalImage(this.dataset.src, this.dataset.title)">🖼️ 원본 보기</button>`
+      : '';
+
     const answerBlock = `
       <div class="answer-section" id="ans-${idx}">
         <div class="answer-badge">✅ 정답: ${escHtml(q['정답'] || '-')}</div>
         ${q['해설'] ? `<div class="explain-box"><strong>💡 해설</strong>\n${escHtml(q['해설'])}</div>` : ''}
         ${q['함정포인트'] ? `<div class="trap-box"><strong>⚠️ 함정포인트</strong>\n${escHtml(q['함정포인트'])}</div>` : ''}
+        ${origBtn}
       </div>`;
 
     if (isObjective) {
@@ -166,15 +182,31 @@ function renderQuestions(questions, raw, viewOpts) {
       ).join('');
       card.innerHTML = `
         ${headerHtml}
+        ${imageHtml}
         <div class="q-text">${escHtml(q['문제'] || '')}</div>
         <ul class="choices" id="choices-${idx}">${choiceHtml}</ul>
         <button class="check-btn" onclick="checkAnswer(${idx}, ${answerIdx})">정답 확인</button>
         ${answerBlock}
       `;
-    } else {
-      // 주관식: 선택지 없이 답안 작성란 + 정답 공개
+    } else if (useBlankInputs) {
+      // 빈칸채우기(빈칸 2개 이상): 빈칸별로 입력칸을 분리하고 각각 채점
+      const blankInputsHtml = blankAnswers.map((_, i) => `
+        <div class="blank-input-item">
+          <span class="blank-label">빈칸 ${i + 1}</span>
+          <input type="text" class="blank-input" id="blank-${idx}-${i}" placeholder="답을 입력하세요" />
+        </div>`).join('');
       card.innerHTML = `
         ${headerHtml}
+        <div class="q-text">${escHtml(q['문제'] || '')}</div>
+        <div class="blank-input-row">${blankInputsHtml}</div>
+        <button class="check-btn" onclick="checkBlanks(${idx})">정답 확인</button>
+        ${answerBlock}
+      `;
+    } else {
+      // 주관식(단답형/서술형/빈칸 1개): 선택지 없이 답안 작성란 + 정답 공개
+      card.innerHTML = `
+        ${headerHtml}
+        ${imageHtml}
         <div class="q-text">${escHtml(q['문제'] || '')}</div>
         <textarea class="subj-input" id="subj-${idx}" placeholder="답을 작성해 보세요..." rows="3"></textarea>
         <button class="check-btn" onclick="revealAnswer(${idx})">정답 확인</button>
@@ -202,6 +234,23 @@ function revealAnswer(qIdx) {
   document.getElementById(`ans-${qIdx}`).style.display = 'block';
 }
 
+// 빈칸채우기(빈칸 2개 이상): 빈칸별 입력값을 정답과 각각 비교해 O/X 표시
+function checkBlanks(qIdx) {
+  const q = currentQuestions[qIdx] || {};
+  const answers = (q['정답'] || '').split('|').map(s => s.trim()).filter(Boolean);
+  const norm = s => (s || '').trim().replace(/\s+/g, '').toLowerCase();
+
+  answers.forEach((ans, i) => {
+    const input = document.getElementById(`blank-${qIdx}-${i}`);
+    if (!input) return;
+    input.classList.remove('correct', 'wrong');
+    input.classList.add(norm(input.value) === norm(ans) ? 'correct' : 'wrong');
+    input.disabled = true;
+  });
+
+  document.getElementById(`ans-${qIdx}`).style.display = 'block';
+}
+
 function checkAnswer(qIdx, answerIdx) {
   const list = document.getElementById(`choices-${qIdx}`);
   const items = list.querySelectorAll('li');
@@ -216,4 +265,14 @@ function checkAnswer(qIdx, answerIdx) {
   }
 
   document.getElementById(`ans-${qIdx}`).style.display = 'block';
+}
+
+// 원본(이름 표시) 이미지를 공용 모달로 표시 — 골학 문제은행/오답 노트 공용
+function viewOriginalImage(src, title) {
+  if (!src) return;
+  const modal = document.getElementById('bone-original-modal');
+  if (!modal) return;
+  document.getElementById('bone-original-image').src = src;
+  document.getElementById('bone-original-title').textContent = title || '';
+  modal.classList.add('open');
 }

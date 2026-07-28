@@ -67,14 +67,15 @@ class AnthropicProvider(Provider):
     def _client(self, api_key: str) -> anthropic.Anthropic:
         return anthropic.Anthropic(api_key=api_key)
 
-    def complete(self, prompt: str, api_key: str, model: str) -> str:
+    def complete(self, prompt: str, api_key: str, model: str,
+                 max_tokens: int = None) -> str:
         # thinking·effort를 지정하지 않는 이유: 사용자가 드롭다운에서 아무 모델이나
         # 고를 수 있는데, 이 옵션들은 모델마다 지원 여부가 달라 400을 낸다.
         # 생략하면 모든 모델에서 안전하게 동작한다.
         with _translate_errors():
             response = self._client(api_key).messages.create(
                 model=model,
-                max_tokens=MAX_TOKENS,
+                max_tokens=max_tokens or MAX_TOKENS,
                 messages=[{"role": "user", "content": prompt}],
             )
         return _extract_text(response)
