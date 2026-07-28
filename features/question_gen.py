@@ -2,9 +2,10 @@
 문제 생성 기능 — 세션(분석 자산)·생성 이력의 DB 접근 + HTTP 라우트.
 
 담당 테이블: sessions, generations
-사용자별 분리: 각 조회/저장은 current_user_id()로 소유자를 필터한다.
+사용자별 분리: 각 조회/저장은 current_owner()로 소유자를 필터한다.
   - 로그인 사용자: 본인 소유(user_id=id)만
-  - 게스트(비로그인): user_id IS NULL 만
+  - 게스트(비로그인): 브라우저별로 발급된 익명 id 소유(guest_id=...)만
+                     → 게스트끼리도 서로의 세션을 볼 수 없다.
 연결 계약: 생성 문제 dict의 키(문제/선택지/정답/해설/함정포인트/유형)는
            오답노트가 그대로 저장·렌더링하므로 이름을 바꾸지 말 것. (CONTRIBUTING.md 4-B)
 """
@@ -15,7 +16,8 @@ from datetime import datetime
 from flask import Blueprint, request, jsonify
 
 from db import get_conn, owner_clause, LEGACY_PROVIDER
-from features.auth import current_user_id
+# current_owner: (user_id, guest_id) 튜플. 게스트도 브라우저별로 서로 격리된다.
+from features.auth import current_owner
 from providers.base import (
     ProviderError, ProviderAuthError, ProviderRateLimitError,
 )
@@ -51,17 +53,18 @@ def _row_provider(row) -> str:
     return row["provider"] or LEGACY_PROVIDER
 
 
-def save_session(name: str, model: str, analysis: dict, user_id=None,
+def save_session(name: str, model: str, analysis: dict, owner,
                  provider: str = None) -> int:
-    """분석 결과(재사용 자산)를 한 세션으로 저장하고 id 반환. 소유자=user_id(게스트=None)."""
+    """분석 결과(재사용 자산)를 한 세션으로 저장하고 id 반환. 소유자=owner 튜플."""
+    user_id, guest_id = owner
     conn = get_conn()
     try:
         cur = conn.execute(
             """INSERT INTO sessions
                (name, model, created_at, concepts, sample_questions,
                 format_analysis, exam_concepts, priority_topics, type_stats,
-                source_info, user_id, provider)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                source_info, user_id, guest_id, provider)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 name,
                 model,
@@ -74,6 +77,7 @@ def save_session(name: str, model: str, analysis: dict, user_id=None,
                 json.dumps(analysis.get("type_stats", {}), ensure_ascii=False),
                 json.dumps(analysis.get("source_info", {}), ensure_ascii=False),
                 user_id,
+                guest_id,
                 provider or LEGACY_PROVIDER,
             ),
         )
@@ -83,9 +87,9 @@ def save_session(name: str, model: str, analysis: dict, user_id=None,
         conn.close()
 
 
-def load_session(sid: int, user_id=None):
+def load_session(sid: int, owner):
     """세션 하나를 분석 자산 dict로 복원. 소유자만 접근. 없으면 None."""
-    frag, params = owner_clause(user_id)
+    frag, params = owner_clause(owner)
     conn = get_conn()
     try:
         row = conn.execute(
@@ -112,9 +116,9 @@ def load_session(sid: int, user_id=None):
     }
 
 
-def list_sessions(user_id=None) -> list:
+def list_sessions(owner) -> list:
     """세션 목록(가벼운 메타데이터만). 소유자 것만, 최신순."""
-    frag, params = owner_clause(user_id)
+    frag, params = owner_clause(owner)
     conn = get_conn()
     try:
         rows = conn.execute(
@@ -137,9 +141,9 @@ def list_sessions(user_id=None) -> list:
     ]
 
 
-def delete_session(sid: int, user_id=None):
+def delete_session(sid: int, owner):
     """소유한 세션만 삭제(연결된 이력도 함께)."""
-    frag, params = owner_clause(user_id)
+    frag, params = owner_clause(owner)
     conn = get_conn()
     try:
         conn.execute(
@@ -153,9 +157,9 @@ def delete_session(sid: int, user_id=None):
         conn.close()
 
 
-def rename_session(sid: int, name: str, user_id=None):
+def rename_session(sid: int, name: str, owner):
     """소유한 세션만 이름 변경."""
-    frag, params = owner_clause(user_id)
+    frag, params = owner_clause(owner)
     conn = get_conn()
     try:
         conn.execute(
@@ -197,9 +201,9 @@ def save_generation(session_id: int, count: int, weight: int, model: str,
         conn.close()
 
 
-def list_generations(session_id: int, user_id=None) -> list:
+def list_generations(session_id: int, owner) -> list:
     """세션의 생성 이력 목록. 세션을 소유한 경우에만 반환(아니면 빈 목록)."""
-    frag, params = owner_clause(user_id)
+    frag, params = owner_clause(owner)
     conn = get_conn()
     try:
         rows = conn.execute(
@@ -228,9 +232,9 @@ def list_generations(session_id: int, user_id=None) -> list:
     return out
 
 
-def load_generation(gid: int, user_id=None):
+def load_generation(gid: int, owner):
     """이력 하나를 전체 복원. 소유한 세션의 이력만. 없으면 None."""
-    frag, params = owner_clause(user_id)
+    frag, params = owner_clause(owner)
     conn = get_conn()
     try:
         r = conn.execute(
@@ -256,9 +260,9 @@ def load_generation(gid: int, user_id=None):
     }
 
 
-def delete_generation(gid: int, user_id=None):
+def delete_generation(gid: int, owner):
     """소유한 세션의 이력만 삭제."""
-    frag, params = owner_clause(user_id)
+    frag, params = owner_clause(owner)
     conn = get_conn()
     try:
         conn.execute(
@@ -272,17 +276,17 @@ def delete_generation(gid: int, user_id=None):
 
 
 # ──────────────────────────────────────────────
-# 라우트: 세션 CRUD (current_user_id()로 소유자 분리)
+# 라우트: 세션 CRUD (current_owner()로 소유자 분리)
 # ──────────────────────────────────────────────
 
 @gen_bp.route("/sessions", methods=["GET"])
 def sessions_list():
-    return jsonify({"sessions": list_sessions(current_user_id())})
+    return jsonify({"sessions": list_sessions(current_owner())})
 
 
 @gen_bp.route("/session/<int:sid>", methods=["GET"])
 def session_get(sid):
-    sess = load_session(sid, current_user_id())
+    sess = load_session(sid, current_owner())
     if not sess:
         return jsonify({"error": "세션을 찾을 수 없습니다."}), 404
     return jsonify(sess)
@@ -290,7 +294,7 @@ def session_get(sid):
 
 @gen_bp.route("/session/<int:sid>", methods=["DELETE"])
 def session_delete(sid):
-    delete_session(sid, current_user_id())
+    delete_session(sid, current_owner())
     return jsonify({"success": True})
 
 
@@ -299,7 +303,7 @@ def session_rename(sid):
     name = request.form.get("name", "").strip()
     if not name:
         return jsonify({"error": "세션 이름을 입력하세요."}), 400
-    rename_session(sid, name, current_user_id())
+    rename_session(sid, name, current_owner())
     return jsonify({"success": True})
 
 
@@ -307,12 +311,12 @@ def session_rename(sid):
 
 @gen_bp.route("/session/<int:sid>/generations", methods=["GET"])
 def generations_list(sid):
-    return jsonify({"generations": list_generations(sid, current_user_id())})
+    return jsonify({"generations": list_generations(sid, current_owner())})
 
 
 @gen_bp.route("/generation/<int:gid>", methods=["GET"])
 def generation_get(gid):
-    gen = load_generation(gid, current_user_id())
+    gen = load_generation(gid, current_owner())
     if not gen:
         return jsonify({"error": "생성 이력을 찾을 수 없습니다."}), 404
     return jsonify(gen)
@@ -320,7 +324,7 @@ def generation_get(gid):
 
 @gen_bp.route("/generation/<int:gid>", methods=["DELETE"])
 def generation_delete(gid):
-    delete_generation(gid, current_user_id())
+    delete_generation(gid, current_owner())
     return jsonify({"success": True})
 
 
@@ -358,7 +362,7 @@ def generate():
         api_key    = request.form.get("api_key", "").strip()
         weight     = int(request.form.get("weight", 5))
         session_id = request.form.get("session_id", "").strip()
-        uid        = current_user_id()
+        owner      = current_owner()
 
         try:
             provider = get_provider(request.form.get("provider"))
@@ -399,7 +403,7 @@ def generate():
 
         # ── 경로 A: 저장된 세션 재사용 (분석 LLM 호출 0회 → 토큰 절약) ──
         if session_id:
-            analysis = load_session(int(session_id), uid)   # 본인 세션만 재사용 가능
+            analysis = load_session(int(session_id), owner)   # 본인 세션만 재사용 가능
             if not analysis:
                 return jsonify({"error": "세션을 찾을 수 없습니다. 새로 분석해주세요."}), 404
             reused = True
@@ -430,7 +434,7 @@ def generate():
             base = (lecture_file.filename or "강의자료").rsplit(".", 1)[0]
             name = request.form.get("name", "").strip() or \
                    f"{base} · {datetime.now().strftime('%m/%d %H:%M')}"
-            session_id = save_session(name, model, analysis, uid, provider.name)
+            session_id = save_session(name, model, analysis, owner, provider.name)
             analysis["name"] = name
             reused = False
 
