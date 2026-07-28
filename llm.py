@@ -153,12 +153,12 @@ def build_source_info(raw_text: str) -> dict:
     }
 
 
-def call_llm(prompt: str, api_key: str, model: str) -> str:
+def call_llm(prompt: str, api_key: str, model: str, max_tokens: int = 4096) -> str:
     client = OpenAI(api_key=api_key, base_url=GATEWAY_BASE_URL)
     response = client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=4096,
+        max_tokens=max_tokens,
     )
     return response.choices[0].message.content
 
@@ -527,6 +527,8 @@ def build_question_generation_prompt(
 - 유형별 형식:
   · 객관식 → 선택지 ①②③④⑤ 포함
   · 빈칸채우기 → 문제 문장에 빈칸 '____'를 두고, 선택지 없이 빈칸에 들어갈 답 제시
+    (빈칸이 2개 이상이면 각 정답을 문제에 등장하는 빈칸 순서대로 ' | '로 구분해
+     한 줄에 나열. 예: 정답: NADH | FADH2  ※빈칸 1개면 구분자 없이 답만)
   · 단답형 → 선택지 없이 단어·구·수치로 답
   · 서술형 → 선택지 없이 여러 문장으로 서술하는 모범답안 제시
 - 문체·구조·선택지 형식은 위 [0] 기출 반영 강도({weight}/10)에 맞춰 반영
@@ -551,10 +553,20 @@ def build_question_generation_prompt(
 함정포인트: [핵심 함정]
 ---END---
 
-[비객관식(빈칸채우기/단답형/서술형)일 때 — 유형 라벨만 바꿔 사용]
+[빈칸채우기 — 빈칸이 2개 이상일 때]
+---QUESTION---
+유형: 빈칸채우기
+번호: 2
+문제: 해당당과정에서 ____(은)는 조효소로 작용하며, 최종 산물은 ____이다.
+정답: NADH | 피루브산
+해설: [상세 해설]
+함정포인트: [핵심 함정]
+---END---
+
+[그 외 비객관식(빈칸채우기 1개/단답형/서술형)일 때 — 유형 라벨만 바꿔 사용]
 ---QUESTION---
 유형: 단답형
-번호: 2
+번호: 3
 문제: [문제 전체 — 빈칸채우기는 문장에 '____' 포함]
 정답: [모범 답안]
 해설: [상세 해설]

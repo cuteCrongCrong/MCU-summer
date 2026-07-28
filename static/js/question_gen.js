@@ -40,6 +40,24 @@ function updateWeight() {
 }
 updateWeight();
 
+// ── 유형별 문제 수 직접 설정 (자동/수동 전환) ──
+const MANUAL_COUNT_TYPES = ['객관식', '빈칸채우기', '단답형', '서술형'];
+
+function toggleManualCount() {
+  const manual = document.getElementById('manual-count-toggle').checked;
+  document.getElementById('auto-count-row').classList.toggle('hidden', manual);
+  document.getElementById('manual-count-row').classList.toggle('hidden', !manual);
+  if (manual) updateManualTotal();
+}
+
+function updateManualTotal() {
+  const total = MANUAL_COUNT_TYPES.reduce(
+    (sum, t) => sum + (parseInt(document.getElementById('count-' + t).value) || 0), 0
+  );
+  document.getElementById('manual-total-value').textContent = total;
+  return total;
+}
+
 // ── 문제 생성기: 설정 화면 / 결과 화면 전환 ──
 function showGenResult() {
   document.getElementById('gen-input-view').classList.add('hidden');
@@ -84,9 +102,20 @@ async function generate() {
   const lectureFile = document.getElementById('lecture-file').files[0];
   const examFile    = document.getElementById('exam-file').files[0];
   const apiKey      = document.getElementById('api-key').value.trim();
-  const count       = document.getElementById('count').value;
   const weight      = document.getElementById('weight').value;
   const model       = document.getElementById('model-select').value;
+
+  const manualMode = document.getElementById('manual-count-toggle').checked;
+  let count, manualTargets = null;
+  if (manualMode) {
+    manualTargets = {};
+    MANUAL_COUNT_TYPES.forEach(t => {
+      manualTargets[t] = parseInt(document.getElementById('count-' + t).value) || 0;
+    });
+    count = updateManualTotal();
+  } else {
+    count = document.getElementById('count').value;
+  }
 
   // 새 파일을 올렸다면 세션보다 파일 분석을 우선 (세션 자동 해제)
   if (lectureFile && examFile && currentSessionId) clearSession();
@@ -95,6 +124,7 @@ async function generate() {
 
   // 유효성 검사
   if (!apiKey) return alert('API 키를 입력해주세요.');
+  if (manualMode && (count < 1 || count > 30)) return alert('유형별 문제 수의 합계는 1~30개 사이여야 합니다.');
   if (!useSession) {
     if (!lectureFile) return alert('강의자료 PDF를 업로드하거나, 저장된 세션을 선택해주세요.');
     if (!examFile)    return alert('기출문제 PDF를 업로드하거나, 저장된 세션을 선택해주세요.');
@@ -117,6 +147,7 @@ async function generate() {
   const form = new FormData();
   form.append('api_key', apiKey);
   form.append('count', count);
+  if (manualTargets) form.append('type_targets', JSON.stringify(manualTargets));
   form.append('weight', weight);
   form.append('model', model);
   if (useSession) {
