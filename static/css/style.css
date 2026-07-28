@@ -204,6 +204,10 @@ input:focus { outline: none; border-color: var(--primary); }
 .type-essay { background: #ede9fe; color: #7c3aed; }  /* 서술형 */
 .type-subj  { background: #ede9fe; color: #7c3aed; }  /* (구) 주관식 폴백 */
 .q-text { font-size: 0.97rem; line-height: 1.7; white-space: pre-wrap; }
+.q-image {
+  max-width: 100%; max-height: 300px;
+  border: 1.5px solid var(--border); border-radius: 10px; background: #fff;
+}
 .subj-input {
   width: 100%; margin-top: 14px;
   padding: 12px 14px;

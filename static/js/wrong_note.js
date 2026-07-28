@@ -11,7 +11,9 @@ function closeWrongView() {
 }
 
 let wrongFolderCache = [];
-let wrongPendingIdx = null;   // 저장 대기 중인 문제의 인덱스
+let wrongPendingIdx = null;       // 생성기 카드 저장 시: currentQuestions 내 인덱스
+let wrongPendingQuestion = null;  // 임의 문제 객체 저장 시 (예: 골학 문제은행)
+let wrongPendingBtnId = null;     // 저장 성공 시 '저장됨'으로 바꿀 버튼 id
 
 async function loadWrongFolders() {
   const listEl = document.getElementById('wrong-folder-list');
@@ -104,11 +106,28 @@ async function removeWrongItem(itemId, folderId) {
 }
 
 // ── 저장 모달 ──
+// (A) 생성기 결과 카드용: currentQuestions[idx] 를 저장
 function openWrongModal(idx) {
-  wrongPendingIdx = idx;
   const q = currentQuestions[idx] || {};
-  document.getElementById('wrong-modal-preview').textContent =
-    `문제 ${idx + 1}. ${(q['문제'] || '').slice(0, 120)}${(q['문제'] || '').length > 120 ? '…' : ''}`;
+  const text = `문제 ${idx + 1}. ${(q['문제'] || '').slice(0, 120)}${(q['문제'] || '').length > 120 ? '…' : ''}`;
+  openWrongModalCommon({ idx, question: null, btnId: 'wbtn-' + idx, preview: text });
+}
+
+// (B) 임의 문제 객체용 (골학 문제은행 등): 문제 객체를 직접 저장
+function openWrongModalForQuestion(question, previewText, btnId) {
+  openWrongModalCommon({
+    idx: null,
+    question: question || {},
+    btnId: btnId || null,
+    preview: (previewText || (question && question['문제']) || '').slice(0, 140),
+  });
+}
+
+function openWrongModalCommon({ idx, question, btnId, preview }) {
+  wrongPendingIdx = idx;
+  wrongPendingQuestion = question;
+  wrongPendingBtnId = btnId;
+  document.getElementById('wrong-modal-preview').textContent = preview;
   document.getElementById('wrong-new-folder-name').value = '';
   renderModalFolders();
   document.getElementById('wrong-modal').classList.add('open');
@@ -119,6 +138,8 @@ function openWrongModal(idx) {
 function closeWrongModal() {
   document.getElementById('wrong-modal').classList.remove('open');
   wrongPendingIdx = null;
+  wrongPendingQuestion = null;
+  wrongPendingBtnId = null;
 }
 
 async function loadWrongFoldersForModal() {
@@ -144,15 +165,16 @@ function renderModalFolders() {
 }
 
 async function saveToFolder(fid) {
-  if (wrongPendingIdx == null) return;
-  const q = currentQuestions[wrongPendingIdx] || {};
+  const q = wrongPendingQuestion || (wrongPendingIdx != null ? currentQuestions[wrongPendingIdx] : null);
+  if (!q) return;
+  const btnId = wrongPendingBtnId;   // closeWrongModal 전에 캡처
   const form = new FormData();
   form.append('question', JSON.stringify(q));
   try {
     const resp = await fetch('/wrong-folders/' + fid + '/items', { method: 'POST', body: form });
     const data = await resp.json();
     if (!resp.ok || data.error) return alert(data.error || '저장에 실패했습니다.');
-    markSaved(wrongPendingIdx);
+    markSaved(btnId);
     if (data.duplicate) alert('이미 이 폴더에 담겨 있는 문제입니다.');
     closeWrongModal();
     loadWrongFolders();
@@ -176,8 +198,9 @@ async function createFolderAndSave() {
   }
 }
 
-function markSaved(idx) {
-  const btn = document.getElementById('wbtn-' + idx);
+function markSaved(btnId) {
+  if (!btnId) return;
+  const btn = document.getElementById(btnId);
   if (btn) {
     btn.classList.add('saved');
     btn.textContent = '✅ 오답에 저장됨';

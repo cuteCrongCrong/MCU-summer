@@ -206,11 +206,11 @@
 
   </div><!-- /tab-wrong -->
 
-  <!-- ══════════ 탭: 뼈 문제은행 ══════════ -->
+  <!-- ══════════ 탭: 골학 문제은행 ══════════ -->
   <div class="tab-panel hidden" id="tab-bones">
     <div class="card">
-      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
-        <span>🦴 뼈 문제은행 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 그림을 보고 뼈 이름 맞히기 (랜덤 무한 출제)</span></span>
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span>🦴 골학 문제은행 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 그림 속 번호 부위의 이름 맞히기 (랜덤 무한 출제)</span></span>
         <span id="bone-score" style="font-size:0.85rem;color:#475569;"></span>
       </div>
 
@@ -218,17 +218,16 @@
 
       <div id="bone-quiz" style="display:none;">
         <div style="text-align:center;margin:8px 0 16px;">
-          <img id="bone-image" alt="뼈 그림"
+          <img id="bone-image" alt="골학 번호 그림"
                style="max-width:100%;max-height:340px;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;" />
         </div>
 
         <div style="margin-bottom:8px;">
-          <button type="button" id="bone-hint-btn" onclick="boneToggleHint()"
-                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">💡 힌트 보기</button>
-          <span id="bone-hint" class="hidden" style="margin-left:8px;font-size:0.88rem;color:#b45309;"></span>
+          <button type="button" id="bone-original-btn" onclick="boneShowOriginal()"
+                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">🖼️ 원본 보기</button>
         </div>
 
-        <label for="bone-input" style="margin-bottom:6px;">이 뼈의 이름은?</label>
+        <label for="bone-input" id="bone-question-label" style="margin-bottom:6px;">번호의 이름은?</label>
         <input type="text" id="bone-input" placeholder="예: 대퇴골 / femur" autocomplete="off"
                onkeydown="boneKey(event)" />
 
@@ -259,6 +258,17 @@
       <button class="btn-danger" onclick="createFolderAndSave()">만들어 저장</button>
     </div>
     <button class="modal-close" onclick="closeWrongModal()">닫기</button>
+  </div>
+</div>
+
+<!-- 골학 원본(이름 표시) 이미지 모달 -->
+<div class="modal-overlay" id="bone-original-modal" onclick="if(event.target===this)closeBoneOriginal()">
+  <div class="modal" style="max-width:640px;">
+    <h3>🖼️ 원본 — 부위 이름</h3>
+    <div class="modal-sub" id="bone-original-title"></div>
+    <img id="bone-original-image" alt="원본(이름 표시) 그림"
+         style="width:100%;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;" />
+    <button class="modal-close" onclick="closeBoneOriginal()">닫기</button>
   </div>
 </div>
 
