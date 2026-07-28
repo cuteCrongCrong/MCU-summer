@@ -20,7 +20,13 @@
 #   sudo bash setup.sh mcu-club.duckdns.org
 #
 # DuckDNS를 쓰고 토큰을 넘기면, 외부 IP가 바뀌어도 5분마다 자동으로 도메인을 갱신한다:
-#   sudo DUCKDNS_TOKEN=<토큰> bash setup.sh mcu-club.duckdns.org
+#   sudo env DUCKDNS_TOKEN=<토큰> bash setup.sh mcu-club.duckdns.org
+#
+# 아직 배포 파일이 main에 병합되지 않았다면 브랜치를 지정한다:
+#   sudo env BRANCH=feature/deploy bash setup.sh mcu-club.duckdns.org
+#
+# (sudo VAR=값 이 아니라 sudo env VAR=값 을 쓰는 이유: 전자는 sudoers의 setenv
+#  정책에 따라 변수가 걸러질 수 있다. env를 거치면 정책과 무관하게 전달된다)
 #
 # ⚠️ 이 스크립트를 돌리기 전에 반드시:
 #   - GCP VPC 방화벽에서 80·443 포트를 열어둘 것 (아래 명령을 내 PC에서 실행)

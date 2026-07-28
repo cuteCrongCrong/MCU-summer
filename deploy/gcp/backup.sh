@@ -26,7 +26,8 @@
 #   3) VM에 gcloud 설치 (Ubuntu 이미지에는 없다):
 #        sudo snap install google-cloud-cli --classic
 #   4) 이 스크립트를 GCS_BUCKET 과 함께 실행:
-#        sudo GCS_BUCKET=gs://<버킷이름> bash /opt/mcu/deploy/gcp/backup.sh
+#        sudo env GCS_BUCKET=gs://<버킷이름> bash /opt/mcu/deploy/gcp/backup.sh
+#      (sudo VAR=값 이 아니라 sudo env VAR=값 — sudoers의 setenv 정책을 타지 않는다)
 #
 #   cron에 넣을 때는 crontab 줄 맨 앞에 변수를 붙인다:
 #        0 4 * * * GCS_BUCKET=gs://<버킷이름> /bin/bash /opt/mcu/deploy/gcp/backup.sh >> /var/log/mcu-backup.log 2>&1

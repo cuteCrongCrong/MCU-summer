@@ -142,6 +142,27 @@ gcloud compute ssh mcu-app --zone=us-west1-b
 
 ## 6단계 — 설치 스크립트 실행
 
+> ### ⚠️ 먼저 — 배포 파일이 `main` 에 있어야 합니다
+>
+> 아래 명령은 `main` 브랜치에서 스크립트를 받아오고, 스크립트도 `main` 을 clone합니다.
+> 그런데 **배포 기반(`serve.py`·`deploy/`·`config.py` 의 배포 설정)은 아직
+> `feature/deploy` 에만 있습니다.** 이 상태로 실행하면 첫 줄 `curl` 부터 404가 납니다.
+>
+> **정석** — `feature/deploy` 를 PR로 `main` 에 병합한 뒤 아래를 그대로 실행합니다.
+>
+> **병합 전에 먼저 시험해보고 싶다면** — 브랜치를 지정하면 됩니다. 이때는 6단계의
+> 두 명령을 아래 두 줄로 대신하세요. (`setup.sh` 가 `BRANCH` 환경변수를 받습니다)
+>
+> ```
+> curl -fsSL https://raw.githubusercontent.com/cuteCrongCrong/MCU-summer/feature/deploy/deploy/gcp/setup.sh -o setup.sh
+> sudo env BRANCH=feature/deploy bash setup.sh mcu-club.duckdns.org
+> ```
+>
+> 병합 후에는 `sudo env BRANCH=main bash /opt/mcu/deploy/gcp/update.sh` 로 되돌리면 됩니다.
+>
+> (`sudo env VAR=값 ...` 형태를 쓰는 이유 — `sudo VAR=값 ...` 은 sudoers의
+>  `setenv` 정책에 따라 변수가 걸러질 수 있습니다. `env` 를 거치면 항상 전달됩니다)
+
 서버에 접속한 상태에서:
 
 ```bash
@@ -157,7 +178,7 @@ sudo bash setup.sh mcu-club.duckdns.org
 4단계의 DuckDNS 토큰이 있다면, IP가 바뀌어도 자동으로 따라가게 하려면 이렇게:
 
 ```bash
-sudo DUCKDNS_TOKEN=여기에토큰 bash setup.sh mcu-club.duckdns.org
+sudo env DUCKDNS_TOKEN=여기에토큰 bash setup.sh mcu-club.duckdns.org
 ```
 
 스크립트가 하는 일:
