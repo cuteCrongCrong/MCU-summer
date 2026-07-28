@@ -14,11 +14,14 @@
 ```
 yama/
 ├── app.py                ← Flask 진입점 (앱 생성 + Blueprint 등록)
+├── serve.py              ← 배포용 실행 진입점 (waitress WSGI)
+├── config.py             ← 비밀값·배포 설정 로더 (환경변수)
 ├── db.py                 ← DB 연결·스키마 (init_db)
 ├── llm.py                ← LLM 호출·PDF 추출·프롬프트·파싱·분석
 ├── features/
 │   ├── question_gen.py   ← 문제 생성 라우트 (/generate, /sessions, /models ...)
-│   └── wrong_note.py     ← 오답 노트 라우트 (/wrong-folders ...)
+│   ├── wrong_note.py     ← 오답 노트 라우트 (/wrong-folders ...)
+│   └── auth.py           ← 구글 로그인 + 게스트 익명 id
 ├── index.html            ← 프론트엔드 뼈대
 ├── static/
 │   ├── css/style.css
@@ -62,6 +65,14 @@ http://localhost:5000
 ## ⚠️ 주의사항
 - API 키는 서버에 저장되지 않고 요청마다 사용됩니다.
 - `sessions.db`·API 키 파일은 **git에 커밋하지 않습니다** (`.gitignore` 참고).
+
+## 🌐 인터넷에 공개하려면
+배포 절차·환경변수·주의사항은 **[배포.md](배포.md)** 를 참고하세요.
+로컬 실행 방식(`실행.bat`)은 배포와 무관하게 지금 그대로 동작합니다.
+
+```bash
+python serve.py
+```
 
 ## 🤝 팀 작업 중이라면
 브랜치·병합·DB 스키마 충돌 방지 규칙은 **[CONTRIBUTING.md](CONTRIBUTING.md)** 를 먼저 읽어주세요.
