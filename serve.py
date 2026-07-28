@@ -26,7 +26,9 @@ from waitress import serve
 import config
 from app import app          # import 시 config 검증 + init_db()가 실행된다
 from db import DB_PATH
-from llm import GATEWAY_BASE_URL, DEFAULT_MODEL
+# 다중 프로바이더 지원으로 이 상수들이 llm.py → providers/jbnu_gateway.py 로 옮겨졌다.
+# (app.py도 같은 경로에서 가져온다 — 시작 배너 표시용)
+from providers.jbnu_gateway import GATEWAY_BASE_URL, DEFAULT_MODEL
 
 
 def main():

@@ -73,7 +73,7 @@ git push origin main
 
 | 테이블 | 담당 기능 | 비고 |
 |---|---|---|
-| `sessions`, `generations` | 문제 생성 | 분석 결과·생성 이력 |
+| `sessions`, `generations` | 문제 생성 | 분석 결과·생성 이력 (`provider` 컬럼 = 어떤 LLM 제공사로 만들었는지) |
 | `wrong_folders`, `wrong_items` | 오답노트 | 폴더 + 담긴 문제 |
 | `users` (예정) | 로그인 | 아래 "연결 계약" 참고 |
 
@@ -107,6 +107,24 @@ git push origin main
 ### (C) 문제 유형 4분류 (공용 상수)
 - `객관식 · 빈칸채우기 · 단답형 · 서술형` 은 백엔드(`QUESTION_TYPES`)·프런트(`TYPE_BADGE`) 양쪽에 있다.
 - 유형을 추가/변경하려면 **양쪽을 같이** 고치고 팀에 공지한다.
+
+### (D) LLM 제공사(provider) ↔ 세션/이력
+- LLM 호출은 전부 `providers/` 계층을 거친다. `llm.py`·라우트는 구체 클래스를 import하지 말고
+  `get_provider(name)`만 쓴다. (현재: 전북대 게이트웨이 · OpenAI · Anthropic · Google Gemini)
+- **새 제공사 추가 절차** — OpenAI 호환 엔드포인트면 20줄이면 끝난다.
+  1. `providers/<이름>_provider.py` 에 클래스 작성
+     (OpenAI 호환이면 `OpenAICompatibleProvider` 상속 후 `base_url`만 지정,
+      아니면 `Provider`를 직접 구현 — Anthropic이 그 예)
+  2. `providers/factory.py`의 `_REGISTRY`에 **한 줄** 등록
+  3. 프런트는 손댈 필요 없음 — `/providers` 응답을 그대로 렌더링하므로 버튼이 자동 생성된다
+- **SDK 예외는 반드시 공통 예외로 번역**한다 (`providers/base.py`의 `ProviderAuthError` /
+  `ProviderRateLimitError` / `ProviderError`). 라우트가 특정 SDK를 알면 안 되기 때문.
+- `sessions`·`generations`에 `provider TEXT` 컬럼이 있다. **다중 제공사 지원 이전 데이터는
+  NULL**이므로, 읽을 때는 `db.LEGACY_PROVIDER`(`jbnu_gateway`)로 간주한다
+  (`question_gen.py`의 `_row_provider()`). 직접 `row["provider"]`를 읽지 말 것.
+- 저장된 세션을 재사용할 때는 **그때 선택한 제공사**로 문제를 생성한다. 세션의 분석 자산
+  (개념·예시문제·형식)은 순수 텍스트라 제공사와 무관하게 재사용 가능하며, `provider` 컬럼은
+  "무엇으로 만들었는지"를 남기는 기록용이다. `model` 컬럼도 같은 규칙.
 
 ---
 

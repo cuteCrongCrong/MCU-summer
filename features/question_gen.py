@@ -14,12 +14,18 @@ import json
 from datetime import datetime
 
 from flask import Blueprint, request, jsonify
-from openai import OpenAI, AuthenticationError, RateLimitError
 
-from db import get_conn, owner_clause
+from db import get_conn, owner_clause, LEGACY_PROVIDER
+# current_owner: (user_id, guest_id) 튜플. 게스트도 브라우저별로 서로 격리된다.
 from features.auth import current_owner
+from providers.base import (
+    ProviderError, ProviderAuthError, ProviderRateLimitError,
+)
+from providers.factory import (
+    DEFAULT_PROVIDER, UnknownProviderError, get_provider, list_providers,
+)
 from llm import (
-    GATEWAY_BASE_URL, DEFAULT_MODEL,
+    QUESTION_TYPES,
     extract_text_from_pdf, truncate, build_source_info,
     run_analysis, compute_type_targets,
     build_question_generation_prompt, call_llm, parse_questions,
@@ -27,12 +33,28 @@ from llm import (
 
 gen_bp = Blueprint("gen", __name__)
 
+# 문제 생성 LLM 호출을 나누는 단위(문제 수) — 한 번에 너무 많이 요청하면
+# 응답이 max_tokens에서 잘려 파싱이 실패하므로 배치로 나눠 호출한다.
+GEN_BATCH_SIZE = 4
+GEN_MAX_TOKENS = 8000
+
 
 # ──────────────────────────────────────────────
 # 세션 저장 (분석 결과 캐싱 → 재분석 없이 재생성) — 사용자별 격리
 # ──────────────────────────────────────────────
 
-def save_session(name: str, model: str, analysis: dict, owner) -> int:
+def _row_provider(row) -> str:
+    """
+    행의 provider 값을 읽되, 다중 프로바이더 지원 이전 데이터(컬럼 없음/NULL)는
+    전북대 게이트웨이로 간주한다. 오래된 세션도 그대로 재사용할 수 있게 하는 하위 호환.
+    """
+    if "provider" not in row.keys():
+        return LEGACY_PROVIDER
+    return row["provider"] or LEGACY_PROVIDER
+
+
+def save_session(name: str, model: str, analysis: dict, owner,
+                 provider: str = None) -> int:
     """분석 결과(재사용 자산)를 한 세션으로 저장하고 id 반환. 소유자=owner 튜플."""
     user_id, guest_id = owner
     conn = get_conn()
@@ -41,8 +63,8 @@ def save_session(name: str, model: str, analysis: dict, owner) -> int:
             """INSERT INTO sessions
                (name, model, created_at, concepts, sample_questions,
                 format_analysis, exam_concepts, priority_topics, type_stats,
-                source_info, user_id, guest_id)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                source_info, user_id, guest_id, provider)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 name,
                 model,
@@ -56,6 +78,7 @@ def save_session(name: str, model: str, analysis: dict, owner) -> int:
                 json.dumps(analysis.get("source_info", {}), ensure_ascii=False),
                 user_id,
                 guest_id,
+                provider or LEGACY_PROVIDER,
             ),
         )
         conn.commit()
@@ -80,6 +103,8 @@ def load_session(sid: int, owner):
         "id": row["id"],
         "name": row["name"],
         "model": row["model"],
+        # 컬럼 추가 이전에 만들어진 세션은 NULL → 게이트웨이로 간주
+        "provider": _row_provider(row),
         "created_at": row["created_at"],
         "concepts": json.loads(row["concepts"] or "{}"),
         "sample_questions": row["sample_questions"] or "",
@@ -97,7 +122,7 @@ def list_sessions(owner) -> list:
     conn = get_conn()
     try:
         rows = conn.execute(
-            f"""SELECT id, name, model, created_at, type_stats
+            f"""SELECT id, name, model, provider, created_at, type_stats
                 FROM sessions WHERE {frag} ORDER BY id DESC""",
             params,
         ).fetchall()
@@ -108,6 +133,7 @@ def list_sessions(owner) -> list:
             "id": r["id"],
             "name": r["name"],
             "model": r["model"],
+            "provider": _row_provider(r),
             "created_at": r["created_at"],
             "type_stats": json.loads(r["type_stats"] or "{}"),
         }
@@ -147,14 +173,16 @@ def rename_session(sid: int, name: str, owner):
 # ── 생성 문제 이력 (소유한 세션을 통해서만 접근) ──
 
 def save_generation(session_id: int, count: int, weight: int, model: str,
-                    type_targets: dict, questions: list, raw: str) -> int:
+                    type_targets: dict, questions: list, raw: str,
+                    provider: str = None) -> int:
     """한 번의 문제 생성 결과를 세션에 연결해 이력으로 저장."""
     conn = get_conn()
     try:
         cur = conn.execute(
             """INSERT INTO generations
-               (session_id, created_at, count, weight, model, type_targets, questions, raw)
-               VALUES (?,?,?,?,?,?,?,?)""",
+               (session_id, created_at, count, weight, model, type_targets,
+                questions, raw, provider)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
             (
                 session_id,
                 datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -164,6 +192,7 @@ def save_generation(session_id: int, count: int, weight: int, model: str,
                 json.dumps(type_targets or {}, ensure_ascii=False),
                 json.dumps(questions or [], ensure_ascii=False),
                 raw or "",
+                provider or LEGACY_PROVIDER,
             ),
         )
         conn.commit()
@@ -178,7 +207,8 @@ def list_generations(session_id: int, owner) -> list:
     conn = get_conn()
     try:
         rows = conn.execute(
-            f"""SELECT id, created_at, count, weight, model, type_targets, questions
+            f"""SELECT id, created_at, count, weight, model, provider,
+                       type_targets, questions
                 FROM generations
                 WHERE session_id=? AND session_id IN (SELECT id FROM sessions WHERE {frag})
                 ORDER BY id DESC""",
@@ -195,6 +225,7 @@ def list_generations(session_id: int, owner) -> list:
             "count": r["count"],
             "weight": r["weight"],
             "model": r["model"],
+            "provider": _row_provider(r),
             "type_targets": json.loads(r["type_targets"] or "{}"),
             "num_questions": len(qs),
         })
@@ -222,6 +253,7 @@ def load_generation(gid: int, owner):
         "count": r["count"],
         "weight": r["weight"],
         "model": r["model"],
+        "provider": _row_provider(r),
         "type_targets": json.loads(r["type_targets"] or "{}"),
         "questions": json.loads(r["questions"] or "[]"),
         "raw": r["raw"] or "",
@@ -296,7 +328,13 @@ def generation_delete(gid):
     return jsonify({"success": True})
 
 
-# ── 라우트: 모델 목록 ──
+# ── 라우트: 프로바이더 · 모델 목록 ──
+
+@gen_bp.route("/providers", methods=["GET"])
+def get_providers():
+    """선택 가능한 LLM 프로바이더 목록 (표시명·기본 모델·키 안내 문구)."""
+    return jsonify({"providers": list_providers(), "default": DEFAULT_PROVIDER})
+
 
 @gen_bp.route("/models", methods=["GET"])
 def get_models():
@@ -304,12 +342,14 @@ def get_models():
     if not api_key:
         return jsonify({"error": "API 키가 필요합니다."}), 400
     try:
-        client = OpenAI(api_key=api_key, base_url=GATEWAY_BASE_URL)
-        models = client.models.list()
-        model_ids = sorted([m.id for m in models.data])
-        return jsonify({"models": model_ids})
+        provider = get_provider(request.args.get("provider"))
+    except UnknownProviderError as e:
+        return jsonify({"error": str(e)}), 400
+    try:
+        return jsonify({"models": provider.list_models(api_key)})
     except Exception as e:
-        return jsonify({"models": [DEFAULT_MODEL], "error": str(e)})
+        # 목록 조회 실패해도 기본 모델 하나는 고를 수 있게 폴백
+        return jsonify({"models": [provider.default_model], "error": str(e)})
 
 
 # ──────────────────────────────────────────────
@@ -320,14 +360,42 @@ def get_models():
 def generate():
     try:
         api_key    = request.form.get("api_key", "").strip()
-        count      = int(request.form.get("count", 5))
         weight     = int(request.form.get("weight", 5))
-        model      = request.form.get("model", DEFAULT_MODEL).strip()
         session_id = request.form.get("session_id", "").strip()
         owner      = current_owner()
 
+        try:
+            provider = get_provider(request.form.get("provider"))
+        except UnknownProviderError as e:
+            return jsonify({"error": str(e)}), 400
+        model = request.form.get("model", "").strip() or provider.default_model
+
         if not api_key:
             return jsonify({"error": "API 키를 입력해주세요."}), 400
+
+        # 유형별 개수 직접 지정(수동 모드) — 있으면 count/type_targets를 여기서 확정
+        manual_targets = None
+        type_targets_raw = request.form.get("type_targets", "").strip()
+        if type_targets_raw:
+            try:
+                parsed = json.loads(type_targets_raw)
+            except (TypeError, ValueError):
+                return jsonify({"error": "유형별 개수 형식이 올바르지 않습니다."}), 400
+            if not isinstance(parsed, dict):
+                return jsonify({"error": "유형별 개수 형식이 올바르지 않습니다."}), 400
+            manual_targets = {}
+            for t in QUESTION_TYPES:
+                try:
+                    v = int(parsed.get(t, 0) or 0)
+                except (TypeError, ValueError):
+                    return jsonify({"error": "유형별 개수는 정수여야 합니다."}), 400
+                if v < 0:
+                    return jsonify({"error": "유형별 개수는 0 이상이어야 합니다."}), 400
+                manual_targets[t] = v
+            count = sum(manual_targets.values())
+        else:
+            count = int(request.form.get("count", 5))
+
         if not (1 <= count <= 30):
             return jsonify({"error": "문제 수는 1~30개 사이로 설정해주세요."}), 400
         if not (1 <= weight <= 10):
@@ -348,14 +416,14 @@ def generate():
 
             # 강의자료: 텍스트만 추출 (이미지 설명 생략)
             lecture_raw = extract_text_from_pdf(lecture_file, api_key, model,
-                                                describe_images=False)
+                                                describe_images=False, provider=provider)
             # 기출문제: 이미지/그림 페이지는 Vision LLM 설명으로 보존
             #  (예: 신체 부위 그림 → 부위 이름 쓰기 문제 등)
             exam_raw    = extract_text_from_pdf(exam_file, api_key, model,
-                                                describe_images=True)
+                                                describe_images=True, provider=provider)
             lecture_text = truncate(lecture_raw)
             exam_text    = truncate(exam_raw)
-            analysis = run_analysis(lecture_text, exam_text, api_key, model)
+            analysis = run_analysis(lecture_text, exam_text, api_key, model, provider)
             # 원문 반영 범위(전체 읽었는지/일부만인지) 기록
             analysis["source_info"] = {
                 "lecture": build_source_info(lecture_raw),
@@ -366,28 +434,61 @@ def generate():
             base = (lecture_file.filename or "강의자료").rsplit(".", 1)[0]
             name = request.form.get("name", "").strip() or \
                    f"{base} · {datetime.now().strftime('%m/%d %H:%M')}"
-            session_id = save_session(name, model, analysis, owner)
+            session_id = save_session(name, model, analysis, owner, provider.name)
             analysis["name"] = name
             reused = False
 
-        # ── 공통: 예상문제 생성 (분석 자산 재사용, LLM 1회) ──
+        # ── 공통: 예상문제 생성 (분석 자산 재사용) ──
+        # 문제마다 증례 지문+선택지+해설+함정포인트를 요구하는 출력 포맷이라
+        # count가 커지면 한 번의 LLM 호출로는 max_tokens을 넘겨 응답이 잘리고
+        # (---END--- 누락) parse_questions()가 전부 버려버리는 문제가 있었다.
+        # → GEN_BATCH_SIZE 문제씩 여러 번 호출해 잘림을 방지하고 결과를 합친다.
         type_stats   = analysis.get("type_stats", {})
-        type_targets = compute_type_targets(type_stats, count)
-        question_prompt = build_question_generation_prompt(
-            analysis.get("concepts", {}),
-            analysis.get("sample_questions", ""),
-            analysis.get("format_analysis", ""),
-            count,
-            analysis.get("exam_concepts", {}),
-            analysis.get("priority_topics", []),
-            weight, type_targets,
-        )
-        question_raw = call_llm(question_prompt, api_key, model)
-        questions    = parse_questions(question_raw)
+        type_targets = manual_targets if manual_targets is not None else compute_type_targets(type_stats, count)
+
+        # 유형별 목표를 슬롯 리스트로 펼쳐서 배치 단위로 잘라내면(비율 재계산 없이)
+        # 각 유형의 합계가 배치를 나눠도 원래 type_targets와 정확히 일치한다.
+        type_slots = None
+        if type_targets:
+            type_slots = []
+            for t in QUESTION_TYPES:
+                type_slots.extend([t] * type_targets.get(t, 0))
+
+        questions = []
+        raw_parts = []
+        remaining = count
+        offset = 0
+        while remaining > 0:
+            batch_count  = min(GEN_BATCH_SIZE, remaining)
+            if type_slots is not None:
+                batch_slice = type_slots[offset: offset + batch_count]
+                batch_targets = {t: batch_slice.count(t) for t in QUESTION_TYPES if batch_slice.count(t) > 0}
+            else:
+                batch_targets = {}
+            batch_prompt = build_question_generation_prompt(
+                analysis.get("concepts", {}),
+                analysis.get("sample_questions", ""),
+                analysis.get("format_analysis", ""),
+                batch_count,
+                analysis.get("exam_concepts", {}),
+                analysis.get("priority_topics", []),
+                weight, batch_targets,
+            )
+            batch_raw = call_llm(batch_prompt, api_key, model,
+                                 provider=provider, max_tokens=GEN_MAX_TOKENS)
+            raw_parts.append(batch_raw)
+            questions.extend(parse_questions(batch_raw))
+            offset += batch_count
+            remaining -= batch_count
+
+        for i, q in enumerate(questions, start=1):
+            q["번호"] = str(i)
+        question_raw = "\n\n".join(raw_parts)
 
         # 생성 이력 저장 (세션에 연결)
         generation_id = save_generation(
-            int(session_id), count, weight, model, type_targets, questions, question_raw
+            int(session_id), count, weight, model, type_targets, questions,
+            question_raw, provider.name,
         )
 
         return jsonify({
@@ -407,12 +508,15 @@ def generate():
             "questions":        questions,
             "raw":              question_raw,
             "model":            model,
+            "provider":         provider.name,
             "weight":           weight,
         })
 
-    except AuthenticationError:
-        return jsonify({"error": "API 키가 올바르지 않습니다. 플랫폼에서 키를 확인해주세요."}), 401
-    except RateLimitError:
-        return jsonify({"error": "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요."}), 429
+    except ProviderAuthError as e:
+        return jsonify({"error": str(e)}), 401
+    except ProviderRateLimitError as e:
+        return jsonify({"error": str(e)}), 429
+    except ProviderError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": f"서버 오류: {str(e)}"}), 500

@@ -79,10 +79,16 @@
       </div>
     </div>
 
+    <!-- LLM 제공사 선택 -->
+    <div style="margin-top:20px;">
+      <label for="provider-select">🏛️ LLM 제공사</label>
+      <select id="provider-select" class="select-field" onchange="selectProvider(this.value)"></select>
+    </div>
+
     <!-- API 키 -->
     <div style="margin-top:20px;">
-      <label>🔑 전북대 LLM 플랫폼 API Key</label>
-      <input type="password" id="api-key" placeholder="플랫폼에서 발급받은 API 키 입력" autocomplete="off" onchange="loadModels()" />
+      <label id="api-key-label">🔑 API Key</label>
+      <input type="password" id="api-key" placeholder="API 키 입력" autocomplete="off" onchange="loadModels()" />
       <div style="font-size:0.75rem;color:#64748b;margin-top:4px;">키를 입력하면 사용 가능한 모델 목록을 자동으로 불러옵니다.</div>
       <div style="font-size:0.75rem;color:#16a34a;margin-top:4px;">🔒 입력한 키는 <b>서버·브라우저에 저장되지 않고</b>, 문제 생성 요청 시에만 사용된 뒤 폐기됩니다.</div>
     </div>
@@ -93,16 +99,39 @@
         🤖 사용할 모델 <span id="model-load-msg" style="font-weight:400;font-size:0.8rem;color:#0ea5e9;"></span>
         <button type="button" onclick="loadModels()" title="모델 목록 새로고침" style="margin-left:auto;font-size:0.76rem;padding:4px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
       </label>
-      <select id="model-select" style="width:100%;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:0.95rem;font-family:inherit;color:#1e293b;background:#fff;">
-        <option value="claude-sonnet-4-5">claude-sonnet-4-5 (기본)</option>
-      </select>
+      <select id="model-select" class="select-field"></select>
     </div>
 
     <!-- 문제 수 -->
-    <div class="count-row">
-      <label for="count">생성할 문제 수</label>
-      <input type="number" id="count" value="5" min="1" max="30" />
-      <span>(최대 30개)</span>
+    <div style="margin-top:20px;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <input type="checkbox" id="manual-count-toggle" onchange="toggleManualCount()" style="width:16px;height:16px;accent-color:#2563eb;" />
+        <span>🎯 유형별 문제 수 직접 설정</span>
+      </label>
+
+      <!-- 자동 모드: 총 개수만 입력, 유형 비율은 기출 통계로 자동 배분 -->
+      <div class="count-row" id="auto-count-row">
+        <label for="count">생성할 문제 수</label>
+        <input type="number" id="count" value="5" min="1" max="30" />
+        <span>(최대 30개)</span>
+      </div>
+
+      <!-- 수동 모드: 유형별 개수를 각각 지정 -->
+      <div id="manual-count-row" class="hidden" style="margin-top:8px;display:flex;flex-direction:column;gap:8px;">
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px 12px;">
+          <label for="count-객관식">객관식</label>
+          <input type="number" id="count-객관식" value="0" min="0" max="30" oninput="updateManualTotal()" style="width:80px;" />
+          <label for="count-빈칸채우기">빈칸 채우기</label>
+          <input type="number" id="count-빈칸채우기" value="0" min="0" max="30" oninput="updateManualTotal()" style="width:80px;" />
+          <label for="count-단답형">단답형</label>
+          <input type="number" id="count-단답형" value="0" min="0" max="30" oninput="updateManualTotal()" style="width:80px;" />
+          <label for="count-서술형">서술형</label>
+          <input type="number" id="count-서술형" value="0" min="0" max="30" oninput="updateManualTotal()" style="width:80px;" />
+        </div>
+        <div style="font-size:0.78rem;color:#64748b;">
+          합계: <b id="manual-total-value">0</b>개 (최대 30개)
+        </div>
+      </div>
     </div>
 
     <!-- 기출 반영 강도 -->
@@ -206,11 +235,11 @@
 
   </div><!-- /tab-wrong -->
 
-  <!-- ══════════ 탭: 뼈 문제은행 ══════════ -->
+  <!-- ══════════ 탭: 골학 문제은행 ══════════ -->
   <div class="tab-panel hidden" id="tab-bones">
     <div class="card">
-      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
-        <span>🦴 뼈 문제은행 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 그림을 보고 뼈 이름 맞히기 (랜덤 무한 출제)</span></span>
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span>🦴 골학 문제은행 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 그림 속 번호 부위의 이름 맞히기 (랜덤 무한 출제)</span></span>
         <span id="bone-score" style="font-size:0.85rem;color:#475569;"></span>
       </div>
 
@@ -218,17 +247,16 @@
 
       <div id="bone-quiz" style="display:none;">
         <div style="text-align:center;margin:8px 0 16px;">
-          <img id="bone-image" alt="뼈 그림"
+          <img id="bone-image" alt="골학 번호 그림"
                style="max-width:100%;max-height:340px;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;" />
         </div>
 
         <div style="margin-bottom:8px;">
-          <button type="button" id="bone-hint-btn" onclick="boneToggleHint()"
-                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">💡 힌트 보기</button>
-          <span id="bone-hint" class="hidden" style="margin-left:8px;font-size:0.88rem;color:#b45309;"></span>
+          <button type="button" id="bone-original-btn" onclick="boneShowOriginal()"
+                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">🖼️ 원본 보기</button>
         </div>
 
-        <label for="bone-input" style="margin-bottom:6px;">이 뼈의 이름은?</label>
+        <label for="bone-input" id="bone-question-label" style="margin-bottom:6px;">번호의 이름은?</label>
         <input type="text" id="bone-input" placeholder="예: 대퇴골 / femur" autocomplete="off"
                onkeydown="boneKey(event)" />
 
@@ -259,6 +287,17 @@
       <button class="btn-danger" onclick="createFolderAndSave()">만들어 저장</button>
     </div>
     <button class="modal-close" onclick="closeWrongModal()">닫기</button>
+  </div>
+</div>
+
+<!-- 골학 원본(이름 표시) 이미지 모달 -->
+<div class="modal-overlay" id="bone-original-modal" onclick="if(event.target===this)closeBoneOriginal()">
+  <div class="modal" style="max-width:640px;">
+    <h3>🖼️ 원본 — 부위 이름</h3>
+    <div class="modal-sub" id="bone-original-title"></div>
+    <img id="bone-original-image" alt="원본(이름 표시) 그림"
+         style="width:100%;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;" />
+    <button class="modal-close" onclick="closeBoneOriginal()">닫기</button>
   </div>
 </div>
 

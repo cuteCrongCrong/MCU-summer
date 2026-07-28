@@ -4,7 +4,8 @@
 앱 생성 + Blueprint 등록 + 서버 실행만 담당한다. (거의 바뀔 일 없음)
 기능별 로직은 아래에 있음:
   - db.py                     : DB 연결·스키마
-  - llm.py                    : LLM 호출·PDF 추출·프롬프트·파싱·분석
+  - llm.py                    : PDF 추출·프롬프트·파싱·분석 파이프라인
+  - providers/                : LLM 제공사별 호출 (전북대 게이트웨이·OpenAI·Anthropic·Gemini)
   - features/question_gen.py  : 문제 생성 라우트 (/generate, /sessions, /models ...)
   - features/wrong_note.py    : 오답 노트 라우트 (/wrong-folders ...)
   - features/auth.py          : 구글 로그인 + 게스트 익명 id
@@ -24,7 +25,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 import config
 from db import init_db, DB_PATH
-from llm import GATEWAY_BASE_URL, DEFAULT_MODEL
+from providers.jbnu_gateway import GATEWAY_BASE_URL, DEFAULT_MODEL
 from features.question_gen import gen_bp
 from features.wrong_note import wrong_bp
 from features.auth import auth_bp, init_auth

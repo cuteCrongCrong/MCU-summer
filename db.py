@@ -17,6 +17,10 @@ _BASE_DIR = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals(
 # 지정하지 않으면 기존과 동일하게 프로젝트 폴더의 sessions.db 를 쓴다.
 DB_PATH = config.DB_PATH or os.path.join(_BASE_DIR, "sessions.db")
 
+# 다중 프로바이더 지원 이전에 만들어진 행은 전부 전북대 게이트웨이로 생성된 것.
+# (그때는 선택지가 없었음) — 현재 기본 프로바이더와는 별개의 '과거 사실'이라 여기 고정.
+LEGACY_PROVIDER = "jbnu_gateway"
+
 
 def get_conn():
     # timeout: 다른 요청이 쓰기 중이면 즉시 실패하지 않고 기다린다("database is locked" 완화).
@@ -25,11 +29,16 @@ def get_conn():
     return conn
 
 
-def _ensure_column(conn, table: str, col: str, decl: str):
-    """CREATE TABLE IF NOT EXISTS는 기존 테이블에 컬럼을 못 넣으므로 ALTER로 보강."""
+def _ensure_column(conn, table: str, col: str, decl: str) -> bool:
+    """
+    CREATE TABLE IF NOT EXISTS는 기존 테이블에 컬럼을 못 넣으므로 ALTER로 보강.
+    이번 실행에서 실제로 컬럼을 추가했으면 True (기존 행 백필이 필요한지 판단용).
+    """
     cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
-    if col not in cols:
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+    if col in cols:
+        return False
+    conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+    return True
 
 
 def owner_clause(owner, prefix: str = ""):
@@ -79,7 +88,8 @@ def init_db():
                 format_analysis TEXT,
                 exam_concepts TEXT,
                 priority_topics TEXT,
-                type_stats TEXT
+                type_stats TEXT,
+                provider TEXT
             )"""
         )
         conn.execute(
@@ -92,7 +102,8 @@ def init_db():
                 model TEXT,
                 type_targets TEXT,
                 questions TEXT,
-                raw TEXT
+                raw TEXT,
+                provider TEXT
             )"""
         )
         conn.execute(
@@ -144,6 +155,14 @@ def init_db():
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_wrong_folders_guest ON wrong_folders(guest_id)"
         )
+        # 어떤 LLM 제공사로 만든 세션/이력인지 기록 (다중 프로바이더 지원)
+        # 컬럼을 새로 붙인 경우에만 기존 행을 게이트웨이로 백필한다.
+        for table in ("sessions", "generations"):
+            if _ensure_column(conn, table, "provider", "TEXT"):
+                conn.execute(
+                    f"UPDATE {table} SET provider=? WHERE provider IS NULL",
+                    (LEGACY_PROVIDER,),
+                )
         conn.commit()
     finally:
         conn.close()
