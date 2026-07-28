@@ -20,7 +20,7 @@ from flask import Flask, send_from_directory
 
 import config
 from db import init_db
-from llm import GATEWAY_BASE_URL, DEFAULT_MODEL
+from providers.jbnu_gateway import GATEWAY_BASE_URL, DEFAULT_MODEL
 from features.question_gen import gen_bp
 from features.wrong_note import wrong_bp
 from features.auth import auth_bp, init_auth

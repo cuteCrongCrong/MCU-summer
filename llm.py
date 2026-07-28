@@ -1,22 +1,23 @@
 """
-LLM 도메인 로직 — 전북대 LLM 게이트웨이 호출, PDF 텍스트/이미지 추출,
-프롬프트 설계, 응답 파싱, 분석 파이프라인.
+LLM 도메인 로직 — PDF 텍스트/이미지 추출, 프롬프트 설계, 응답 파싱, 분석 파이프라인.
 
+실제 LLM 호출은 providers/ 계층에 위임한다. LLM 호출 함수는 provider 인자를
+받으며, 생략하면 기본 프로바이더(전북대 게이트웨이)를 쓴다.
 라우트(HTTP)와 분리되어 있어 단위 테스트·재사용이 쉽습니다.
 """
 
 import json
 import re
-import base64
 from concurrent.futures import ThreadPoolExecutor
 import fitz  # pymupdf
-from openai import OpenAI
+
+from providers.factory import get_provider
 
 # ──────────────────────────────────────────────
 # 설정 상수
 # ──────────────────────────────────────────────
-GATEWAY_BASE_URL = "https://factchat-cloud.mindlogic.ai/v1/gateway"
-DEFAULT_MODEL    = "claude-sonnet-4-5"
+# provider 인자가 생략됐을 때 쓰는 기본 프로바이더 (전북대 게이트웨이)
+_default_provider = get_provider()
 
 # 강의/기출 텍스트를 LLM에 넣기 전 문서당 최대 글자 수.
 MAX_TEXT_CHARS = 100000
@@ -41,43 +42,15 @@ TYPE_DEFINITIONS = (
 # LLM / PDF 유틸
 # ──────────────────────────────────────────────
 
-def describe_image(png_bytes: bytes, api_key: str, model: str) -> str:
-    """
-    Vision LLM으로 이미지가 '무엇인지' 한국어로 설명 생성.
-    전체 전사가 아니라, 그림·그래프·표·해부도·검사 소견 등 핵심 내용을 요약.
-    게이트웨이가 이미지 입력을 지원하지 않으면 예외 → 호출부에서 폴백 처리.
-    """
-    b64 = base64.b64encode(png_bytes).decode()
-    client = OpenAI(api_key=api_key, base_url=GATEWAY_BASE_URL)
-    resp = client.chat.completions.create(
-        model=model,
-        max_tokens=1024,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": (
-                    "이 이미지는 의대 강의자료 또는 기출문제의 한 페이지/그림입니다. "
-                    "무엇을 나타내는 이미지인지 한국어로 간결히 설명하세요. "
-                    "의학적으로 중요한 내용(그래프·표·해부도·검사 소견·수치 등)이 있으면 핵심을 요약하고, "
-                    "이미지 안에 글자가 보이면 핵심 텍스트도 함께 옮겨 적으세요. "
-                    "설명 외의 사족은 쓰지 마세요."
-                )},
-                {"type": "image_url",
-                 "image_url": {"url": f"data:image/png;base64,{b64}"}},
-            ],
-        }],
-    )
-    return (resp.choices[0].message.content or "").strip()
-
-
 def extract_text_from_pdf(file_storage, api_key: str = None, model: str = None,
-                          describe_images: bool = True) -> str:
+                          describe_images: bool = True, provider=None) -> str:
     """
     PDF에서 텍스트 레이어를 추출하고, 이미지/스캔 페이지는 Vision LLM으로
     '무슨 이미지인지' 설명을 생성해 텍스트로 함께 남긴다.
     - 텍스트가 거의 없는 페이지(스캔·사진) 또는 그림이 포함된 페이지를 이미지 설명 대상으로 선정
     - 비용 상한: 최대 IMAGE_DESC_MAX개 페이지만 설명, 이미지 설명은 병렬 처리
     """
+    prov = provider or _default_provider
     pdf_bytes = file_storage.read()
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
 
@@ -104,7 +77,7 @@ def extract_text_from_pdf(file_storage, api_key: str = None, model: str = None,
     # 이미지 설명 병렬 생성 (게이트웨이가 이미지 미지원이면 폴백 문구)
     if img_jobs:
         with ThreadPoolExecutor(max_workers=4) as ex:
-            futs = {ex.submit(describe_image, e["png"], api_key, model): e for e in img_jobs}
+            futs = {ex.submit(prov.describe_image, e["png"], api_key, model): e for e in img_jobs}
             for fut, e in futs.items():
                 try:
                     e["desc"] = fut.result()
@@ -153,14 +126,13 @@ def build_source_info(raw_text: str) -> dict:
     }
 
 
-def call_llm(prompt: str, api_key: str, model: str, max_tokens: int = 4096) -> str:
-    client = OpenAI(api_key=api_key, base_url=GATEWAY_BASE_URL)
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=max_tokens,
+def call_llm(prompt: str, api_key: str, model: str, provider=None,
+             max_tokens: int = None) -> str:
+    # provider 계층으로 위임 — max_tokens를 주면 프로바이더 기본값 대신 그 값을 쓴다
+    # (문제 생성처럼 응답이 길어 잘림을 막아야 할 때 호출부가 넉넉히 지정).
+    return (provider or _default_provider).complete(
+        prompt, api_key, model, max_tokens=max_tokens
     )
-    return response.choices[0].message.content
 
 
 # ──────────────────────────────────────────────
@@ -244,7 +216,7 @@ def compute_type_targets(type_stats: dict, count: int) -> dict:
 # ──────────────────────────────────────────────
 
 def extract_sample_questions(exam_text: str, api_key: str, model: str,
-                             type_stats: dict = None) -> str:
+                             type_stats: dict = None, provider=None) -> str:
     """
     기출 PDF에서 **대표성 있는** 문제를 최대 5개까지 원문 그대로 추출 (4분류).
     선택 기준:
@@ -290,10 +262,10 @@ def extract_sample_questions(exam_text: str, api_key: str, model: str,
 ## 기출문제 텍스트
 {exam_text}"""
 
-    return call_llm(prompt, api_key, model)
+    return call_llm(prompt, api_key, model, provider)
 
 
-def analyze_format(sample_questions: str, api_key: str, model: str) -> str:
+def analyze_format(sample_questions: str, api_key: str, model: str, provider=None) -> str:
     """
     추출된 기출 예시를 분석해서 형식 규칙을 **키워드 위주**로 정리.
     프론트엔드에서 태그 형태로 렌더링하기 좋게 "라벨: 키워드1, 키워드2" 라인 형식.
@@ -313,10 +285,10 @@ def analyze_format(sample_questions: str, api_key: str, model: str) -> str:
 ## 기출문제 예시
 {sample_questions}"""
 
-    return call_llm(prompt, api_key, model)
+    return call_llm(prompt, api_key, model, provider)
 
 
-def extract_exam_concepts(exam_text: str, api_key: str, model: str) -> str:
+def extract_exam_concepts(exam_text: str, api_key: str, model: str, provider=None) -> str:
     """
     기출 전문에서 '무엇을 물었는가(출제 개념·경향)'를 추출.
     형식(how)이 아니라 내용(what)에 집중 → 강의개념 가중치 계산에 사용.
@@ -340,7 +312,7 @@ def extract_exam_concepts(exam_text: str, api_key: str, model: str) -> str:
 ## 기출문제 텍스트
 {exam_text}"""
 
-    return call_llm(prompt, api_key, model)
+    return call_llm(prompt, api_key, model, provider)
 
 
 def _norm_term(s: str) -> str:
@@ -677,7 +649,8 @@ def safe_parse_json(text: str) -> dict:
 # 분석 파이프라인 (토큰 소모 집중 구간 — 세션에 저장해 재사용)
 # ──────────────────────────────────────────────
 
-def run_analysis(lecture_text: str, exam_text: str, api_key: str, model: str) -> dict:
+def run_analysis(lecture_text: str, exam_text: str, api_key: str, model: str,
+                 provider=None) -> dict:
     """
     강의·기출을 분석해 재사용 자산을 생성.
     의존성 없는 두 LLM 호출을 병렬 실행해 대기시간 단축 (결과·동작은 순차 실행과 동일):
@@ -688,16 +661,16 @@ def run_analysis(lecture_text: str, exam_text: str, api_key: str, model: str) ->
     # ①·② 동시 실행 (서로 독립)
     with ThreadPoolExecutor(max_workers=2) as ex:
         f_concepts = ex.submit(
-            call_llm, build_concept_extraction_prompt(lecture_text), api_key, model
+            call_llm, build_concept_extraction_prompt(lecture_text), api_key, model, provider
         )
-        f_exam = ex.submit(extract_exam_concepts, exam_text, api_key, model)
+        f_exam = ex.submit(extract_exam_concepts, exam_text, api_key, model, provider)
         concepts = safe_parse_json(f_concepts.result())
         exam_concepts = safe_parse_json(f_exam.result())
 
     # ③ 예시추출 (②의 유형통계를 힌트로 사용) → ④ 형식분석 (③에 의존)
     type_stats = resolve_type_stats(exam_concepts, exam_text)  # LLM 4분류 우선, 정규식 폴백
-    sample_questions = extract_sample_questions(exam_text, api_key, model, type_stats)
-    format_analysis = analyze_format(sample_questions, api_key, model)
+    sample_questions = extract_sample_questions(exam_text, api_key, model, type_stats, provider)
+    format_analysis = analyze_format(sample_questions, api_key, model, provider)
     priority_topics = compute_priority_topics(concepts, exam_concepts)
     return {
         "concepts": concepts,

@@ -150,6 +150,7 @@ async function generate() {
   if (manualTargets) form.append('type_targets', JSON.stringify(manualTargets));
   form.append('weight', weight);
   form.append('model', model);
+  form.append('provider', currentProvider || '');
   if (useSession) {
     form.append('session_id', currentSessionId);
   } else {
@@ -225,7 +226,7 @@ function renderSessionList() {
     <div class="session-row" data-id="${s.id}" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1.5px solid ${active ? '#6ee7b7' : '#e2e8f0'};background:${active ? '#ecfdf5' : '#fff'};border-radius:10px;margin-top:8px;">
       <div style="min-width:0;flex:1;">
         <div style="font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(s.name)}</div>
-        <div style="font-size:0.75rem;color:#94a3b8;margin-top:2px;">${escHtml(s.created_at || '')} · ${escHtml(s.model || '')}${compo ? ' · ' + compo : ''}</div>
+        <div style="font-size:0.75rem;color:#94a3b8;margin-top:2px;">${escHtml(s.created_at || '')} · ${escHtml(providerLabel(s.provider))} / ${escHtml(s.model || '')}${compo ? ' · ' + compo : ''}</div>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0;">
         <button onclick="useSessionRow(${s.id})" style="font-size:0.78rem;padding:5px 10px;border:none;border-radius:7px;background:#2563eb;color:#fff;cursor:pointer;">${active ? '선택됨' : '불러오기'}</button>
@@ -302,7 +303,7 @@ function renderHistory(gens) {
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1.5px solid #e2e8f0;background:#fff;border-radius:10px;margin-top:8px;">
       <div style="min-width:0;flex:1;">
         <div style="font-weight:600;color:#1e293b;">${escHtml(g.created_at || '')} · ${g.num_questions}문제</div>
-        <div style="font-size:0.75rem;color:#94a3b8;margin-top:2px;">강도 ${g.weight}/10 · ${escHtml(g.model || '')}${compo ? ' · ' + compo : ''}</div>
+        <div style="font-size:0.75rem;color:#94a3b8;margin-top:2px;">강도 ${g.weight}/10 · ${escHtml(providerLabel(g.provider))} / ${escHtml(g.model || '')}${compo ? ' · ' + compo : ''}</div>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0;">
         <button onclick="viewGeneration(${g.id})" style="font-size:0.78rem;padding:5px 12px;border:none;border-radius:7px;background:#0ea5e9;color:#fff;cursor:pointer;">보기</button>
@@ -332,9 +333,64 @@ async function deleteGeneration(gid) {
   if (currentSessionId) loadHistory(currentSessionId);
 }
 
-// ── 모델 목록 (/models 자동 로드) ──
-const DEFAULT_MODEL = 'claude-sonnet-4-5';
+// ── LLM 제공사 (/providers) ──
+// 제공사마다 키 형식이 달라서, 전환해도 서로 섞이지 않도록 메모리에만 따로 담아둔다.
+// (localStorage에는 저장하지 않음 — 화면에 안내한 "브라우저에 저장되지 않음" 약속 유지)
+let providers = [];
+let currentProvider = null;
+const apiKeyByProvider = {};
 
+async function loadProviders() {
+  try {
+    const resp = await fetch('/providers');
+    const data = await resp.json();
+    providers = data.providers || [];
+    if (!providers.length) return;
+    renderProviders();
+    selectProvider(data.default || providers[0].name);
+  } catch (err) {
+    showError('LLM 제공사 목록을 불러오지 못했습니다.');
+  }
+}
+
+function renderProviders() {
+  document.getElementById('provider-select').innerHTML = providers.map(p =>
+    `<option value="${escHtml(p.name)}">${escHtml(p.label)}</option>`
+  ).join('');
+}
+
+function currentProviderInfo() {
+  return providers.find(p => p.name === currentProvider) || null;
+}
+
+// 저장된 세션·이력에 어떤 제공사로 만든 것인지 표시 (목록이 먼저 그려질 수 있어 폴백 둠)
+function providerLabel(name) {
+  if (!name) return '';
+  const info = providers.find(p => p.name === name);
+  return info ? info.label : name;
+}
+
+function selectProvider(name) {
+  const info = providers.find(p => p.name === name);
+  if (!info) return;
+
+  // 전환 전 입력해둔 키를 이전 제공사 쪽에 보관
+  const keyInput = document.getElementById('api-key');
+  if (currentProvider) apiKeyByProvider[currentProvider] = keyInput.value;
+
+  currentProvider = name;
+  document.getElementById('provider-select').value = name;   // 코드로 호출된 경우도 동기화
+
+  document.getElementById('api-key-label').textContent = `🔑 ${info.label} API Key`;
+  keyInput.placeholder = info.key_placeholder || 'API 키 입력';
+  keyInput.value = apiKeyByProvider[name] || '';
+
+  // 제공사가 바뀌면 이전 모델 목록은 무효 → 기본 모델만 남기고 다시 조회
+  populateModels([info.default_model]);
+  loadModels();
+}
+
+// ── 모델 목록 (/models 자동 로드) ──
 async function loadModels() {
   const apiKey = document.getElementById('api-key').value.trim();
   const msg = document.getElementById('model-load-msg');
@@ -346,7 +402,8 @@ async function loadModels() {
   msg.textContent = '불러오는 중…';
   msg.style.color = '#0ea5e9';
   try {
-    const resp = await fetch('/models', { headers: { 'X-Api-Key': apiKey } });
+    const url = '/models?provider=' + encodeURIComponent(currentProvider || '');
+    const resp = await fetch(url, { headers: { 'X-Api-Key': apiKey } });
     const data = await resp.json();
     const models = data.models || [];
     if (models.length) {
@@ -366,13 +423,14 @@ async function loadModels() {
 function populateModels(models) {
   const sel = document.getElementById('model-select');
   const prev = sel.value;                       // 기존 선택 유지 시도
+  const defaultModel = (currentProviderInfo() || {}).default_model;
   sel.innerHTML = models.map(m => {
-    const label = (m === DEFAULT_MODEL) ? `${m} (기본)` : m;
+    const label = (m === defaultModel) ? `${m} (기본)` : m;
     return `<option value="${escHtml(m)}">${escHtml(label)}</option>`;
   }).join('');
   // 선택값 복원: 이전 선택 > 기본모델 > 첫 항목
   if (models.includes(prev))                sel.value = prev;
-  else if (models.includes(DEFAULT_MODEL))  sel.value = DEFAULT_MODEL;
+  else if (models.includes(defaultModel))   sel.value = defaultModel;
 }
 
 function showError(msg) {
@@ -482,4 +540,4 @@ function renderFormatKeywords(text) {
 
 // ── 초기 로드 ──
 loadSessions();
-loadModels();
+loadProviders();   // 제공사 선택 → 기본 제공사로 모델 목록까지 이어서 로드
