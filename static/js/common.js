@@ -132,6 +132,12 @@ function renderQuestions(questions, raw, viewOpts) {
     // 유형 판별: 명시된 유형 우선, 없으면 선택지 유무로 추정
     const rawType = (q['유형'] || '').replace(/\s/g, '');
     const isObjective = (rawType ? rawType.includes('객관') : choices.length > 0);
+    const isBlank = rawType.includes('빈칸');
+    // 빈칸(____, □□, ( )) 개수와 '정답'을 ' | '로 나눈 개수가 일치할 때만
+    // 빈칸별 입력칸으로 분리. 안 맞으면(구형 데이터·형식 이탈) 기존 textarea로 대체.
+    const blankCount = isBlank ? ((q['문제'] || '').match(/_{2,}|□{2,}|\(\s*\)/g) || []).length : 0;
+    const blankAnswers = isBlank ? (q['정답'] || '').split('|').map(s => s.trim()).filter(Boolean) : [];
+    const useBlankInputs = isBlank && blankCount >= 2 && blankAnswers.length === blankCount;
 
     const card = document.createElement('div');
     card.className = 'question-card';
@@ -182,8 +188,22 @@ function renderQuestions(questions, raw, viewOpts) {
         <button class="check-btn" onclick="checkAnswer(${idx}, ${answerIdx})">정답 확인</button>
         ${answerBlock}
       `;
+    } else if (useBlankInputs) {
+      // 빈칸채우기(빈칸 2개 이상): 빈칸별로 입력칸을 분리하고 각각 채점
+      const blankInputsHtml = blankAnswers.map((_, i) => `
+        <div class="blank-input-item">
+          <span class="blank-label">빈칸 ${i + 1}</span>
+          <input type="text" class="blank-input" id="blank-${idx}-${i}" placeholder="답을 입력하세요" />
+        </div>`).join('');
+      card.innerHTML = `
+        ${headerHtml}
+        <div class="q-text">${escHtml(q['문제'] || '')}</div>
+        <div class="blank-input-row">${blankInputsHtml}</div>
+        <button class="check-btn" onclick="checkBlanks(${idx})">정답 확인</button>
+        ${answerBlock}
+      `;
     } else {
-      // 주관식: 선택지 없이 답안 작성란 + 정답 공개
+      // 주관식(단답형/서술형/빈칸 1개): 선택지 없이 답안 작성란 + 정답 공개
       card.innerHTML = `
         ${headerHtml}
         ${imageHtml}
@@ -211,6 +231,23 @@ function selectChoice(el, qIdx, answerIdx) {
 }
 
 function revealAnswer(qIdx) {
+  document.getElementById(`ans-${qIdx}`).style.display = 'block';
+}
+
+// 빈칸채우기(빈칸 2개 이상): 빈칸별 입력값을 정답과 각각 비교해 O/X 표시
+function checkBlanks(qIdx) {
+  const q = currentQuestions[qIdx] || {};
+  const answers = (q['정답'] || '').split('|').map(s => s.trim()).filter(Boolean);
+  const norm = s => (s || '').trim().replace(/\s+/g, '').toLowerCase();
+
+  answers.forEach((ans, i) => {
+    const input = document.getElementById(`blank-${qIdx}-${i}`);
+    if (!input) return;
+    input.classList.remove('correct', 'wrong');
+    input.classList.add(norm(input.value) === norm(ans) ? 'correct' : 'wrong');
+    input.disabled = true;
+  });
+
   document.getElementById(`ans-${qIdx}`).style.display = 'block';
 }
 
