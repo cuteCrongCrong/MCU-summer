@@ -7,26 +7,46 @@
   - llm.py                    : LLM 호출·PDF 추출·프롬프트·파싱·분석
   - features/question_gen.py  : 문제 생성 라우트 (/generate, /sessions, /models ...)
   - features/wrong_note.py    : 오답 노트 라우트 (/wrong-folders ...)
+  - features/auth.py          : 구글 로그인 + 게스트 익명 id
   - 정적 파일(css/js)          : static/ , 화면(HTML): index.html
 
-실행: python app.py  /  py app.py     접속: http://localhost:5000
-필요 패키지: pip install flask pymupdf openai
+로컬 실행: python app.py  /  py app.py   (또는 실행.bat)   접속: http://localhost:5000
+배포 실행: python serve.py               (waitress WSGI 서버 — 배포.md 참고)
+필요 패키지: pip install -r requirements.txt
 """
 
 import threading
 import webbrowser
+from datetime import timedelta
 
-from flask import Flask, send_from_directory
+from flask import Flask, send_from_directory, jsonify
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import config
-from db import init_db
+from db import init_db, DB_PATH
 from llm import GATEWAY_BASE_URL, DEFAULT_MODEL
 from features.question_gen import gen_bp
 from features.wrong_note import wrong_bp
 from features.auth import auth_bp, init_auth
 
+# 배포 모드인데 시크릿 키가 기본값이거나 디버그가 켜져 있으면 여기서 즉시 중단한다.
+config.check_production_ready()
+
 app = Flask(__name__)                 # 정적 파일: /static → ./static
-app.secret_key = config.FLASK_SECRET_KEY   # 로그인 세션(서명 쿠키)용
+app.secret_key = config.FLASK_SECRET_KEY   # 로그인 세션 + 게스트 익명 id(서명 쿠키)용
+# 게스트의 익명 소유자 id가 쿠키에 담기므로, 브라우저를 닫아도 데이터를 잃지 않도록 길게 잡는다.
+app.permanent_session_lifetime = timedelta(days=365)
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,               # JS에서 쿠키를 읽지 못하게
+    SESSION_COOKIE_SAMESITE="Lax",              # OAuth 리다이렉트는 통과, CSRF는 완화
+    SESSION_COOKIE_SECURE=config.IS_PRODUCTION,  # 배포(https)에서는 https로만 전송
+    MAX_CONTENT_LENGTH=config.MAX_UPLOAD_MB * 1024 * 1024,
+)
+
+# 리버스 프록시 뒤에 있으면 X-Forwarded-* 를 신뢰해야 https·호스트를 올바로 인식한다.
+# (안 켜면 구글 OAuth 콜백 주소가 http:// 로 만들어져 리다이렉트 URI 불일치로 실패)
+if config.TRUST_PROXY:
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 init_auth(app)                        # Authlib(구글 OAuth) 초기화
 app.register_blueprint(gen_bp)
@@ -39,27 +59,50 @@ def index():
     return send_from_directory(".", "index.html")
 
 
-init_db()  # 앱 로드 시 DB 테이블 보장 (flask run / gunicorn 포함)
+@app.route("/healthz")
+def healthz():
+    """배포 플랫폼의 헬스체크용 (LLM/DB를 건드리지 않는 가벼운 응답)."""
+    return jsonify({"status": "ok"})
+
+
+@app.errorhandler(413)
+def too_large(_e):
+    """업로드 용량 초과 — 프런트가 JSON을 기대하므로 HTML 대신 JSON으로 응답."""
+    return jsonify({
+        "error": f"업로드 파일이 너무 큽니다. 최대 {config.MAX_UPLOAD_MB}MB까지 가능합니다."
+    }), 413
+
+
+init_db()  # 앱 로드 시 DB 테이블 보장 (serve.py / flask run / gunicorn 포함)
 
 
 if __name__ == "__main__":
+    # ── 로컬 개발 전용 실행 경로 (배포는 serve.py를 쓴다) ──
     print("=" * 55)
     print("  의대 예상문제 생성기 서버 시작")
-    print("  접속 주소: http://localhost:5000")
+    print(f"  접속 주소: http://localhost:{config.PORT}")
     print(f"  LLM 게이트웨이: {GATEWAY_BASE_URL}")
     print(f"  기본 모델: {DEFAULT_MODEL}")
+    print(f"  DB 파일: {DB_PATH}")
+    if config.FLASK_SECRET_KEY_IS_DEFAULT:
+        print("  [경고] FLASK_SECRET_KEY가 기본값입니다. 로컬 사용은 괜찮지만,")
+        print("         외부에 배포할 때는 반드시 고유한 값을 지정하세요.")
+        print("         (지정 안 하면 게스트/로그인 데이터 분리가 무의미해집니다)")
     print("  브라우저가 자동으로 열립니다. (창을 닫으면 서버 종료)")
     print("=" * 55)
     # 브라우저 자동 열기 (리로더를 끄므로 단일 프로세스 → 중복/좀비 없음)
-    threading.Timer(1.5, lambda: webbrowser.open("http://localhost:5000")).start()
+    threading.Timer(
+        1.5, lambda: webbrowser.open(f"http://localhost:{config.PORT}")
+    ).start()
     try:
         # use_reloader=False: 프로세스 2중 실행·좀비 프로세스로 포트가 붙잡히는 문제 방지
-        app.run(host="127.0.0.1", port=5000, debug=True, use_reloader=False)
+        app.run(host=config.HOST, port=config.PORT,
+                debug=config.DEBUG, use_reloader=False)
     except OSError as e:
         print("\n" + "=" * 55)
-        print("  [오류] 포트 5000을 사용할 수 없습니다.")
+        print(f"  [오류] 포트 {config.PORT}을(를) 사용할 수 없습니다.")
         print("  이미 서버가 실행 중일 수 있습니다.")
-        print("  → 열려 있는 브라우저 탭(http://localhost:5000)을 먼저 확인하세요.")
+        print(f"  → 열려 있는 브라우저 탭(http://localhost:{config.PORT})을 먼저 확인하세요.")
         print("  → 그래도 안 되면 작업 관리자에서 'python.exe'를 모두 종료 후 다시 실행하세요.")
         print(f"  (상세: {e})")
         print("=" * 55)

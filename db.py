@@ -10,12 +10,17 @@
 import os
 import sqlite3
 
+import config
+
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
-DB_PATH = os.path.join(_BASE_DIR, "sessions.db")
+# 배포 시에는 DB_PATH 환경변수로 영구 디스크 경로를 지정한다(예: /var/data/sessions.db).
+# 지정하지 않으면 기존과 동일하게 프로젝트 폴더의 sessions.db 를 쓴다.
+DB_PATH = config.DB_PATH or os.path.join(_BASE_DIR, "sessions.db")
 
 
 def get_conn():
-    conn = sqlite3.connect(DB_PATH)
+    # timeout: 다른 요청이 쓰기 중이면 즉시 실패하지 않고 기다린다("database is locked" 완화).
+    conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -27,24 +32,41 @@ def _ensure_column(conn, table: str, col: str, decl: str):
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
 
 
-def owner_clause(user_id, col: str = "user_id"):
+def owner_clause(owner, prefix: str = ""):
     """
     사용자별 데이터 분리용 WHERE 조각과 파라미터를 반환.
-      - 로그인 사용자(user_id 존재) → "user_id = ?", [user_id]
-      - 게스트(None)              → "user_id IS NULL", []
+
+    owner 는 features.auth.current_owner() 가 준 (user_id, guest_id) 튜플:
+      - 로그인 사용자 → (id, None)   → "user_id = ?",  [id]
+      - 게스트        → (None, gid)  → "guest_id = ?", [gid]
+        (gid = 브라우저별로 발급된 익명 소유자 id. 게스트끼리도 서로 격리된다.)
+
+    prefix 는 JOIN 시 테이블 별칭 (예: "f." → "f.guest_id").
     사용 예:
-        frag, params = owner_clause(uid)
+        frag, params = owner_clause(owner)
         conn.execute(f"SELECT ... WHERE {frag}", params)
     """
-    if user_id is None:
-        return f"{col} IS NULL", []
-    return f"{col} = ?", [user_id]
+    user_id, guest_id = owner
+    if user_id is not None:
+        return f"{prefix}user_id = ?", [user_id]
+    if guest_id:
+        return f"{prefix}guest_id = ?", [guest_id]
+    # 소유자를 특정할 수 없으면 아무것도 매칭하지 않는다(데이터 노출 방지).
+    return "0 = 1", []
 
 
 def init_db():
     """앱 로드 시 모든 테이블/인덱스/마이그레이션을 보장."""
+    # 배포 시 DB_PATH가 마운트된 디스크의 하위 경로일 수 있으므로 폴더를 먼저 만든다.
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
+
     conn = get_conn()
     try:
+        # WAL: 읽기와 쓰기가 서로를 막지 않아 동시 접속에 훨씬 안정적이다.
+        # (DB 파일에 한 번 기록되면 유지되는 설정)
+        conn.execute("PRAGMA journal_mode = WAL")
         # ── 문제 생성: 세션(분석 자산) + 생성 이력 ──
         conn.execute(
             """CREATE TABLE IF NOT EXISTS sessions (
@@ -108,9 +130,20 @@ def init_db():
         )
         # ── 마이그레이션: 기존 DB에 없을 수 있는 컬럼 보강 ──
         _ensure_column(conn, "sessions", "source_info", "TEXT")
-        # 사용자별 데이터 분리 (로그인=본인 소유, 비로그인=NULL 게스트 소유)
+        # 사용자별 데이터 분리
+        #   user_id  : 로그인 사용자 소유 (users.id)
+        #   guest_id : 비로그인 방문자 소유 (브라우저 세션 쿠키의 익명 id)
+        #   두 컬럼 중 정확히 하나만 채워진다. (owner_clause 참고)
         _ensure_column(conn, "sessions", "user_id", "INTEGER")
+        _ensure_column(conn, "sessions", "guest_id", "TEXT")
         _ensure_column(conn, "wrong_folders", "user_id", "INTEGER")
+        _ensure_column(conn, "wrong_folders", "guest_id", "TEXT")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sessions_guest ON sessions(guest_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_wrong_folders_guest ON wrong_folders(guest_id)"
+        )
         conn.commit()
     finally:
         conn.close()
