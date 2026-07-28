@@ -1,33 +1,29 @@
 @echo off
-chcp 65001 >nul
+chcp 949 >nul
 cd /d "%~dp0"
 
-rem --- Python ì‹¤í–‰ê¸° ì°¾ê¸° (PATHì— pyê°€ ì—†ì–´ë„ ë™ìž‘) ---
+rem --- find a Python 3.8+ interpreter (ASCII only in this section) ---
+set "PYCHK=import sys;sys.exit(0 if sys.version_info>=(3,8) else 1)"
 set "PYEXE="
-where py >nul 2>nul && set "PYEXE=py"
-if not defined PYEXE (
-  if exist "%LOCALAPPDATA%\Programs\Python\Launcher\py.exe" set "PYEXE=%LOCALAPPDATA%\Programs\Python\Launcher\py.exe"
-)
-if not defined PYEXE (
-  for /d %%D in ("%LOCALAPPDATA%\Programs\Python\Python3*") do (
-    if exist "%%D\python.exe" set "PYEXE=%%D\python.exe"
-  )
+for /d %%D in ("%LOCALAPPDATA%\Python\pythoncore-3*") do if not defined PYEXE if exist "%%D\python.exe" "%%D\python.exe" -c "%PYCHK%" >nul 2>nul && set "PYEXE=%%D\python.exe"
+for /d %%D in ("%LOCALAPPDATA%\Programs\Python\Python3*") do if not defined PYEXE if exist "%%D\python.exe" "%%D\python.exe" -c "%PYCHK%" >nul 2>nul && set "PYEXE=%%D\python.exe"
+for /d %%D in ("%ProgramFiles%\Python3*") do if not defined PYEXE if exist "%%D\python.exe" "%%D\python.exe" -c "%PYCHK%" >nul 2>nul && set "PYEXE=%%D\python.exe"
+if not defined PYEXE if exist "%USERPROFILE%\anaconda3\python.exe" "%USERPROFILE%\anaconda3\python.exe" -c "%PYCHK%" >nul 2>nul && set "PYEXE=%USERPROFILE%\anaconda3\python.exe"
+if not defined PYEXE py -c "%PYCHK%" >nul 2>nul && set "PYEXE=py"
+
+if defined PYEXE (
+  echo ============================================
+  echo   ÀÇ´ë ¿¹»ó¹®Á¦ »ý¼º±â ½ÇÇà Áß...
+  echo   »ç¿ë Python: %PYEXE%
+  echo   Àá½Ã ÈÄ ºê¶ó¿ìÀú°¡ ÀÚµ¿À¸·Î ¿­¸³´Ï´Ù.
+  echo   (ÀÌ Ã¢À» ´ÝÀ¸¸é ¼­¹ö°¡ Á¾·áµË´Ï´Ù^)
+  echo ============================================
+  "%PYEXE%" app.py
+  echo.
+  echo ¼­¹ö°¡ Á¾·áµÇ¾ú½À´Ï´Ù. ¹®Á¦°¡ ÀÖ¾ú´Ù¸é À§ ¸Þ½ÃÁö¸¦ È®ÀÎÇÏ¼¼¿ä.
+) else (
+  echo [¿À·ù] Python 3.8 ÀÌ»óÀ» Ã£Áö ¸øÇß½À´Ï´Ù.
+  echo Ã³À½ÀÌ¶ó¸é "¼³Ä¡.bat" À» ¸ÕÀú ½ÇÇàÇÏ¼¼¿ä.
 )
 
-if not defined PYEXE (
-  echo [ì˜¤ë¥˜] Pythonì„ ì°¾ì§€ ëª»í–ˆìŠµë‹ˆë‹¤.
-  echo ì²˜ìŒì´ë¼ë©´ "ì„¤ì¹˜.bat" ì„ ë¨¼ì € ì‹¤í–‰í•˜ì„¸ìš”.
-  pause
-  exit /b 1
-)
-
-echo ============================================
-echo   ì˜ëŒ€ ì˜ˆìƒë¬¸ì œ ìƒì„±ê¸° ì‹¤í–‰ ì¤‘...
-echo   ì‚¬ìš© Python: %PYEXE%
-echo   ìž ì‹œ í›„ ë¸Œë¼ìš°ì €ê°€ ìžë™ìœ¼ë¡œ ì—´ë¦½ë‹ˆë‹¤.
-echo   (ì´ ì°½ì„ ë‹«ìœ¼ë©´ ì„œë²„ê°€ ì¢…ë£Œë©ë‹ˆë‹¤)
-echo ============================================
-"%PYEXE%" app.py
-echo.
-echo ì„œë²„ê°€ ì¢…ë£Œë˜ì—ˆìŠµë‹ˆë‹¤. ë¬¸ì œê°€ ìžˆì—ˆë‹¤ë©´ ìœ„ ë©”ì‹œì§€ë¥¼ í™•ì¸í•˜ì„¸ìš”.
 pause
