@@ -79,10 +79,16 @@
       </div>
     </div>
 
+    <!-- LLM 제공사 선택 -->
+    <div style="margin-top:20px;">
+      <label for="provider-select">🏛️ LLM 제공사</label>
+      <select id="provider-select" class="select-field" onchange="selectProvider(this.value)"></select>
+    </div>
+
     <!-- API 키 -->
     <div style="margin-top:20px;">
-      <label>🔑 전북대 LLM 플랫폼 API Key</label>
-      <input type="password" id="api-key" placeholder="플랫폼에서 발급받은 API 키 입력" autocomplete="off" onchange="loadModels()" />
+      <label id="api-key-label">🔑 API Key</label>
+      <input type="password" id="api-key" placeholder="API 키 입력" autocomplete="off" onchange="loadModels()" />
       <div style="font-size:0.75rem;color:#64748b;margin-top:4px;">키를 입력하면 사용 가능한 모델 목록을 자동으로 불러옵니다.</div>
       <div style="font-size:0.75rem;color:#16a34a;margin-top:4px;">🔒 입력한 키는 <b>서버·브라우저에 저장되지 않고</b>, 문제 생성 요청 시에만 사용된 뒤 폐기됩니다.</div>
     </div>
@@ -93,9 +99,7 @@
         🤖 사용할 모델 <span id="model-load-msg" style="font-weight:400;font-size:0.8rem;color:#0ea5e9;"></span>
         <button type="button" onclick="loadModels()" title="모델 목록 새로고침" style="margin-left:auto;font-size:0.76rem;padding:4px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
       </label>
-      <select id="model-select" style="width:100%;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:0.95rem;font-family:inherit;color:#1e293b;background:#fff;">
-        <option value="claude-sonnet-4-5">claude-sonnet-4-5 (기본)</option>
-      </select>
+      <select id="model-select" class="select-field"></select>
     </div>
 
     <!-- 문제 수 -->
