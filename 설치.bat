@@ -1,32 +1,29 @@
 @echo off
-chcp 65001 >nul
+chcp 949 >nul
 cd /d "%~dp0"
 
-rem --- Python ì‹¤í–‰ê¸° ì°¾ê¸° (PATHì— pyê°€ ì—†ì–´ë„ ë™ì‘) ---
+rem --- find a Python 3.8+ interpreter (ASCII only in this section) ---
+set "PYCHK=import sys;sys.exit(0 if sys.version_info>=(3,8) else 1)"
 set "PYEXE="
-where py >nul 2>nul && set "PYEXE=py"
-if not defined PYEXE (
-  if exist "%LOCALAPPDATA%\Programs\Python\Launcher\py.exe" set "PYEXE=%LOCALAPPDATA%\Programs\Python\Launcher\py.exe"
-)
-if not defined PYEXE (
-  for /d %%D in ("%LOCALAPPDATA%\Programs\Python\Python3*") do (
-    if exist "%%D\python.exe" set "PYEXE=%%D\python.exe"
-  )
+for /d %%D in ("%LOCALAPPDATA%\Python\pythoncore-3*") do if not defined PYEXE if exist "%%D\python.exe" "%%D\python.exe" -c "%PYCHK%" >nul 2>nul && set "PYEXE=%%D\python.exe"
+for /d %%D in ("%LOCALAPPDATA%\Programs\Python\Python3*") do if not defined PYEXE if exist "%%D\python.exe" "%%D\python.exe" -c "%PYCHK%" >nul 2>nul && set "PYEXE=%%D\python.exe"
+for /d %%D in ("%ProgramFiles%\Python3*") do if not defined PYEXE if exist "%%D\python.exe" "%%D\python.exe" -c "%PYCHK%" >nul 2>nul && set "PYEXE=%%D\python.exe"
+if not defined PYEXE if exist "%USERPROFILE%\anaconda3\python.exe" "%USERPROFILE%\anaconda3\python.exe" -c "%PYCHK%" >nul 2>nul && set "PYEXE=%USERPROFILE%\anaconda3\python.exe"
+if not defined PYEXE py -c "%PYCHK%" >nul 2>nul && set "PYEXE=py"
+
+if defined PYEXE (
+  echo ============================================
+  echo   ÃÖÃÊ 1È¸ ¼³Á¤ - ÇÊ¿äÇÑ ÆĞÅ°Áö¸¦ ¼³Ä¡ÇÕ´Ï´Ù
+  echo   »ç¿ë Python: %PYEXE%
+  echo   (requirements.txt ±âÁØ: flask, pymupdf, openai, authlib, requests^)
+  echo ============================================
+  "%PYEXE%" -m pip install --upgrade pip
+  "%PYEXE%" -m pip install -r requirements.txt
+  echo.
+  echo ¼³Ä¡°¡ ³¡³µ½À´Ï´Ù. ÀÌÁ¦ "½ÇÇà.bat" À» ´õºíÅ¬¸¯ÇØ ¾ÛÀ» ½ÇÇàÇÏ¼¼¿ä.
+) else (
+  echo [¿À·ù] Python 3.8 ÀÌ»óÀ» Ã£Áö ¸øÇß½À´Ï´Ù.
+  echo https://www.python.org ¿¡¼­ ÃÖ½Å PythonÀ» ¼³Ä¡ÇÑ µÚ ´Ù½Ã ½ÇÇàÇÏ¼¼¿ä.
 )
 
-if not defined PYEXE (
-  echo [ì˜¤ë¥˜] Pythonì„ ì°¾ì§€ ëª»í–ˆìŠµë‹ˆë‹¤. Pythonì„ ë¨¼ì € ì„¤ì¹˜í•˜ì„¸ìš”.
-  pause
-  exit /b 1
-)
-
-echo ============================================
-echo   ìµœì´ˆ 1íšŒ ì„¤ì • - í•„ìš”í•œ íŒ¨í‚¤ì§€ë¥¼ ì„¤ì¹˜í•©ë‹ˆë‹¤
-echo   ì‚¬ìš© Python: %PYEXE%
-echo   (requirements.txt ê¸°ì¤€: flask, pymupdf, openai, authlib, requests)
-echo ============================================
-"%PYEXE%" -m pip install --upgrade pip
-"%PYEXE%" -m pip install -r requirements.txt
-echo.
-echo ì„¤ì¹˜ê°€ ëë‚¬ìŠµë‹ˆë‹¤. ì´ì œ "ì‹¤í–‰.bat" ì„ ë”ë¸”í´ë¦­í•´ ì•±ì„ ì‹¤í–‰í•˜ì„¸ìš”.
 pause
