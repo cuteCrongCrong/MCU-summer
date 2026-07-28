@@ -26,9 +26,16 @@ yama/
 ├── static/
 │   ├── css/style.css
 │   └── js/{common,question_gen,wrong_note}.js
+├── deploy/               ← 클라우드별 자동 설치 스크립트
+│   ├── oracle/           ← 오라클 클라우드 ({setup,update,backup}.sh, mcu.service, Caddyfile)
+│   └── gcp/              ← GCP (구성 동일)
+├── render.yaml           ← Render 배포 설정
 ├── sessions.db           ← 로컬 DB (자동 생성, git 제외)
 ├── requirements.txt      ← 필요 패키지
 ├── 설치.bat / 실행.bat    ← 더블클릭 설치·실행 (Windows)
+├── 배포.md               ← 배포 가이드 (개요·공통 절차)
+├── 배포-오라클.md         ← 오라클 클라우드 배포 가이드
+├── 배포-GCP.md           ← GCP 배포 가이드
 ├── README.md
 └── CONTRIBUTING.md       ← 🤝 팀 협업 규칙 (병합·브랜치·DB·기능 추가법)
 ```
