@@ -23,7 +23,6 @@ from db import init_db
 from llm import GATEWAY_BASE_URL, DEFAULT_MODEL
 from features.question_gen import gen_bp
 from features.wrong_note import wrong_bp
-from features.bone_ocr import bone_bp
 from features.auth import auth_bp, init_auth
 
 app = Flask(__name__)                 # 정적 파일: /static → ./static
@@ -32,7 +31,6 @@ app.secret_key = config.FLASK_SECRET_KEY   # 로그인 세션(서명 쿠키)용
 init_auth(app)                        # Authlib(구글 OAuth) 초기화
 app.register_blueprint(gen_bp)
 app.register_blueprint(wrong_bp)
-app.register_blueprint(bone_bp)
 app.register_blueprint(auth_bp)
 
 
