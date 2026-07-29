@@ -1,0 +1,39 @@
+# Render 배포 설정 (Blueprint)
+#
+# 대시보드에서 손으로 설정해도 되지만, 이 파일이 있으면 저장소를 연결할 때
+# 아래 설정이 그대로 적용된다. 자세한 절차는 배포.md 참고.
+#
+# ⚠️ disk(영구 디스크)는 유료 플랜에서만 붙는다. free 플랜은 재배포마다
+#    sessions.db 가 사라지므로 이 앱에는 쓸 수 없다.
+
+services:
+  - type: web
+    name: mcu-question-generator
+    runtime: python
+    plan: starter
+    region: singapore # 한국에서 가장 가까운 리전
+    buildCommand: pip install -r requirements.txt
+    startCommand: python serve.py
+    healthCheckPath: /healthz
+
+    disk:
+      name: data
+      mountPath: /var/data # DB_PATH가 이 안을 가리킨다
+      sizeGB: 1
+
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DB_PATH
+        value: /var/data/sessions.db
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      # 세션/게스트 쿠키 서명 키 — Render가 랜덤 생성해 넣어준다.
+      # ⚠️ 이 값이 바뀌면 모든 게스트가 자기 데이터를 잃는다(쿠키 서명 무효화).
+      - key: FLASK_SECRET_KEY
+        generateValue: true
+      # 구글 OAuth 자격증명 — 대시보드에서 직접 입력 (저장소에 남기지 않음)
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false

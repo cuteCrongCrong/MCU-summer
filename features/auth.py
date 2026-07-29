@@ -2,12 +2,15 @@
 로그인 기능 — 구글 OAuth2(Authlib 서버 사이드 리다이렉트) + users 테이블.
 
 담당 테이블: users
-연결 계약: current_user_id() 를 다른 기능(question_gen/wrong_note)이 import해
+연결 계약: current_owner() 를 다른 기능(question_gen/wrong_note)이 import해
            사용자별 데이터 분리에 사용. (CONTRIBUTING.md 4-A)
+           비로그인 방문자에게도 브라우저별 익명 소유자 id(guest_id)를 발급하므로,
+           게스트끼리도 서로의 세션/오답노트를 볼 수 없다.
 설정: config.py 가 secret_config.py/환경변수에서 client id·secret·세션키를 읽음.
       값이 없으면 GOOGLE_LOGIN_ENABLED=False 로 로그인만 비활성(앱 나머지는 정상).
 """
 
+import secrets
 from datetime import datetime
 
 from flask import Blueprint, session, redirect, url_for, jsonify
@@ -35,9 +38,40 @@ def init_auth(app):
         )
 
 
+GUEST_KEY = "guest_id"   # 세션 쿠키에 담기는 익명 소유자 id의 키
+
+
 def current_user_id():
-    """현재 로그인 사용자 id (게스트면 None). 다른 기능이 데이터 분리에 사용."""
+    """현재 로그인 사용자 id (게스트면 None)."""
     return session.get("user_id")
+
+
+def current_guest_id() -> str:
+    """
+    비로그인 방문자의 익명 소유자 id. 없으면 새로 발급해 세션 쿠키에 심는다.
+
+    브라우저마다 다른 값이 발급되므로 게스트 데이터도 방문자별로 격리된다.
+    쿠키는 Flask 서명 쿠키이므로 FLASK_SECRET_KEY가 유출되면 위조 가능하다
+    → 배포 시 반드시 고유한 키를 환경변수로 지정할 것.
+    """
+    gid = session.get(GUEST_KEY)
+    if not gid:
+        gid = secrets.token_urlsafe(16)
+        session[GUEST_KEY] = gid
+        session.permanent = True      # 브라우저를 닫아도 유지 (수명은 app.py에서 설정)
+    return gid
+
+
+def current_owner():
+    """
+    현재 요청의 데이터 소유자 (user_id, guest_id) 튜플. db.owner_clause()에 그대로 전달.
+      - 로그인 사용자 → (id, None)
+      - 게스트        → (None, 발급된 익명 id)
+    """
+    uid = session.get("user_id")
+    if uid is not None:
+        return (uid, None)
+    return (None, current_guest_id())
 
 
 # ── users DB ──
@@ -109,7 +143,12 @@ def google_callback():
 
 @auth_bp.route("/logout", methods=["POST"])
 def logout():
+    # 로그인 전에 게스트로 만들어 둔 데이터를 다시 볼 수 있도록 익명 id는 유지한다.
+    gid = session.get(GUEST_KEY)
     session.clear()
+    if gid:
+        session[GUEST_KEY] = gid
+        session.permanent = True
     return jsonify({"success": True})
 
 
