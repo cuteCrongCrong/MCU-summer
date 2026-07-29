@@ -128,11 +128,11 @@ def init_db():
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_wrong_folder ON wrong_items(folder_id)"
         )
-        # ── 로그인: 구글 계정 사용자 ──
+        # ── 로그인: Google 계정 사용자 ──
         conn.execute(
             """CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                google_sub TEXT UNIQUE NOT NULL,   -- 구글 계정 고유 id
+                google_sub TEXT UNIQUE NOT NULL,   -- Google 계정 고유 id
                 email TEXT,
                 name TEXT,
                 picture TEXT,

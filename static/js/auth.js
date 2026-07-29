@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════
-// auth.js — 구글 로그인 위젯 (헤더 우측)
+// auth.js — Google 로그인 위젯 (헤더 우측)
 //   common.js 이후 로드. /me 로 로그인 상태를 확인해 위젯을 그린다.
 //   로그인/로그아웃은 전체 페이지 이동/리로드 → 세션/오답 목록이 자동으로
 //   현재 사용자 데이터로 다시 로드됨(스크립트 간 결합 불필요).
@@ -18,7 +18,7 @@ async function loadAuth() {
   }
 }
 
-// 구글 G 로고 — 마크 정의(<symbol id="google-g">)는 index.html에 한 벌만 두고 여기서 참조한다.
+// Google G 로고 — 마크 정의(<symbol id="google-g">)는 index.html에 한 벌만 두고 여기서 참조한다.
 // 흰 타일에 얹는 이유: 헤더가 진한 파랑 그라데이션이라 컬러 로고가 그대로는 묻힌다.
 const GOOGLE_G_HTML =
   '<span style="display:inline-flex;align-items:center;justify-content:center;' +
