@@ -133,15 +133,11 @@ async function generate() {
   // UI 초기화
   document.getElementById('generate-btn').disabled = true;
   document.getElementById('status-box').style.display = 'block';
-  document.getElementById('error-box').style.display  = 'none';
+  clearErrors();
   document.getElementById('analysis-box').style.display = 'none';
   document.getElementById('result-box').style.display   = 'none';
-  ['step1','step2','step3','step4'].forEach(s => setStep(s, 'wait'));
-
-  // 단계 애니메이션 (실제로는 서버에서 한번에 처리 — UI 피드백용)
-  setStep('step1', 'active');
-  await delay(400);
-  setStep('step1', 'done'); setStep('step2', 'active');
+  document.getElementById('cancel-btn').style.display   = 'inline-block';
+  resetSteps(useSession);
 
   // FormData 구성
   const form = new FormData();
@@ -158,42 +154,208 @@ async function generate() {
     form.append('exam', examFile);
   }
 
+  genAbort = new AbortController();
   try {
-    const resp = await fetch('/generate', { method: 'POST', body: form });
-
-    setStep('step2', 'done'); setStep('step3', 'active');
-    await delay(300);
-    setStep('step3', 'done'); setStep('step4', 'active');
-    await delay(300);
-    setStep('step4', 'done'); setStep('step5', 'active');
-
-    const data = await resp.json();
-
-    setStep('step5', 'done');
-
-    if (!resp.ok || data.error) {
-      showError(data.error || '알 수 없는 오류가 발생했습니다.');
-      return;
-    }
-
-    // 새 분석이면 세션이 저장됨 → 활성 세션으로 설정하고 목록 갱신
-    if (!data.reused && data.session_id) {
-      setActiveSession(data.session_id, data.session_name);
-      loadSessions();
-    }
-
-    renderAnalysis(data.concepts, data.sample_questions, data.format_analysis, data.exam_concepts, data.priority_topics, data.type_stats, data.type_targets, data.source_info);
-    document.getElementById('result-box').style.display = 'block';
-    renderQuestions(data.questions, data.raw);
-    showGenResult();   // 결과를 다음 페이지로 표시
-
-    // 생성 이력 갱신 (방금 결과가 저장됨)
-    if (currentSessionId) loadHistory(currentSessionId);
-
+    await streamGenerate(form, genAbort.signal);
   } catch (err) {
-    showError('서버 연결에 실패했습니다. Flask 서버가 실행 중인지 확인하세요.\n' + err.message);
+    if (err.name === 'AbortError') {
+      showError('생성을 중지했습니다.');
+    } else {
+      showError('서버 연결에 실패했습니다. Flask 서버가 실행 중인지 확인하세요.\n' + err.message);
+    }
   } finally {
+    genAbort = null;
     document.getElementById('generate-btn').disabled = false;
+    document.getElementById('cancel-btn').style.display = 'none';
+  }
+}
+
+// ── 스트리밍 (SSE) ──
+// EventSource는 GET만 지원하는데 PDF를 POST로 보내야 하므로 fetch로 직접 읽는다.
+let genAbort = null;
+
+function cancelGenerate() {
+  if (genAbort) genAbort.abort();
+}
+
+// 서버의 stage.key 와 화면의 step 요소 id 가 1:1로 대응한다
+const STAGE_STEPS = ['extract', 'concepts', 'format', 'generate'];
+const STEP_ICONS = { extract: '📄', concepts: '🧠', format: '🔍', generate: '✏️' };
+
+function resetSteps(useSession) {
+  // 저장된 세션을 재사용하면 분석 단계는 아예 실행되지 않는다 → 숨기고 진행률에서도 제외
+  activeStages = useSession ? ['generate'] : STAGE_STEPS.slice();
+  stageProgress = {};
+
+  STAGE_STEPS.forEach(key => {
+    const el = document.getElementById('step-' + key);
+    el.style.display = activeStages.includes(key) ? '' : 'none';
+    el.className = 'step-item wait';
+    el.querySelector('.step-icon').textContent = STEP_ICONS[key];
+    const note = el.querySelector('.step-note');
+    if (note) note.remove();
+  });
+  renderOverallProgress();
+}
+
+function setStepNote(key, text) {
+  const el = document.getElementById('step-' + key);
+  let note = el.querySelector('.step-note');
+  if (!note) {
+    note = document.createElement('span');
+    note.className = 'step-note';
+    el.appendChild(note);
+  }
+  note.textContent = text;
+}
+
+// 단계별 진행 상황 — 전체 진행률 막대는 아래 가중치로 합산한다.
+// (오래 걸리는 단계일수록 크게 — 실제 소요 시간에 대략 비례)
+const STAGE_WEIGHTS = { extract: 15, concepts: 20, format: 20, generate: 45 };
+let stageProgress = {};      // key -> 0~1
+let activeStages = [];       // 이번 실행에서 실제로 도는 단계
+
+function setStageProgress(key, done, total) {
+  if (!(key in STAGE_WEIGHTS)) return;
+  stageProgress[key] = total > 0 ? Math.min(1, done / total) : 0;
+  setStepNote(key, total > 0 ? `${done} / ${total}` : '진행 중…');
+  renderOverallProgress();
+}
+
+function completeStage(key) {
+  stageProgress[key] = 1;
+  setStepNote(key, '완료');     // 진행률 이벤트가 없던 단계에도 표시가 남도록
+  renderOverallProgress();
+}
+
+function renderOverallProgress() {
+  const totalWeight = activeStages.reduce((s, k) => s + STAGE_WEIGHTS[k], 0) || 1;
+  const acc = activeStages.reduce((s, k) => s + STAGE_WEIGHTS[k] * (stageProgress[k] || 0), 0);
+  const pct = Math.round(acc / totalWeight * 100);
+  document.getElementById('overall-bar').style.width = pct + '%';
+  document.getElementById('overall-pct').textContent = pct + '%';
+}
+
+// HTTP 오류를 '알 수 없는 오류'로 뭉개지 않고 원인을 알려준다.
+// (응답이 JSON이 아닌 경우 — 404 HTML, 디버그 트레이스백 등 — 이 경로로 온다)
+async function describeHttpError(resp) {
+  const text = await resp.text().catch(() => '');
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed.error) return parsed.error;
+  } catch (e) { /* JSON이 아니면 아래에서 상태 코드로 안내 */ }
+
+  if (resp.status === 404) {
+    return '서버에서 스트리밍 기능(/generate/stream)을 찾을 수 없습니다.\n'
+         + 'Flask 서버가 예전 코드로 실행 중일 수 있습니다. 서버를 껐다가 다시 실행해주세요.';
+  }
+  const snippet = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+  return `서버 오류 ${resp.status} ${resp.statusText}` + (snippet ? `\n${snippet}` : '');
+}
+
+// 스트림을 읽을 수 있는 환경인지 — 요청을 보내기 '전에' 판단해야 한다.
+// 요청 후에 폴백하면 서버가 이미 생성을 시작해 토큰을 두 번 쓰게 된다.
+function canReadStream() {
+  // 'body'는 getter이므로 프로토타입에서 값을 '읽으면' 안 된다 (Illegal invocation).
+  // 존재 여부만 확인한다.
+  return typeof ReadableStream !== 'undefined' && 'body' in Response.prototype;
+}
+
+// 스트리밍을 못 쓰는 환경 — 예전처럼 한 번에 받아서 그린다
+async function fallbackGenerate(form, signal) {
+  activeStages.forEach(k => setStep('step-' + k, 'active'));
+  const resp = await fetch('/generate', { method: 'POST', body: form, signal });
+  activeStages.forEach(k => { setStep('step-' + k, 'done'); completeStage(k); });
+
+  if (!resp.ok) {
+    showError(await describeHttpError(resp));
+    return;
+  }
+  const data = await resp.json().catch(() => ({}));
+  if (data.error) {
+    showError(data.error);
+    return;
+  }
+  if (!data.reused && data.session_id) {
+    setActiveSession(data.session_id, data.session_name);
+    loadSessions();
+  }
+  renderAnalysis(data.concepts, data.sample_questions, data.format_analysis, data.exam_concepts,
+                 data.priority_topics, data.type_stats, data.type_targets, data.source_info);
+  document.getElementById('result-box').style.display = 'block';
+  renderQuestions(data.questions, data.raw);
+  showGenResult();
+  if (currentSessionId) loadHistory(currentSessionId);
+}
+
+async function streamGenerate(form, signal) {
+  if (!canReadStream()) return fallbackGenerate(form, signal);
+
+  const resp = await fetch('/generate/stream', { method: 'POST', body: form, signal });
+
+  // 스트림이 시작되기 전 오류(키 누락 등)는 평범한 JSON으로 온다
+  if (!resp.ok) {
+    showError(await describeHttpError(resp));
+    return;
+  }
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let started = false;      // 첫 문제가 오면 결과 화면으로 전환
+  let finished = false;     // done/error 없이 스트림이 끊겼는지 판별
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // SSE는 빈 줄로 이벤트를 구분한다
+    let sep;
+    while ((sep = buffer.indexOf('\n\n')) !== -1) {
+      const frame = buffer.slice(0, sep).trim();
+      buffer = buffer.slice(sep + 2);
+      if (!frame.startsWith('data: ')) continue;
+
+      const ev = JSON.parse(frame.slice(6));
+      if (ev.type === 'stage') {
+        setStep('step-' + ev.key, ev.status);
+        if (ev.status === 'active') {
+          setStageProgress(ev.key, 0, ev.total || 0);
+        } else if (ev.status === 'done') {
+          completeStage(ev.key);
+        }
+      } else if (ev.type === 'progress') {
+        setStageProgress(ev.key, ev.done, ev.total);
+      } else if (ev.type === 'analysis') {
+        // 분석 결과는 미리 그려두고, 화면 전환은 문제까지 다 나온 뒤에 한다
+        const a = ev.payload;
+        if (!a.reused && a.session_id) {
+          setActiveSession(a.session_id, a.session_name);
+          loadSessions();
+        }
+        renderAnalysis(a.concepts, a.sample_questions, a.format_analysis, a.exam_concepts,
+                       a.priority_topics, a.type_stats, a.type_targets, a.source_info);
+        document.getElementById('result-box').style.display = 'block';
+      } else if (ev.type === 'question') {
+        // 문제는 모아뒀다가 done에서 한 번에 보여준다 (진행률만 실시간)
+        setStageProgress('generate', ev.index, ev.total);
+      } else if (ev.type === 'done') {
+        renderQuestions(ev.payload.questions, ev.payload.raw);
+        showGenResult();
+        if (currentSessionId) loadHistory(currentSessionId);   // 방금 결과가 저장됨
+        finished = true;
+      } else if (ev.type === 'error') {
+        finished = true;
+        showError(ev.message || '생성 중 오류가 발생했습니다.');
+        return;
+      }
+    }
+  }
+
+  // done/error 없이 연결이 끊긴 경우 — 조용히 멈춘 것처럼 보이지 않도록 알린다
+  if (!finished) {
+    showError('생성이 끝나기 전에 서버와의 연결이 끊겼습니다. 서버 상태를 확인하고 다시 시도해주세요.');
   }
 }
 
@@ -434,9 +596,18 @@ function populateModels(models) {
 }
 
 function showError(msg) {
-  const box = document.getElementById('error-box');
+  // 결과 화면으로 넘어간 뒤(스트리밍 도중 오류)에는 입력 화면의 오류 상자가 보이지 않으므로
+  // 현재 보이는 화면 쪽에 표시한다.
+  const onResult = !document.getElementById('gen-result-view').classList.contains('hidden');
+  const box = document.getElementById(onResult ? 'result-error-box' : 'error-box');
   box.textContent = '⚠️ ' + msg;
   box.style.display = 'block';
+}
+
+function clearErrors() {
+  ['error-box', 'result-error-box'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
 }
 
 // ── 분석 결과 렌더링 ──

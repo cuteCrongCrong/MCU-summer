@@ -179,6 +179,51 @@ input:focus { outline: none; border-color: var(--primary); }
 .step-item.done  .step-text { color: var(--success); }
 .step-item.active .step-text { color: var(--primary); font-weight: 600; }
 .step-item.wait  .step-text { color: var(--text-muted); }
+/* 단계 옆 부가 정보 (예: 문제 3/10) */
+.step-note { font-size: 0.82rem; color: var(--text-muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+.step-item.active .step-note { color: var(--primary); font-weight: 600; }
+.step-item.done  .step-note { color: var(--success); }
+
+/* 전체 진행률 */
+.overall-pct {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+}
+.progress-track {
+  height: 8px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: -8px 0 18px;
+}
+.progress-bar {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--primary) 0%, var(--accent) 100%);
+  transition: width 0.35s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress-bar { transition: none; }
+}
+
+/* 생성 중지 버튼 — 진행 중일 때만 노출 */
+.cancel-btn {
+  display: none;
+  margin-left: auto;
+  font-size: 0.78rem;
+  padding: 4px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--danger);
+  font-family: inherit;
+  cursor: pointer;
+}
+.cancel-btn:hover { background: #fef2f2; }
+.cancel-btn:focus-visible { outline: 2px solid var(--danger); outline-offset: 2px; }
 
 /* ── 개념/패턴 요약 ── */
 #analysis-box { display: none; }
@@ -341,8 +386,71 @@ input:focus { outline: none; border-color: var(--primary); }
   background: var(--surface); color: var(--primary);
   box-shadow: 0 -3px 10px rgba(0,0,0,0.05);
 }
+.tab-btn-home { flex: 0 0 auto; }
 main { margin-top: 20px; }
 .hidden { display: none !important; }
+
+/* ── 홈(시작) 화면 ── */
+.home-greeting { padding: 4px 4px 0; }
+.home-greeting h2 {
+  font-size: 1.35rem; font-weight: 800; color: var(--text); letter-spacing: -0.4px;
+}
+.home-greeting p { margin-top: 6px; font-size: 0.9rem; color: var(--text-muted); }
+
+/* 이어서 하기 / 첫 사용자 안내 — 홈에서 가장 강조되는 카드 */
+.resume-card { border: 2px solid var(--primary); }
+.resume-label {
+  font-size: 0.75rem; font-weight: 800; color: var(--primary);
+  letter-spacing: 0.3px; margin-bottom: 8px;
+}
+.resume-name {
+  font-size: 1.05rem; font-weight: 700; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.resume-meta { margin-top: 4px; font-size: 0.83rem; color: var(--text-muted); }
+.resume-actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+.resume-primary { flex: 1 1 220px; margin: 0; }
+
+/* 기능 목록 (한 줄 = 한 기능) */
+.home-list {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
+}
+.home-row {
+  width: 100%; display: flex; align-items: center; gap: 14px;
+  padding: 16px 18px; border: none; border-bottom: 1px solid var(--border);
+  background: var(--surface); font-family: inherit; text-align: left; cursor: pointer;
+  transition: background 0.15s;
+}
+.home-row:last-child { border-bottom: none; }
+.home-row:hover { background: #f8fafc; }
+.home-row:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.home-row-icon { font-size: 1.5rem; width: 32px; text-align: center; flex-shrink: 0; }
+.home-row-body { flex: 1; min-width: 0; }
+.home-row-title { display: block; font-size: 1rem; font-weight: 700; color: var(--text); }
+.home-row-desc {
+  display: block; margin-top: 2px; font-size: 0.83rem; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.home-row-arrow { font-size: 1.4rem; color: #cbd5e1; flex-shrink: 0; }
+
+/* 최근 활동 */
+.recent-row {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface); font-family: inherit; text-align: left;
+  cursor: pointer; margin-top: 8px; transition: border-color 0.15s;
+}
+.recent-row:first-child { margin-top: 0; }
+.recent-row:hover { border-color: var(--primary); }
+.recent-row:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.recent-icon { font-size: 1.1rem; flex-shrink: 0; }
+.recent-body { flex: 1; min-width: 0; }
+.recent-name {
+  display: block; font-size: 0.9rem; font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.recent-meta { display: block; margin-top: 2px; font-size: 0.75rem; color: #94a3b8; }
 /* 탭 패널 / 서브뷰 안의 카드들도 세로 간격 유지 */
 .tab-panel, #gen-input-view, #gen-result-view, #wrong-view {
   display: flex; flex-direction: column; gap: 24px;

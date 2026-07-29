@@ -25,11 +25,14 @@ function setStep(stepId, state) {
 
 // ── 상단 탭 전환 ──
 // 새 탭을 추가하려면 아래 배열에 id 접미사를 추가하세요. (예: 'login')
+// 'home'은 시작 화면 — 탭 바를 숨기고, 다른 탭으로 들어가면 다시 보인다.
 function switchTab(name) {
-  ['generator', 'wrong', 'bones'].forEach(t => {
+  ['home', 'generator', 'wrong', 'bones'].forEach(t => {
     document.getElementById('tab-' + t).classList.toggle('hidden', t !== name);
     document.getElementById('tabbtn-' + t).classList.toggle('active', t === name);
   });
+  document.getElementById('tab-bar').classList.toggle('hidden', name === 'home');
+  if (name === 'home')  loadHome();
   if (name === 'wrong') loadWrongFolders();
   if (name === 'bones') loadBoneBank();
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -127,7 +130,21 @@ function renderQuestions(questions, raw, viewOpts) {
     return;
   }
 
-  questions.forEach((q, idx) => {
+  questions.forEach((q, idx) => container.appendChild(buildQuestionCard(q, idx, folder)));
+
+  // 원본 펼치기 (오답 폴더 보기 모드에서는 원본 응답이 없으므로 생략)
+  if (raw) appendRawSection(container, raw);
+}
+
+// 원본 응답 접기 영역 — 렌더링 완료 시점에 붙인다 (스트리밍은 done 이벤트에서)
+function appendRawSection(container, raw) {
+  const raw_section = document.createElement('details');
+  raw_section.innerHTML = `<summary>📄 LLM 원본 응답 보기</summary><pre>${escHtml(raw)}</pre>`;
+  container.appendChild(raw_section);
+}
+
+// 문제 카드 1장을 만든다
+function buildQuestionCard(q, idx, folder) {
     const choices = q['선택지'] || [];
     // 유형 판별: 명시된 유형 우선, 없으면 선택지 유무로 추정
     const rawType = (q['유형'] || '').replace(/\s/g, '');
@@ -213,15 +230,7 @@ function renderQuestions(questions, raw, viewOpts) {
         ${answerBlock}
       `;
     }
-    container.appendChild(card);
-  });
-
-  // 원본 펼치기 (오답 폴더 보기 모드에서는 원본 응답이 없으므로 생략)
-  if (raw) {
-    const raw_section = document.createElement('details');
-    raw_section.innerHTML = `<summary>📄 LLM 원본 응답 보기</summary><pre>${escHtml(raw)}</pre>`;
-    container.appendChild(raw_section);
-  }
+    return card;
 }
 
 function selectChoice(el, qIdx, answerIdx) {

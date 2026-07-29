@@ -12,7 +12,7 @@
 import json
 from datetime import datetime
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response
 
 from db import get_conn, owner_clause, LEGACY_PROVIDER
 from features.auth import current_user_id
@@ -23,10 +23,11 @@ from providers.factory import (
     DEFAULT_PROVIDER, UnknownProviderError, get_provider, list_providers,
 )
 from llm import (
-    QUESTION_TYPES,
-    extract_text_from_pdf, truncate, build_source_info,
-    run_analysis, compute_type_targets,
-    build_question_generation_prompt, call_llm, parse_questions,
+    QUESTION_TYPES, StreamingQuestionParser,
+    read_pdf_pages, describe_images_progressively, assemble_pdf_text,
+    truncate, build_source_info,
+    analyze_concepts_progressively, analyze_exam_format_progressively,
+    compute_type_targets, build_question_generation_prompt, call_llm_stream,
 )
 
 gen_bp = Blueprint("gen", __name__)
@@ -352,96 +353,216 @@ def get_models():
 # 라우트: 예상문제 생성
 # ──────────────────────────────────────────────
 
-@gen_bp.route("/generate", methods=["POST"])
-def generate():
+class GenerateParamError(Exception):
+    """요청 값이 잘못된 경우 — 라우트가 상태 코드와 함께 그대로 응답한다."""
+
+    def __init__(self, message: str, status: int = 400):
+        super().__init__(message)
+        self.status = status
+
+
+def read_generate_params() -> dict:
+    """
+    요청에서 생성에 필요한 값을 전부 꺼내 dict로 반환.
+
+    스트리밍 경로는 응답 제너레이터가 **요청 컨텍스트가 닫힌 뒤** 실행되므로,
+    PDF 내용까지 여기서 bytes로 읽어둬야 한다. (뒤늦게 request를 만지면 터짐)
+    """
+    api_key = request.form.get("api_key", "").strip()
+    if not api_key:
+        raise GenerateParamError("API 키를 입력해주세요.")
+
     try:
-        api_key    = request.form.get("api_key", "").strip()
-        weight     = int(request.form.get("weight", 5))
-        session_id = request.form.get("session_id", "").strip()
-        uid        = current_user_id()
+        provider = get_provider(request.form.get("provider"))
+    except UnknownProviderError as e:
+        raise GenerateParamError(str(e))
 
+    try:
+        weight = int(request.form.get("weight", 5))
+    except (TypeError, ValueError):
+        raise GenerateParamError("기출 반영 강도는 숫자여야 합니다.")
+
+    # 유형별 개수 직접 지정(수동 모드) — 있으면 count/type_targets를 여기서 확정
+    manual_targets = None
+    type_targets_raw = request.form.get("type_targets", "").strip()
+    if type_targets_raw:
         try:
-            provider = get_provider(request.form.get("provider"))
-        except UnknownProviderError as e:
-            return jsonify({"error": str(e)}), 400
-        model = request.form.get("model", "").strip() or provider.default_model
-
-        if not api_key:
-            return jsonify({"error": "API 키를 입력해주세요."}), 400
-
-        # 유형별 개수 직접 지정(수동 모드) — 있으면 count/type_targets를 여기서 확정
-        manual_targets = None
-        type_targets_raw = request.form.get("type_targets", "").strip()
-        if type_targets_raw:
+            parsed = json.loads(type_targets_raw)
+        except (TypeError, ValueError):
+            raise GenerateParamError("유형별 개수 형식이 올바르지 않습니다.")
+        if not isinstance(parsed, dict):
+            raise GenerateParamError("유형별 개수 형식이 올바르지 않습니다.")
+        manual_targets = {}
+        for t in QUESTION_TYPES:
             try:
-                parsed = json.loads(type_targets_raw)
+                v = int(parsed.get(t, 0) or 0)
             except (TypeError, ValueError):
-                return jsonify({"error": "유형별 개수 형식이 올바르지 않습니다."}), 400
-            if not isinstance(parsed, dict):
-                return jsonify({"error": "유형별 개수 형식이 올바르지 않습니다."}), 400
-            manual_targets = {}
-            for t in QUESTION_TYPES:
-                try:
-                    v = int(parsed.get(t, 0) or 0)
-                except (TypeError, ValueError):
-                    return jsonify({"error": "유형별 개수는 정수여야 합니다."}), 400
-                if v < 0:
-                    return jsonify({"error": "유형별 개수는 0 이상이어야 합니다."}), 400
-                manual_targets[t] = v
-            count = sum(manual_targets.values())
-        else:
+                raise GenerateParamError("유형별 개수는 정수여야 합니다.")
+            if v < 0:
+                raise GenerateParamError("유형별 개수는 0 이상이어야 합니다.")
+            manual_targets[t] = v
+        count = sum(manual_targets.values())
+    else:
+        try:
             count = int(request.form.get("count", 5))
+        except (TypeError, ValueError):
+            raise GenerateParamError("문제 수는 숫자여야 합니다.")
 
-        if not (1 <= count <= 30):
-            return jsonify({"error": "문제 수는 1~30개 사이로 설정해주세요."}), 400
-        if not (1 <= weight <= 10):
-            return jsonify({"error": "기출 반영 강도는 1~10 사이로 설정해주세요."}), 400
+    if not (1 <= count <= 30):
+        raise GenerateParamError("문제 수는 1~30개 사이로 설정해주세요.")
+    if not (1 <= weight <= 10):
+        raise GenerateParamError("기출 반영 강도는 1~10 사이로 설정해주세요.")
 
+    session_id = request.form.get("session_id", "").strip()
+    lecture_bytes = exam_bytes = None
+    lecture_name = ""
+    if not session_id:
+        lecture_file = request.files.get("lecture")
+        exam_file    = request.files.get("exam")
+        if not lecture_file or not exam_file:
+            raise GenerateParamError("강의자료와 기출문제 파일을 모두 업로드해주세요.")
+        lecture_bytes = lecture_file.read()
+        exam_bytes    = exam_file.read()
+        lecture_name  = lecture_file.filename or "강의자료"
+
+    return {
+        "api_key":        api_key,
+        "provider":       provider,
+        "model":          request.form.get("model", "").strip() or provider.default_model,
+        "count":          count,
+        "weight":         weight,
+        "manual_targets": manual_targets,
+        "session_id":     session_id,
+        "uid":            current_user_id(),
+        "lecture_bytes":  lecture_bytes,
+        "exam_bytes":     exam_bytes,
+        "lecture_name":   lecture_name,
+        "name":           request.form.get("name", "").strip(),
+    }
+
+
+def _forward_progress(gen, key: str, total: int):
+    """
+    llm.py의 진행률 제너레이터(완료 개수를 yield하고 결과를 return)를
+    화면용 progress 이벤트로 바꿔 흘려보내고, 최종 결과를 돌려준다.
+    """
+    while True:
+        try:
+            done = next(gen)
+        except StopIteration as stop:
+            return stop.value
+        yield {"type": "progress", "key": key, "done": done, "total": total}
+
+
+def _batch_targets(type_slots, offset, batch_count) -> dict:
+    """이번 배치가 가져갈 유형별 개수. 슬롯을 잘라 세므로 전체 합계가 보존된다."""
+    if type_slots is None:
+        return {}
+    batch_slice = type_slots[offset: offset + batch_count]
+    return {t: batch_slice.count(t) for t in QUESTION_TYPES if batch_slice.count(t)}
+
+
+def run_generation_events(p: dict):
+    """
+    문제 생성 파이프라인을 진행 이벤트를 내보내는 제너레이터로 실행.
+
+    이벤트 종류:
+      {"type": "stage",    "key": ..., "status": "active"|"done", ...}
+      {"type": "analysis", "payload": {...}}      분석 결과 (경로 B에서만)
+      {"type": "question", "index": n, "total": N, "question": {...}}
+      {"type": "done",     "payload": {...}}      기존 /generate 응답과 동일한 형태
+      {"type": "error",    "message": ..., "status": 4xx}
+
+    /generate 는 이 제너레이터를 끝까지 소진해 done 페이로드만 반환하고,
+    /generate/stream 은 각 이벤트를 그대로 흘려보낸다 → 로직이 한 벌만 존재한다.
+    """
+    api_key, provider = p["api_key"], p["provider"]
+    model, count, weight = p["model"], p["count"], p["weight"]
+    session_id, uid = p["session_id"], p["uid"]
+
+    try:
         # ── 경로 A: 저장된 세션 재사용 (분석 LLM 호출 0회 → 토큰 절약) ──
         if session_id:
             analysis = load_session(int(session_id), uid)   # 본인 세션만 재사용 가능
             if not analysis:
-                return jsonify({"error": "세션을 찾을 수 없습니다. 새로 분석해주세요."}), 404
+                yield {"type": "error", "status": 404,
+                       "message": "세션을 찾을 수 없습니다. 새로 분석해주세요."}
+                return
             reused = True
         # ── 경로 B: 새 파일 업로드 → 분석 후 세션 저장 ──
         else:
-            lecture_file = request.files.get("lecture")
-            exam_file    = request.files.get("exam")
-            if not lecture_file or not exam_file:
-                return jsonify({"error": "강의자료와 기출문제 파일을 모두 업로드해주세요."}), 400
-
+            yield {"type": "stage", "key": "extract", "status": "active"}
             # 강의자료: 텍스트만 추출 (이미지 설명 생략)
-            lecture_raw = extract_text_from_pdf(lecture_file, api_key, model,
-                                                describe_images=False, provider=provider)
+            lecture_pages, _ = read_pdf_pages(p["lecture_bytes"], api_key,
+                                              describe_images=False)
+            lecture_raw = assemble_pdf_text(lecture_pages)
             # 기출문제: 이미지/그림 페이지는 Vision LLM 설명으로 보존
             #  (예: 신체 부위 그림 → 부위 이름 쓰기 문제 등)
-            exam_raw    = extract_text_from_pdf(exam_file, api_key, model,
-                                                describe_images=True, provider=provider)
+            exam_pages, img_jobs = read_pdf_pages(p["exam_bytes"], api_key,
+                                                  describe_images=True)
+            total_imgs = len(img_jobs)
+            yield {"type": "progress", "key": "extract", "done": 0, "total": total_imgs}
+            for done_imgs in describe_images_progressively(img_jobs, api_key, model, provider):
+                yield {"type": "progress", "key": "extract",
+                       "done": done_imgs, "total": total_imgs}
+            exam_raw = assemble_pdf_text(exam_pages, total_imgs)
+
             lecture_text = truncate(lecture_raw)
             exam_text    = truncate(exam_raw)
-            analysis = run_analysis(lecture_text, exam_text, api_key, model, provider)
-            # 원문 반영 범위(전체 읽었는지/일부만인지) 기록
-            analysis["source_info"] = {
-                "lecture": build_source_info(lecture_raw),
+            source_info = {
+                "lecture": build_source_info(lecture_raw),   # 원문 반영 범위
                 "exam":    build_source_info(exam_raw),
             }
+            yield {"type": "stage", "key": "extract", "status": "done",
+                   "source_info": source_info}
+
+            yield {"type": "stage", "key": "concepts", "status": "active"}
+            yield {"type": "progress", "key": "concepts", "done": 0, "total": 2}
+            gen1 = analyze_concepts_progressively(lecture_text, exam_text,
+                                                  api_key, model, provider)
+            part1 = yield from _forward_progress(gen1, "concepts", 2)
+            yield {"type": "stage", "key": "concepts", "status": "done"}
+
+            yield {"type": "stage", "key": "format", "status": "active"}
+            yield {"type": "progress", "key": "format", "done": 0, "total": 2}
+            gen2 = analyze_exam_format_progressively(exam_text, part1["type_stats"],
+                                                     api_key, model, provider)
+            part2 = yield from _forward_progress(gen2, "format", 2)
+            yield {"type": "stage", "key": "format", "status": "done"}
+
+            analysis = {**part1, **part2, "source_info": source_info}
 
             # 세션 저장 (이름: 사용자 지정 or 파일명+시각) — 현재 사용자 소유
-            base = (lecture_file.filename or "강의자료").rsplit(".", 1)[0]
-            name = request.form.get("name", "").strip() or \
-                   f"{base} · {datetime.now().strftime('%m/%d %H:%M')}"
+            base = p["lecture_name"].rsplit(".", 1)[0]
+            name = p["name"] or f"{base} · {datetime.now().strftime('%m/%d %H:%M')}"
             session_id = save_session(name, model, analysis, uid, provider.name)
             analysis["name"] = name
             reused = False
 
+        type_stats = analysis.get("type_stats", {})
+        type_targets = (p["manual_targets"] if p["manual_targets"] is not None
+                        else compute_type_targets(type_stats, count))
+
+        yield {"type": "analysis", "payload": {
+            "session_id":       session_id,
+            "session_name":     analysis.get("name", ""),
+            "reused":           reused,
+            "concepts":         analysis.get("concepts", {}),
+            "exam_concepts":    analysis.get("exam_concepts", {}),
+            "priority_topics":  analysis.get("priority_topics", []),
+            "type_stats":       type_stats,
+            "type_targets":     type_targets,
+            "source_info":      analysis.get("source_info", {}),
+            "sample_questions": analysis.get("sample_questions", ""),
+            "format_analysis":  analysis.get("format_analysis", ""),
+        }}
+
         # ── 공통: 예상문제 생성 (분석 자산 재사용) ──
         # 문제마다 증례 지문+선택지+해설+함정포인트를 요구하는 출력 포맷이라
         # count가 커지면 한 번의 LLM 호출로는 max_tokens을 넘겨 응답이 잘리고
-        # (---END--- 누락) parse_questions()가 전부 버려버리는 문제가 있었다.
+        # (---END--- 누락) 파싱이 전부 버려버리는 문제가 있었다.
         # → GEN_BATCH_SIZE 문제씩 여러 번 호출해 잘림을 방지하고 결과를 합친다.
-        type_stats   = analysis.get("type_stats", {})
-        type_targets = manual_targets if manual_targets is not None else compute_type_targets(type_stats, count)
-
+        #
         # 유형별 목표를 슬롯 리스트로 펼쳐서 배치 단위로 잘라내면(비율 재계산 없이)
         # 각 유형의 합계가 배치를 나눠도 원래 type_targets와 정확히 일치한다.
         type_slots = None
@@ -450,17 +571,12 @@ def generate():
             for t in QUESTION_TYPES:
                 type_slots.extend([t] * type_targets.get(t, 0))
 
-        questions = []
-        raw_parts = []
-        remaining = count
-        offset = 0
+        yield {"type": "stage", "key": "generate", "status": "active", "total": count}
+
+        questions, raw_parts = [], []
+        remaining, offset = count, 0
         while remaining > 0:
-            batch_count  = min(GEN_BATCH_SIZE, remaining)
-            if type_slots is not None:
-                batch_slice = type_slots[offset: offset + batch_count]
-                batch_targets = {t: batch_slice.count(t) for t in QUESTION_TYPES if batch_slice.count(t) > 0}
-            else:
-                batch_targets = {}
+            batch_count = min(GEN_BATCH_SIZE, remaining)
             batch_prompt = build_question_generation_prompt(
                 analysis.get("concepts", {}),
                 analysis.get("sample_questions", ""),
@@ -468,26 +584,33 @@ def generate():
                 batch_count,
                 analysis.get("exam_concepts", {}),
                 analysis.get("priority_topics", []),
-                weight, batch_targets,
+                weight, _batch_targets(type_slots, offset, batch_count),
             )
-            batch_raw = call_llm(batch_prompt, api_key, model,
-                                 provider=provider, max_tokens=GEN_MAX_TOKENS)
-            raw_parts.append(batch_raw)
-            questions.extend(parse_questions(batch_raw))
+            # 조각을 받는 즉시 파싱해, 완성된 문제부터 화면에 내보낸다
+            parser = StreamingQuestionParser()
+            batch_raw = []
+            for piece in call_llm_stream(batch_prompt, api_key, model,
+                                         provider=provider, max_tokens=GEN_MAX_TOKENS):
+                batch_raw.append(piece)
+                for q in parser.feed(piece):
+                    questions.append(q)
+                    q["번호"] = str(len(questions))   # 배치를 가로질러 이어지는 번호
+                    yield {"type": "question", "index": len(questions),
+                           "total": count, "question": q}
+            raw_parts.append("".join(batch_raw))
             offset += batch_count
             remaining -= batch_count
 
-        for i, q in enumerate(questions, start=1):
-            q["번호"] = str(i)
-        question_raw = "\n\n".join(raw_parts)
+        yield {"type": "stage", "key": "generate", "status": "done",
+               "generated": len(questions)}
 
-        # 생성 이력 저장 (세션에 연결)
+        question_raw = "\n\n".join(raw_parts)
         generation_id = save_generation(
             int(session_id), count, weight, model, type_targets, questions,
             question_raw, provider.name,
         )
 
-        return jsonify({
+        yield {"type": "done", "payload": {
             "success":          True,
             "session_id":       session_id,          # 재사용용 세션 id
             "session_name":     analysis.get("name", ""),
@@ -506,13 +629,62 @@ def generate():
             "model":            model,
             "provider":         provider.name,
             "weight":           weight,
-        })
+        }}
 
+    # 스트리밍은 HTTP 상태를 이미 보낸 뒤라 오류도 이벤트로 흘려보내야 한다
     except ProviderAuthError as e:
-        return jsonify({"error": str(e)}), 401
+        yield {"type": "error", "status": 401, "message": str(e)}
     except ProviderRateLimitError as e:
-        return jsonify({"error": str(e)}), 429
+        yield {"type": "error", "status": 429, "message": str(e)}
     except ProviderError as e:
-        return jsonify({"error": str(e)}), 400
+        yield {"type": "error", "status": 400, "message": str(e)}
     except Exception as e:
-        return jsonify({"error": f"서버 오류: {str(e)}"}), 500
+        yield {"type": "error", "status": 500, "message": f"서버 오류: {str(e)}"}
+
+
+@gen_bp.route("/generate", methods=["POST"])
+def generate():
+    """비스트리밍 경로 — 같은 파이프라인을 끝까지 돌린 뒤 결과만 한 번에 반환."""
+    try:
+        params = read_generate_params()
+    except GenerateParamError as e:
+        return jsonify({"error": str(e)}), e.status
+
+    for ev in run_generation_events(params):
+        if ev["type"] == "error":
+            return jsonify({"error": ev["message"]}), ev["status"]
+        if ev["type"] == "done":
+            return jsonify(ev["payload"])
+    return jsonify({"error": "생성 결과를 받지 못했습니다."}), 500
+
+
+@gen_bp.route("/generate/stream", methods=["POST"])
+def generate_stream():
+    """
+    스트리밍 경로 — 진행 상황과 완성된 문제를 SSE로 흘려보낸다.
+
+    EventSource는 GET만 지원하는데 여기는 PDF를 multipart POST로 받으므로,
+    프런트는 fetch + ReadableStream으로 읽는다. (형식은 SSE 그대로)
+    """
+    # 파라미터 오류는 스트림을 열기 전이라 정상적인 HTTP 상태 코드로 응답할 수 있다.
+    # 스트림이 시작된 뒤(200 전송 후)의 오류는 error 이벤트로만 알릴 수 있다.
+    try:
+        params = read_generate_params()
+    except GenerateParamError as e:
+        return jsonify({"error": str(e)}), e.status
+
+    def sse():
+        try:
+            for ev in run_generation_events(params):
+                # ensure_ascii=False로 한글을 그대로, 줄바꿈은 \n으로 이스케이프되어
+                # SSE 프레임 구분(빈 줄)과 충돌하지 않는다.
+                yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+        except Exception as e:      # 제너레이터 밖에서 터진 예외도 이벤트로 전달
+            fallback = {"type": "error", "status": 500,
+                        "message": f"서버 오류: {str(e)}"}
+            yield f"data: {json.dumps(fallback, ensure_ascii=False)}\n\n"
+
+    return Response(sse(), mimetype="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",   # 프록시(nginx 등)가 버퍼링해 스트림을 막지 않도록
+    })

@@ -78,6 +78,30 @@ class OpenAICompatibleProvider(Provider):
             )
         return response.choices[0].message.content
 
+    def complete_stream(self, prompt: str, api_key: str, model: str,
+                        max_tokens: int = None):
+        """
+        응답을 델타 조각으로 흘려보낸다.
+
+        주의 — 스트리밍은 예외가 호출 시점이 아니라 **이터레이션 도중** 발생한다.
+        _translate_errors()가 제너레이터 본문 전체를 감싸고 있어야 조각을 받다가
+        생긴 오류도 번역된다. (with 블록은 yield 사이에도 계속 활성 상태)
+        """
+        with _translate_errors(self.label):
+            with self._client(api_key).chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=max_tokens or self.max_tokens,
+                stream=True,
+            ) as stream:
+                for chunk in stream:
+                    # 마지막 usage 전용 청크 등 choices가 빈 경우가 있다
+                    if not chunk.choices:
+                        continue
+                    delta = chunk.choices[0].delta.content
+                    if delta:
+                        yield delta
+
     def describe_image(self, png_bytes: bytes, api_key: str, model: str) -> str:
         """
         Vision LLM으로 이미지가 '무엇인지' 한국어로 설명 생성.
