@@ -443,6 +443,17 @@ main { margin-top: 20px; }
   .home-card:hover { transform: none; }
 }
 
+/* 세션 목록 더 보기 / 접기 */
+.session-more-btn {
+  width: 100%; margin-top: 8px; padding: 9px 12px;
+  border: 1px dashed var(--border); border-radius: 10px;
+  background: var(--surface); color: var(--text-muted);
+  font-size: 0.82rem; font-weight: 600; font-family: inherit; cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.session-more-btn:hover { border-color: var(--primary); color: var(--primary); }
+.session-more-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
 /* ── 생성 문제 관리(보관함) — 시험지 카드 ── */
 .paper-grid {
   display: grid;

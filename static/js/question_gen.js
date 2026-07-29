@@ -359,6 +359,14 @@ async function streamGenerate(form, signal) {
 
 // ── 세션 관리 ──
 let sessionCache = [];
+// 세션이 쌓여도 생성 동선(업로드·생성 버튼)이 아래로 밀리지 않도록 기본은 최근 3개만.
+const SESSION_PREVIEW_COUNT = 3;
+let sessionListExpanded = false;
+
+function toggleSessionList() {
+  sessionListExpanded = !sessionListExpanded;
+  renderSessionList();
+}
 
 async function loadSessions() {
   const listEl = document.getElementById('session-list');
@@ -378,7 +386,20 @@ function renderSessionList() {
     listEl.innerHTML = '<span style="color:#94a3b8;">저장된 세션이 없습니다. 파일을 분석하면 자동으로 저장됩니다.</span>';
     return;
   }
-  listEl.innerHTML = sessionCache.map(s => {
+  // 최근 것부터 3개만 (서버가 id 내림차순으로 준다).
+  // 선택된 세션이 그 밖에 있으면 함께 보여준다 — '선택됨'이 안 보이면 혼란스럽다.
+  let visible = sessionCache;
+  let hiddenCount = 0;
+  if (!sessionListExpanded && sessionCache.length > SESSION_PREVIEW_COUNT) {
+    visible = sessionCache.slice(0, SESSION_PREVIEW_COUNT);
+    if (currentSessionId && !visible.some(s => s.id === currentSessionId)) {
+      const active = sessionCache.find(s => s.id === currentSessionId);
+      if (active) visible = visible.concat(active);
+    }
+    hiddenCount = sessionCache.length - visible.length;
+  }
+
+  listEl.innerHTML = visible.map(s => {
     const ts = s.type_stats || {};
     const compo = ts['총문항'] ? formatTypeCounts(ts) : '';
     const active = (s.id === currentSessionId);
@@ -395,6 +416,18 @@ function renderSessionList() {
       </div>
     </div>`;
   }).join('');
+
+  if (hiddenCount > 0) {
+    listEl.innerHTML += `
+      <button type="button" class="session-more-btn" onclick="toggleSessionList()">
+        ▾ 이전 세션 ${hiddenCount}개 더 보기
+      </button>`;
+  } else if (sessionListExpanded && sessionCache.length > SESSION_PREVIEW_COUNT) {
+    listEl.innerHTML += `
+      <button type="button" class="session-more-btn" onclick="toggleSessionList()">
+        ▴ 최근 ${SESSION_PREVIEW_COUNT}개만 보기
+      </button>`;
+  }
 }
 
 function updateSessionListHighlight() {
