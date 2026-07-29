@@ -16,8 +16,20 @@ async function loadHome() {
 
   renderHomeGreeting(me, sessions);
   renderResumeCard(sessions[0]);
-  renderHomeCounts(sessions, folders);
+  renderHomeCounts(sessions, folders, await countPapers(sessions));
   renderHomeRecent(sessions, folders);
+}
+
+// 보관함 요약(시험지 수·문제 수) — 세션별 회차 목록을 합산한다
+async function countPapers(sessions) {
+  try {
+    const lists = await Promise.all(sessions.map(s =>
+      fetchJson('/session/' + s.id + '/generations').then(d => d.generations || [])));
+    const all = lists.flat();
+    return { count: all.length, questions: all.reduce((n, g) => n + (g.num_questions || 0), 0) };
+  } catch (err) {
+    return { count: 0, questions: 0 };
+  }
 }
 
 async function fetchJson(url) {
@@ -69,10 +81,14 @@ function openSessionFromHome(sess) {
 }
 
 // 카드 설명은 두 줄 구성이라 <br>로 줄을 맞춘다 (숫자만 들어가므로 안전)
-function renderHomeCounts(sessions, folders) {
+function renderHomeCounts(sessions, folders, papers) {
   document.getElementById('home-gen-desc').innerHTML = sessions.length
     ? `저장된 세션 ${sessions.length}개<br>분석 없이 바로 생성`
     : '강의자료로<br>예상문제 만들기';
+
+  document.getElementById('home-archive-desc').innerHTML = papers.count
+    ? `시험지 ${papers.count}장<br>문제 ${papers.questions}개`
+    : '만든 문제<br>다시 보기';
 
   const items = folders.reduce((sum, f) => sum + (f.item_count || 0), 0);
   document.getElementById('home-wrong-desc').innerHTML = folders.length

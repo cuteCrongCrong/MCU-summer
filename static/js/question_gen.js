@@ -86,14 +86,12 @@ function setActiveSession(id, name) {
   document.getElementById('lecture-name').textContent = '';
   document.getElementById('exam-name').textContent = '';
   updateSessionListHighlight();
-  loadHistory(id);
 }
 
 function clearSession() {
   currentSessionId = null;
   document.getElementById('active-session-bar').style.display = 'none';
   document.getElementById('generate-btn').textContent = '✨ 예상문제 생성하기';
-  document.getElementById('history-card').style.display = 'none';
   updateSessionListHighlight();
 }
 
@@ -285,7 +283,7 @@ async function fallbackGenerate(form, signal) {
   document.getElementById('result-box').style.display = 'block';
   renderQuestions(data.questions, data.raw);
   showGenResult();
-  if (currentSessionId) loadHistory(currentSessionId);
+  archiveLoaded = false;   // 보관함 캐시 무효화 — 다음에 열 때 새 결과가 보이도록
 }
 
 async function streamGenerate(form, signal) {
@@ -343,7 +341,7 @@ async function streamGenerate(form, signal) {
       } else if (ev.type === 'done') {
         renderQuestions(ev.payload.questions, ev.payload.raw);
         showGenResult();
-        if (currentSessionId) loadHistory(currentSessionId);   // 방금 결과가 저장됨
+        archiveLoaded = false;   // 보관함 캐시 무효화 — 다음에 열 때 새 결과가 보이도록
         finished = true;
       } else if (ev.type === 'error') {
         finished = true;
@@ -436,64 +434,8 @@ async function deleteSessionRow(id) {
   await loadSessions();
 }
 
-// ── 생성 이력 ──
-async function loadHistory(sid) {
-  const card = document.getElementById('history-card');
-  const listEl = document.getElementById('history-list');
-  card.style.display = 'block';
-  listEl.textContent = '불러오는 중…';
-  try {
-    const resp = await fetch('/session/' + sid + '/generations');
-    const data = await resp.json();
-    renderHistory(data.generations || []);
-  } catch (err) {
-    listEl.textContent = '생성 이력을 불러오지 못했습니다.';
-  }
-}
-
-function renderHistory(gens) {
-  const listEl = document.getElementById('history-list');
-  if (!gens.length) {
-    listEl.innerHTML = '<span style="color:#94a3b8;">아직 생성 이력이 없습니다. 문제를 생성하면 여기에 저장됩니다.</span>';
-    return;
-  }
-  listEl.innerHTML = gens.map(g => {
-    const tt = g.type_targets || {};
-    const hasTt = Object.keys(TYPE_BADGE).some(t => (tt[t] || 0) > 0);
-    const compo = hasTt ? formatTypeCounts(tt) : '';
-    return `
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1.5px solid #e2e8f0;background:#fff;border-radius:10px;margin-top:8px;">
-      <div style="min-width:0;flex:1;">
-        <div style="font-weight:600;color:#1e293b;">${escHtml(g.created_at || '')} · ${g.num_questions}문제</div>
-        <div style="font-size:0.75rem;color:#94a3b8;margin-top:2px;">강도 ${g.weight}/10 · ${escHtml(providerLabel(g.provider))} / ${escHtml(g.model || '')}${compo ? ' · ' + compo : ''}</div>
-      </div>
-      <div style="display:flex;gap:6px;flex-shrink:0;">
-        <button onclick="viewGeneration(${g.id})" style="font-size:0.78rem;padding:5px 12px;border:none;border-radius:7px;background:#0ea5e9;color:#fff;cursor:pointer;">보기</button>
-        <button onclick="deleteGeneration(${g.id})" title="삭제" style="font-size:0.78rem;padding:5px 8px;border:1px solid #fecaca;border-radius:7px;background:#fff;color:#dc2626;cursor:pointer;">🗑️</button>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-async function viewGeneration(gid) {
-  try {
-    const resp = await fetch('/generation/' + gid);
-    const g = await resp.json();
-    if (!resp.ok || g.error) return alert(g.error || '이력을 불러오지 못했습니다.');
-    document.getElementById('analysis-box').style.display = 'none';  // 이력엔 분석 요약 없음
-    document.getElementById('result-box').style.display = 'block';
-    renderQuestions(g.questions, g.raw);
-    showGenResult();
-  } catch (err) {
-    alert('이력을 불러오지 못했습니다.');
-  }
-}
-
-async function deleteGeneration(gid) {
-  if (!confirm('이 생성 이력을 삭제할까요?')) return;
-  await fetch('/generation/' + gid, { method: 'DELETE' });
-  if (currentSessionId) loadHistory(currentSessionId);
-}
+// 생성 이력 조회·열람·삭제는 '🗂️ 생성한 문제' 탭(archive.js)으로 옮겼다.
+// 생성 탭은 '만들기'만 담당한다.
 
 // ── LLM 제공사 (/providers) ──
 // 제공사마다 키 형식이 달라서, 전환해도 서로 섞이지 않도록 메모리에만 따로 담아둔다.

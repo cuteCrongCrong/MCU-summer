@@ -28,21 +28,23 @@ function setStep(stepId, state) {
 // 'home'은 시작 화면 — 탭 바를 숨기고, 다른 탭으로 들어가면 다시 보인다.
 const TAB_TITLES = {
   generator: '📝 문제 생성기',
+  archive:   '🗂️ 생성한 문제',
   wrong:     '❌ 오답 노트',
   bones:     '🦴 골학 문제은행',
 };
 
 function switchTab(name) {
-  ['home', 'generator', 'wrong', 'bones'].forEach(t => {
+  ['home', 'generator', 'archive', 'wrong', 'bones'].forEach(t => {
     document.getElementById('tab-' + t).classList.toggle('hidden', t !== name);
   });
   // 홈에서는 상단 바를 숨기고, 탭 안에서는 '← 홈' + 현재 위치를 보여준다
   document.getElementById('tab-bar').classList.toggle('hidden', name === 'home');
   document.getElementById('tab-bar-title').textContent = TAB_TITLES[name] || '';
 
-  if (name === 'home')  loadHome();
-  if (name === 'wrong') loadWrongFolders();
-  if (name === 'bones') loadBoneBank();
+  if (name === 'home')    loadHome();
+  if (name === 'archive') loadArchive();
+  if (name === 'wrong')   loadWrongFolders();
+  if (name === 'bones')   loadBoneBank();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -120,7 +122,8 @@ function renderQuestions(questions, raw, viewOpts) {
   viewOpts = viewOpts || {};
   const folder = viewOpts.folder || null;
   const containerId = viewOpts.containerId || 'questions-container';
-  const titleId = viewOpts.titleId || 'result-title';
+  // titleId: null 을 명시하면 제목을 건드리지 않는다 (자체 헤더를 쓰는 화면용)
+  const titleId = ('titleId' in viewOpts) ? viewOpts.titleId : 'result-title';
   const ns = viewOpts.ns || '';
   questionsByNs[ns] = questions || [];
 
@@ -128,7 +131,7 @@ function renderQuestions(questions, raw, viewOpts) {
   container.innerHTML = '';
 
   // 결과 영역 제목 (오답 폴더 보기면 폴더명으로 교체)
-  const titleEl = document.getElementById(titleId);
+  const titleEl = titleId ? document.getElementById(titleId) : null;
   if (titleEl) {
     titleEl.textContent = folder
       ? `❌ 오답 노트 — ${folder.name}`

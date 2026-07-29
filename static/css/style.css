@@ -443,6 +443,62 @@ main { margin-top: 20px; }
   .home-card:hover { transform: none; }
 }
 
+/* ── 생성 문제 관리(보관함) — 시험지 카드 ── */
+.paper-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+.paper-card {
+  display: flex; flex-direction: column;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: 0 12px 12px 0;
+  padding: 15px 17px;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+.paper-card:hover {
+  border-color: var(--primary);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(37,99,235,0.10);
+}
+.paper-source {
+  font-size: 0.72rem; color: #94a3b8;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.paper-title {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 1.02rem; font-weight: 700; color: var(--text); margin-top: 4px;
+}
+.paper-short {
+  font-size: 0.7rem; font-weight: 600; color: #92400e;
+  background: #fef3c7; border-radius: 6px; padding: 2px 7px;
+}
+.paper-meta { font-size: 0.75rem; color: #94a3b8; margin-top: 3px; }
+.paper-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+.paper-actions { display: flex; gap: 8px; margin-top: 14px; }
+.paper-open {
+  flex: 1; padding: 8px 12px; border: none; border-radius: 8px;
+  background: var(--primary); color: #fff;
+  font-size: 0.85rem; font-weight: 700; font-family: inherit; cursor: pointer;
+  transition: background 0.15s;
+}
+.paper-open:hover { background: var(--primary-dark); }
+.paper-del {
+  padding: 8px 11px; border: 1px solid #fecaca; border-radius: 8px;
+  background: var(--surface); color: var(--danger);
+  font-size: 0.85rem; font-family: inherit; cursor: pointer;
+}
+.paper-del:hover { background: #fef2f2; }
+.paper-open:focus-visible, .paper-del:focus-visible {
+  outline: 2px solid var(--primary); outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .paper-card { transition: border-color 0.15s; }
+  .paper-card:hover { transform: none; }
+}
+
 /* 최근 활동 */
 .recent-row {
   display: flex; align-items: center; gap: 12px; width: 100%;

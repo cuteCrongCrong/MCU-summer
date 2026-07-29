@@ -38,6 +38,11 @@
         <span class="home-card-title">문제 생성</span>
         <span class="home-card-desc" id="home-gen-desc">강의자료로<br>예상문제 만들기</span>
       </button>
+      <button class="home-card" onclick="switchTab('archive')">
+        <span class="home-card-icon">🗂️</span>
+        <span class="home-card-title">생성한 문제</span>
+        <span class="home-card-desc" id="home-archive-desc">만든 문제<br>다시 보기</span>
+      </button>
       <button class="home-card" onclick="switchTab('wrong')">
         <span class="home-card-icon">❌</span>
         <span class="home-card-title">오답 노트</span>
@@ -92,12 +97,6 @@
       <button onclick="loadSessions()" style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
     </div>
     <div id="session-list" style="margin-top:6px;font-size:0.88rem;color:#64748b;">불러오는 중…</div>
-  </div>
-
-  <!-- ⓪-b 생성 이력 (활성 세션 있을 때만) -->
-  <div class="card" id="history-card" style="display:none;">
-    <div class="card-title">🗂️ 생성 이력 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 이 세션에서 만든 문제 모음</span></div>
-    <div id="history-list" style="margin-top:6px;font-size:0.88rem;color:#64748b;"></div>
   </div>
 
   <!-- ① 업로드 카드 -->
@@ -248,6 +247,7 @@
 
     <div class="result-nav">
       <button class="back-btn" onclick="showGenInput()">← 설정으로 돌아가기</button>
+      <button class="btn-ghost" onclick="switchTab('archive')">🗂️ 보관함에서 다시 보기</button>
     </div>
 
     <!-- 생성 도중 오류 — 첫 문제가 나온 뒤엔 입력 화면이 숨겨지므로 여기에 표시 -->
@@ -270,6 +270,42 @@
   </div><!-- /gen-result-view -->
 
   </div><!-- /tab-generator -->
+
+  <!-- ══════════ 탭: 생성 문제 관리 (보관함) ══════════ -->
+  <div class="tab-panel hidden" id="tab-archive">
+
+    <!-- ── 서브뷰 A: 시험지 목록 ── -->
+    <div id="archive-list-view">
+      <div class="card">
+        <div class="card-title">
+          🗂️ 생성한 문제
+          <span id="archive-summary" style="font-weight:400;font-size:0.8rem;color:#64748b;"></span>
+          <button type="button" onclick="loadArchive(true)" title="새로고침"
+                  style="margin-left:auto;font-size:0.76rem;padding:4px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
+        </div>
+        <div id="archive-filter-row" class="hidden" style="margin-bottom:14px;">
+          <select id="archive-session-filter" class="select-field" onchange="renderArchive()"></select>
+        </div>
+        <div id="archive-grid"></div>
+      </div>
+    </div>
+
+    <!-- ── 서브뷰 B: 시험지 한 장 열람 ── -->
+    <div id="archive-view" class="hidden">
+      <div class="result-nav">
+        <button class="back-btn" onclick="closeArchiveView()">← 목록으로</button>
+      </div>
+      <div class="card" id="archive-paper-head">
+        <div class="card-title" id="archive-paper-title">시험지</div>
+        <div id="archive-paper-meta" style="font-size:0.83rem;color:#64748b;"></div>
+        <div class="resume-actions">
+          <button class="btn-ghost" id="archive-delete-btn">🗑️ 이 시험지 삭제</button>
+        </div>
+      </div>
+      <div id="archive-questions-container"></div>
+    </div>
+
+  </div><!-- /tab-archive -->
 
   <!-- ══════════ 탭: 오답 노트 ══════════ -->
   <div class="tab-panel hidden" id="tab-wrong">
@@ -368,6 +404,8 @@
 <script src="/static/js/auth.js"></script>
 <!-- home.js 는 다른 모듈의 함수(setActiveSession, viewWrongFolder 등)를 쓰므로 마지막에 -->
 <script src="/static/js/home.js"></script>
+<!-- archive.js 는 home.js의 relativeDay, question_gen.js의 providerLabel 을 쓴다 -->
+<script src="/static/js/archive.js"></script>
 
 </body>
 </html>
