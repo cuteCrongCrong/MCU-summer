@@ -54,6 +54,16 @@ def _row_provider(row) -> str:
     return row["provider"] or LEGACY_PROVIDER
 
 
+def _row_title(row) -> str:
+    """
+    회차에 붙은 이름. 이름을 안 붙였거나 컬럼이 없던 구버전 행은 빈 문자열.
+    화면은 빈 값을 '제N회'로 대체한다.
+    """
+    if "title" not in row.keys():
+        return ""
+    return row["title"] or ""
+
+
 def save_session(name: str, model: str, analysis: dict, owner,
                  provider: str = None) -> int:
     """분석 결과(재사용 자산)를 한 세션으로 저장하고 id 반환. 소유자=owner 튜플."""
@@ -175,15 +185,18 @@ def rename_session(sid: int, name: str, owner):
 
 def save_generation(session_id: int, count: int, weight: int, model: str,
                     type_targets: dict, questions: list, raw: str,
-                    provider: str = None) -> int:
-    """한 번의 문제 생성 결과를 세션에 연결해 이력으로 저장."""
+                    provider: str = None, title: str = None) -> int:
+    """
+    한 번의 문제 생성 결과를 세션에 연결해 이력으로 저장.
+    title은 사용자가 붙인 이름 — 비우면 NULL로 두고 화면에서 '제N회'로 대체한다.
+    """
     conn = get_conn()
     try:
         cur = conn.execute(
             """INSERT INTO generations
                (session_id, created_at, count, weight, model, type_targets,
-                questions, raw, provider)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
+                questions, raw, provider, title)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (
                 session_id,
                 datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -194,10 +207,27 @@ def save_generation(session_id: int, count: int, weight: int, model: str,
                 json.dumps(questions or [], ensure_ascii=False),
                 raw or "",
                 provider or LEGACY_PROVIDER,
+                (title or "").strip() or None,
             ),
         )
         conn.commit()
         return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def rename_generation(gid: int, title: str, owner) -> bool:
+    """소유한 세션의 이력만 이름 변경. 실제로 바뀌었으면 True."""
+    frag, params = owner_clause(owner)
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            f"""UPDATE generations SET title=?
+                WHERE id=? AND session_id IN (SELECT id FROM sessions WHERE {frag})""",
+            [(title or "").strip() or None, gid] + params,
+        )
+        conn.commit()
+        return cur.rowcount > 0
     finally:
         conn.close()
 
@@ -208,7 +238,7 @@ def list_generations(session_id: int, owner) -> list:
     conn = get_conn()
     try:
         rows = conn.execute(
-            f"""SELECT id, created_at, count, weight, model, provider,
+            f"""SELECT id, created_at, count, weight, model, provider, title,
                        type_targets, questions
                 FROM generations
                 WHERE session_id=? AND session_id IN (SELECT id FROM sessions WHERE {frag})
@@ -227,6 +257,7 @@ def list_generations(session_id: int, owner) -> list:
             "weight": r["weight"],
             "model": r["model"],
             "provider": _row_provider(r),
+            "title": _row_title(r),
             "type_targets": json.loads(r["type_targets"] or "{}"),
             "num_questions": len(qs),
         })
@@ -255,6 +286,7 @@ def load_generation(gid: int, owner):
         "weight": r["weight"],
         "model": r["model"],
         "provider": _row_provider(r),
+        "title": _row_title(r),
         "type_targets": json.loads(r["type_targets"] or "{}"),
         "questions": json.loads(r["questions"] or "[]"),
         "raw": r["raw"] or "",
@@ -321,6 +353,17 @@ def generation_get(gid):
     if not gen:
         return jsonify({"error": "생성 이력을 찾을 수 없습니다."}), 404
     return jsonify(gen)
+
+
+@gen_bp.route("/generation/<int:gid>/rename", methods=["POST"])
+def generation_rename(gid):
+    """회차 이름 변경. 빈 값을 보내면 이름을 지워 '제N회' 표시로 되돌린다."""
+    title = request.form.get("title", "").strip()
+    if len(title) > 100:
+        return jsonify({"error": "이름은 100자 이내로 입력해주세요."}), 400
+    if not rename_generation(gid, title, current_owner()):
+        return jsonify({"error": "생성 이력을 찾을 수 없습니다."}), 404
+    return jsonify({"success": True, "title": title})
 
 
 @gen_bp.route("/generation/<int:gid>", methods=["DELETE"])
@@ -417,6 +460,11 @@ def read_generate_params() -> dict:
     if not (1 <= weight <= 10):
         raise GenerateParamError("기출 반영 강도는 1~10 사이로 설정해주세요.")
 
+    # 이번에 만들 문제 세트 이름 (선택). 비우면 화면에서 '제N회'로 표시된다.
+    gen_title = request.form.get("title", "").strip()
+    if len(gen_title) > 100:
+        raise GenerateParamError("문제 세트 이름은 100자 이내로 입력해주세요.")
+
     session_id = request.form.get("session_id", "").strip()
     lecture_bytes = exam_bytes = None
     lecture_name = ""
@@ -436,6 +484,7 @@ def read_generate_params() -> dict:
         "count":          count,
         "weight":         weight,
         "manual_targets": manual_targets,
+        "gen_title":      gen_title,
         "session_id":     session_id,
         # 소유자는 요청 컨텍스트가 살아 있을 때 확정해둔다 (스트리밍 제너레이터에서는 못 읽음)
         "owner":          current_owner(),
@@ -612,7 +661,7 @@ def run_generation_events(p: dict):
         question_raw = "\n\n".join(raw_parts)
         generation_id = save_generation(
             int(session_id), count, weight, model, type_targets, questions,
-            question_raw, provider.name,
+            question_raw, provider.name, p["gen_title"],
         )
 
         yield {"type": "done", "payload": {
@@ -620,6 +669,7 @@ def run_generation_events(p: dict):
             "session_id":       session_id,          # 재사용용 세션 id
             "session_name":     analysis.get("name", ""),
             "generation_id":    generation_id,       # 방금 저장된 이력 id
+            "title":            p["gen_title"],      # 사용자가 붙인 이름 (없으면 "")
             "reused":           reused,              # 저장된 세션 재사용 여부
             "concepts":         analysis.get("concepts", {}),
             "exam_concepts":    analysis.get("exam_concepts", {}),
