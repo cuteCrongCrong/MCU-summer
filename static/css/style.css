@@ -443,6 +443,19 @@ main { margin-top: 20px; }
   .home-card:hover { transform: none; }
 }
 
+/* 결과 제목 + 이름 변경 아이콘 */
+.result-head {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 16px;
+}
+.title-edit-btn {
+  padding: 4px 8px; border: 1px solid transparent; border-radius: 7px;
+  background: transparent; font-size: 0.95rem; font-family: inherit;
+  cursor: pointer; line-height: 1; opacity: 0.55;
+  transition: opacity 0.15s, border-color 0.15s, background 0.15s;
+}
+.title-edit-btn:hover { opacity: 1; border-color: var(--border); background: var(--surface); }
+.title-edit-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; opacity: 1; }
+
 /* 세션 목록 더 보기 / 접기 */
 .session-more-btn {
   width: 100%; margin-top: 8px; padding: 9px 12px;
@@ -496,13 +509,16 @@ main { margin-top: 20px; }
   transition: background 0.15s;
 }
 .paper-open:hover { background: var(--primary-dark); }
-.paper-del {
-  padding: 8px 11px; border: 1px solid #fecaca; border-radius: 8px;
-  background: var(--surface); color: var(--danger);
+.paper-edit, .paper-del {
+  padding: 8px 11px; border-radius: 8px;
+  background: var(--surface);
   font-size: 0.85rem; font-family: inherit; cursor: pointer;
 }
+.paper-edit { border: 1px solid var(--border); color: var(--text-muted); }
+.paper-edit:hover { border-color: var(--primary); background: #eff6ff; }
+.paper-del { border: 1px solid #fecaca; color: var(--danger); }
 .paper-del:hover { background: #fef2f2; }
-.paper-open:focus-visible, .paper-del:focus-visible {
+.paper-open:focus-visible, .paper-edit:focus-visible, .paper-del:focus-visible {
   outline: 2px solid var(--primary); outline-offset: 2px;
 }
 @media (prefers-reduced-motion: reduce) {

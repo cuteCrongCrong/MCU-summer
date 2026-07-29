@@ -91,14 +91,18 @@ function renderArchive() {
     const short = (r.count && r.num_questions < r.count)
       ? `<span class="paper-short">요청 ${r.count}개 중 ${r.num_questions}개</span>` : '';
 
+    // 이름을 붙였으면 그 이름이 제목, 회차 번호는 메타로 내린다.
+    const nth = `제${ordinal[r.id]}회`;
+    const title = (r.title || '').trim();
     return `
       <div class="paper-card">
         <div class="paper-source">📄 ${escHtml(r.session_name || '이름 없는 강의자료')}</div>
-        <div class="paper-title">제${ordinal[r.id]}회${short}</div>
-        <div class="paper-meta">${escHtml(relativeDay(r.created_at))} ${escHtml((r.created_at || '').split(' ')[1] || '')} · ${r.num_questions}문항</div>
+        <div class="paper-title">${escHtml(title || nth)}${short}</div>
+        <div class="paper-meta">${title ? escHtml(nth) + ' · ' : ''}${escHtml(relativeDay(r.created_at))} ${escHtml((r.created_at || '').split(' ')[1] || '')} · ${r.num_questions}문항</div>
         ${badges ? `<div class="paper-badges">${badges}</div>` : ''}
         <div class="paper-actions">
           <button class="paper-open" onclick="openPaper(${r.id})">▶ 풀기</button>
+          <button class="paper-edit" onclick="renamePaper(${r.id})" title="이름 변경">✏️</button>
           <button class="paper-del" onclick="deletePaper(${r.id})" title="삭제">🗑️</button>
         </div>
       </div>`;
@@ -106,19 +110,30 @@ function renderArchive() {
 }
 
 // ── 시험지 한 장 열람 ──
+let detailCache = null;   // 상세 화면에 그려진 회차 (이름 변경 후 헤더만 다시 그릴 때 사용)
+
+// 상세 헤더(제목·메타·버튼)를 그린다. 이름이 바뀌면 이것만 다시 부르면 된다.
+function applyPaperHeader(gid, g) {
+  const row = archiveRows.find(r => r.id === gid) || {};
+  const title = (row.title || g.title || '').trim();
+  document.getElementById('archive-paper-title').textContent =
+    `📄 ${title || row.session_name || '시험지'}`;
+  document.getElementById('archive-paper-meta').textContent =
+    [title ? (row.session_name || '') : '', g.created_at || '',
+     `${(g.questions || []).length}문항`, `강도 ${g.weight}/10`,
+     `${providerLabel(g.provider)} / ${g.model || ''}`].filter(Boolean).join(' · ');
+  document.getElementById('archive-rename-btn').onclick = () => renamePaper(gid, true);
+  document.getElementById('archive-delete-btn').onclick = () => deletePaper(gid, true);
+}
+
 async function openPaper(gid) {
   try {
     const resp = await fetch('/generation/' + gid);
     const g = await resp.json();
     if (!resp.ok || g.error) return alert(g.error || '시험지를 불러오지 못했습니다.');
 
-    const row = archiveRows.find(r => r.id === gid) || {};
-    document.getElementById('archive-paper-title').textContent =
-      `📄 ${row.session_name || '시험지'}`;
-    document.getElementById('archive-paper-meta').textContent =
-      [`${escHtml(g.created_at || '')}`, `${(g.questions || []).length}문항`,
-       `강도 ${g.weight}/10`, `${providerLabel(g.provider)} / ${g.model || ''}`].join(' · ');
-    document.getElementById('archive-delete-btn').onclick = () => deletePaper(gid, true);
+    detailCache = g;
+    applyPaperHeader(gid, g);
 
     // ns를 주지 않으면 생성기·오답노트 카드와 DOM id가 겹친다
     renderQuestions(g.questions, g.raw, {
@@ -138,6 +153,24 @@ function closeArchiveView() {
   document.getElementById('archive-view').classList.add('hidden');
   document.getElementById('archive-list-view').classList.remove('hidden');
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// 이름 변경 — 빈 값으로 두면 이름을 지워 '제N회' 표시로 되돌린다.
+async function renamePaper(gid, fromDetail) {
+  const row = archiveRows.find(r => r.id === gid) || {};
+  const cur = (row.title || '').trim();
+  const next = prompt('이 문제 세트의 이름을 입력하세요.\n(비우면 「제N회」로 표시됩니다)', cur);
+  if (next == null) return;              // 취소
+
+  const form = new FormData();
+  form.append('title', next.trim());
+  const resp = await fetch('/generation/' + gid + '/rename', { method: 'POST', body: form });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) return alert(data.error || '이름을 바꾸지 못했습니다.');
+
+  row.title = next.trim();               // 캐시도 갱신 (목록 재요청 없이 반영)
+  renderArchive();
+  if (fromDetail) applyPaperHeader(gid, detailCache);
 }
 
 async function deletePaper(gid, fromDetail) {

@@ -204,6 +204,13 @@
       <div id="weight-hint" style="font-size:0.78rem;color:#475569;margin-top:8px;"></div>
     </div>
 
+    <!-- 이번에 만들 문제 세트 이름 (선택) -->
+    <div style="margin-top:20px;">
+      <label for="gen-title">📛 이 문제 세트 이름 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 선택</span></label>
+      <input type="text" id="gen-title" maxlength="100" placeholder="예: 중간고사 대비 1회" autocomplete="off" />
+      <div style="font-size:0.75rem;color:#64748b;margin-top:4px;">비워두면 <b>제N회</b>로 표시됩니다. 나중에 보관함에서 바꿀 수 있어요.</div>
+    </div>
+
     <button class="btn btn-primary" id="generate-btn" onclick="generate()">
       ✨ 예상문제 생성하기
     </button>
@@ -246,8 +253,8 @@
   <div id="gen-result-view" class="hidden">
 
     <div class="result-nav">
-      <button class="back-btn" onclick="showGenInput()">← 설정으로 돌아가기</button>
-      <button class="btn-ghost" onclick="switchTab('archive')">🗂️ 보관함에서 다시 보기</button>
+      <button class="back-btn" onclick="showGenInput()">✨ 새 문제 생성</button>
+      <button class="btn-ghost" onclick="switchTab('archive')">🗂️ 보관함에서 보기</button>
     </div>
 
     <!-- 생성 도중 오류 — 첫 문제가 나온 뒤엔 입력 화면이 숨겨지므로 여기에 표시 -->
@@ -261,8 +268,12 @@
 
     <!-- ⑤ 생성된 문제 -->
     <div id="result-box">
-      <div class="card-title" id="result-title" style="padding: 0 4px; margin-bottom:16px;">
-        📋 생성된 예상문제
+      <div class="result-head">
+        <div class="card-title" id="result-title" style="padding:0 4px;margin-bottom:0;">
+          📋 생성된 예상문제
+        </div>
+        <button class="title-edit-btn" id="result-rename-btn" onclick="renameCurrentResult()"
+                title="이름 붙이기" aria-label="이름 붙이기" style="display:none;">✏️</button>
       </div>
       <div id="questions-container"></div>
     </div>
@@ -299,6 +310,7 @@
         <div class="card-title" id="archive-paper-title">시험지</div>
         <div id="archive-paper-meta" style="font-size:0.83rem;color:#64748b;"></div>
         <div class="resume-actions">
+          <button class="btn-ghost" id="archive-rename-btn">✏️ 이름 변경</button>
           <button class="btn-ghost" id="archive-delete-btn">🗑️ 이 시험지 삭제</button>
         </div>
       </div>

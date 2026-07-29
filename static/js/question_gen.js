@@ -145,6 +145,7 @@ async function generate() {
   form.append('weight', weight);
   form.append('model', model);
   form.append('provider', currentProvider || '');
+  form.append('title', document.getElementById('gen-title').value.trim());
   if (useSession) {
     form.append('session_id', currentSessionId);
   } else {
@@ -282,8 +283,49 @@ async function fallbackGenerate(form, signal) {
                  data.priority_topics, data.type_stats, data.type_targets, data.source_info);
   document.getElementById('result-box').style.display = 'block';
   renderQuestions(data.questions, data.raw);
+  applyGenerationResult(data);
   showGenResult();
   archiveLoaded = false;   // 보관함 캐시 무효화 — 다음에 열 때 새 결과가 보이도록
+}
+
+// 방금 생성한 회차 — 결과 화면에서 이름을 붙일 때 대상이 된다
+let lastGeneration = { id: null, title: '' };
+
+// 결과 화면 제목. 이름을 붙였으면 그 이름으로, 아니면 기본 문구.
+// renderQuestions가 제목을 기본값으로 되돌리므로 반드시 그 뒤에 부른다.
+function setResultTitle(title) {
+  document.getElementById('result-title').textContent =
+    (title || '').trim() ? `📋 ${title.trim()}` : '📋 생성된 예상문제';
+}
+
+// 생성 직후 결과를 화면에 반영 (제목 + 이름 변경 버튼 상태)
+function applyGenerationResult(payload) {
+  lastGeneration = { id: payload.generation_id, title: (payload.title || '').trim() };
+  setResultTitle(lastGeneration.title);
+  // 제목 옆 아이콘 버튼 — 문구 대신 툴팁으로 상태를 알린다
+  const btn = document.getElementById('result-rename-btn');
+  const label = lastGeneration.title ? '이름 바꾸기' : '이름 붙이기';
+  btn.style.display = lastGeneration.id ? '' : 'none';
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
+}
+
+// 문제를 보고 나서 이름을 정하는 경우 — 결과 화면에서 바로 붙인다
+async function renameCurrentResult() {
+  if (!lastGeneration.id) return;
+  const next = prompt('이 문제 세트의 이름을 입력하세요.\n(비우면 「제N회」로 표시됩니다)',
+                      lastGeneration.title);
+  if (next == null) return;
+
+  const form = new FormData();
+  form.append('title', next.trim());
+  const resp = await fetch('/generation/' + lastGeneration.id + '/rename',
+                           { method: 'POST', body: form });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) return alert(data.error || '이름을 바꾸지 못했습니다.');
+
+  applyGenerationResult({ generation_id: lastGeneration.id, title: next.trim() });
+  archiveLoaded = false;   // 보관함에도 반영되도록 캐시 무효화
 }
 
 async function streamGenerate(form, signal) {
@@ -340,6 +382,7 @@ async function streamGenerate(form, signal) {
         setStageProgress('generate', ev.index, ev.total);
       } else if (ev.type === 'done') {
         renderQuestions(ev.payload.questions, ev.payload.raw);
+        applyGenerationResult(ev.payload);
         showGenResult();
         archiveLoaded = false;   // 보관함 캐시 무효화 — 다음에 열 때 새 결과가 보이도록
         finished = true;
