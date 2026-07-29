@@ -7,14 +7,24 @@
     "2) parts 배열에 { num, answers } 를 추가하세요.",
     "   - num     = 번호 이미지에 표시된 번호 (숫자)",
     "   - answers = 그 번호 부위의 정답 이름들(한글/영문/동의어 모두)",
-    "3) 퀴즈는 parts 중 하나를 무작위로 골라 'N번의 이름은?' 형태로 출제합니다.",
+    "3) category / subcategory 를 반드시 넣어야 범위 선택 화면에 노출됩니다.",
+    "   - category: skull | upper_limb | lower_limb | vertebrae_thorax",
+    "   - subcategory:",
+    "       skull            → neurocranium | viscerocranium",
+    "       upper_limb       → shoulder_girdle | upper_arm_forearm | hand_bones",
+    "       lower_limb       → pelvic_girdle | thigh_leg | foot_bones",
+    "       vertebrae_thorax → vertebral_column | thorax",
+    "   (카테고리 목록/아이콘 자체는 static/js/bone_bank.js 의 BONE_CATEGORIES 에서 정의)",
+    "4) 퀴즈는 parts 중 하나를 무작위로 골라 'N번의 이름은?' 형태로 출제합니다.",
     "※ answers에 여러 개를 넣으면 그중 하나만 맞아도 정답 (대소문자·띄어쓰기 무시).",
-    "※ 아래 두 항목은 예시 도식(SVG)입니다. 실제 해부 이미지로 교체하세요."
+    "※ leg/arm 항목은 예시 도식(SVG)입니다. 실제 해부 이미지로 교체하세요."
   ],
   "questions": [
     {
       "id": "leg",
       "title": "다리뼈 (하지)",
+      "category": "lower_limb",
+      "subcategory": "thigh_leg",
       "image": "/static/images/bones/leg_numbered.svg",
       "original": "/static/images/bones/leg_original.svg",
       "parts": [
@@ -55,6 +65,8 @@
     {
       "id": "arm",
       "title": "팔뼈 (상지)",
+      "category": "upper_limb",
+      "subcategory": "upper_arm_forearm",
       "image": "/static/images/bones/arm_numbered.svg",
       "original": "/static/images/bones/arm_original.svg",
       "parts": [
@@ -80,6 +92,65 @@
             "척골",
             "자뼈",
             "ulna"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "humerus_proximal",
+      "title": "상완골 근위부 (Proximal Humerus)",
+      "category": "upper_limb",
+      "subcategory": "upper_arm_forearm",
+      "image": "/static/images/bones/humerus_proximal_numbered.svg",
+      "original": "/static/images/bones/humerus-proximal.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "해부목",
+            "해부경",
+            "anatomical neck"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "상완골두",
+            "위팔뼈머리",
+            "head of humerus"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "대결절",
+            "큰결절",
+            "greater tubercle"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "외과목",
+            "외과경",
+            "surgical neck"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "소결절",
+            "작은결절",
+            "lesser tubercle"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "결절간구",
+            "이두근구",
+            "intertubercular sulcus",
+            "bicipital groove"
           ]
         }
       ]
