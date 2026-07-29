@@ -74,7 +74,18 @@ function renderResumeCard(latest) {
   document.getElementById('resume-btn').onclick = () => openSessionFromHome(latest);
 }
 
+// 생성 탭으로 이동. 반드시 설정(입력) 화면부터 보이게 한다 —
+// showGenInput()을 거치지 않으면 직전에 만든 결과 화면이 그대로 떠서
+// '새로 만들러 왔는데 예전 문제가 보이는' 상태가 된다.
+//   fresh=true 면 물려 있던 세션도 해제한다 ('다른 자료로 시작').
+function openGenerator(fresh) {
+  if (fresh) clearSession();
+  showGenInput();
+  switchTab('generator');
+}
+
 function openSessionFromHome(sess) {
+  showGenInput();
   switchTab('generator');
   setActiveSession(sess.id, sess.name);   // question_gen.js — 세션 선택 상태로 전환
   loadSessions();

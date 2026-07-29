@@ -33,7 +33,7 @@
 
     <!-- 기능 카드 (홈의 주 진입점) -->
     <div class="home-cards">
-      <button class="home-card" onclick="switchTab('generator')">
+      <button class="home-card" onclick="openGenerator()">
         <span class="home-card-icon">📝</span>
         <span class="home-card-title">문제 생성</span>
         <span class="home-card-desc" id="home-gen-desc">강의자료로<br>예상문제 만들기</span>
@@ -62,7 +62,7 @@
       <div class="resume-meta" id="resume-meta"></div>
       <div class="resume-actions">
         <button class="btn btn-primary resume-primary" id="resume-btn">✨ 이 세션으로 바로 생성</button>
-        <button class="btn-ghost" onclick="switchTab('generator')">다른 자료로 시작</button>
+        <button class="btn-ghost" onclick="openGenerator(true)">다른 자료로 시작</button>
       </div>
     </div>
 
@@ -72,7 +72,7 @@
       <div class="resume-name">아직 만든 문제가 없어요</div>
       <div class="resume-meta">강의자료 PDF와 기출문제 PDF를 올리면 예상문제를 만들어 드립니다.</div>
       <div class="resume-actions">
-        <button class="btn btn-primary resume-primary" onclick="switchTab('generator')">✨ 첫 문제 만들러 가기</button>
+        <button class="btn btn-primary resume-primary" onclick="openGenerator(true)">✨ 첫 문제 만들러 가기</button>
       </div>
     </div>
 
