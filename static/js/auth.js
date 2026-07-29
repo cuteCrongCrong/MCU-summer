@@ -18,6 +18,13 @@ async function loadAuth() {
   }
 }
 
+// 구글 G 로고 — 마크 정의(<symbol id="google-g">)는 index.html에 한 벌만 두고 여기서 참조한다.
+// 흰 타일에 얹는 이유: 헤더가 진한 파랑 그라데이션이라 컬러 로고가 그대로는 묻힌다.
+const GOOGLE_G_HTML =
+  '<span style="display:inline-flex;align-items:center;justify-content:center;' +
+  'width:20px;height:20px;background:#fff;border-radius:4px;flex-shrink:0;">' +
+  '<svg width="14" height="14" aria-hidden="true"><use href="#google-g" /></svg></span>';
+
 function renderAuth(d) {
   const el = document.getElementById('auth-widget');
   if (!el) return;
@@ -34,7 +41,7 @@ function renderAuth(d) {
       `<span style="margin:0 8px;font-weight:600;vertical-align:middle;">${escHtml(u.name || u.email || '사용자')}</span>` +
       `<button onclick="authLogout()" style="${btn}">로그아웃</button>`;
   } else if (d && d.login_enabled) {
-    el.innerHTML = `<button onclick="authLogin()" style="${btn}">🔐 구글로 로그인</button>`;
+    el.innerHTML = `<button onclick="authLogin()" style="${btn}display:inline-flex;align-items:center;gap:7px;">${GOOGLE_G_HTML}Google로 로그인</button>`;
   } else {
     // 로그인 미설정(secret_config 비어있음) → 위젯 숨김
     el.innerHTML = '';
