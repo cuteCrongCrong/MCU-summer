@@ -301,6 +301,38 @@
   </div>
 </div>
 
+<!-- 첫 방문 로그인 안내 모달 (auth.js가 열고 닫는다) -->
+<div class="modal-overlay" id="welcome-modal">
+  <div class="modal" style="max-width:520px;">
+    <h3>🔐 로그인하면 기록이 계정에 남습니다</h3>
+    <div class="modal-sub">로그인 없이도 모든 기능을 쓸 수 있어요. 다만 만든 기록이 <b>어디에</b> 남는지가 달라집니다.</div>
+
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:12px 14px;font-size:0.84rem;color:#166534;line-height:1.6;">
+        <b>✅ 로그인하고 쓰면</b>
+        <div style="margin-top:4px;">저장된 세션 · 문제 생성 이력 · 오답 노트가 <b>계정에 저장</b>됩니다.
+        다른 기기나 브라우저에서 로그인해도 그대로 이어서 볼 수 있어요.</div>
+      </div>
+      <div style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:12px 14px;font-size:0.84rem;color:#92400e;line-height:1.6;">
+        <b>⚠️ 로그인 없이 쓰면</b>
+        <div style="margin-top:4px;">기록이 <b>이 브라우저에만</b> 임시로 보관됩니다.
+        쿠키를 지우거나 시크릿 창을 닫으면 사라지고, 다른 기기에서는 보이지 않아요.</div>
+      </div>
+    </div>
+
+    <div style="font-size:0.78rem;color:#64748b;line-height:1.7;margin-top:12px;">
+      ※ 로그인 없이 만든 기록은 <b>나중에 로그인해도 계정으로 옮겨지지 않습니다.</b> 남겨두고 싶다면 시작 전에 로그인하세요.<br />
+      🔒 API 키는 로그인 여부와 관계없이 서버·브라우저에 저장되지 않습니다.
+    </div>
+
+    <!-- flex-wrap + flex-basis: 좁은 화면(모바일)에서는 버튼이 세로로 쌓인다 -->
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:18px;">
+      <button onclick="authWelcomeLogin()" style="flex:1 1 150px;padding:11px;border:none;border-radius:8px;background:#2563eb;color:#fff;font-weight:700;font-size:0.88rem;font-family:inherit;cursor:pointer;">🔐 구글로 로그인</button>
+      <button onclick="authCloseWelcome()" style="flex:1 1 150px;padding:11px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#475569;font-size:0.88rem;font-family:inherit;cursor:pointer;">로그인 없이 둘러보기</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── 스크립트 (로드 순서 중요: common → 각 기능) ── -->
 <script src="/static/js/common.js"></script>
 <script src="/static/js/question_gen.js"></script>
