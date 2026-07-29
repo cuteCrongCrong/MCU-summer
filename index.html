@@ -14,12 +14,10 @@
   <p>강의자료 + 기출문제를 업로드하면 AI가 새로운 예상문제를 만들어줍니다 </p>
 </header>
 
-<!-- ── 상단 탭 (홈에서는 숨김) ── -->
-<nav class="tabs hidden" id="tab-bar">
-  <button class="tab-btn tab-btn-home" id="tabbtn-home" onclick="switchTab('home')" title="홈으로">🏠 홈</button>
-  <button class="tab-btn" id="tabbtn-generator" onclick="switchTab('generator')">📝 문제 생성기</button>
-  <button class="tab-btn" id="tabbtn-wrong" onclick="switchTab('wrong')">❌ 오답 노트</button>
-  <button class="tab-btn" id="tabbtn-bones" onclick="switchTab('bones')">🦴 골학 문제은행</button>
+<!-- ── 탭 안에서만 보이는 상단 바 (홈으로 돌아가기 + 현재 위치) ── -->
+<nav class="tab-bar hidden" id="tab-bar">
+  <button class="home-back-btn" onclick="switchTab('home')">← 홈</button>
+  <span class="tab-bar-title" id="tab-bar-title"></span>
 </nav>
 
 <main>
@@ -31,6 +29,25 @@
     <div class="home-greeting">
       <h2 id="home-hello">안녕하세요</h2>
       <p id="home-subtitle">강의자료와 기출문제를 올리면 예상문제를 만들어 드려요</p>
+    </div>
+
+    <!-- 기능 카드 (홈의 주 진입점) -->
+    <div class="home-cards">
+      <button class="home-card" onclick="switchTab('generator')">
+        <span class="home-card-icon">📝</span>
+        <span class="home-card-title">문제 생성</span>
+        <span class="home-card-desc" id="home-gen-desc">강의자료로<br>예상문제 만들기</span>
+      </button>
+      <button class="home-card" onclick="switchTab('wrong')">
+        <span class="home-card-icon">❌</span>
+        <span class="home-card-title">오답 노트</span>
+        <span class="home-card-desc" id="home-wrong-desc">틀린 문제<br>모아 보기</span>
+      </button>
+      <button class="home-card" onclick="switchTab('bones')">
+        <span class="home-card-icon">🦴</span>
+        <span class="home-card-title">골학 문제은행</span>
+        <span class="home-card-desc">그림 보고<br>뼈 이름 맞히기</span>
+      </button>
     </div>
 
     <!-- 이어서 하기 (세션이 있을 때만) -->
@@ -52,34 +69,6 @@
       <div class="resume-actions">
         <button class="btn btn-primary resume-primary" onclick="switchTab('generator')">✨ 첫 문제 만들러 가기</button>
       </div>
-    </div>
-
-    <!-- 기능 목록 -->
-    <div class="home-list">
-      <button class="home-row" onclick="switchTab('generator')">
-        <span class="home-row-icon">📝</span>
-        <span class="home-row-body">
-          <span class="home-row-title">문제 생성</span>
-          <span class="home-row-desc" id="home-gen-desc">강의자료로 예상문제 만들기</span>
-        </span>
-        <span class="home-row-arrow">›</span>
-      </button>
-      <button class="home-row" onclick="switchTab('wrong')">
-        <span class="home-row-icon">❌</span>
-        <span class="home-row-body">
-          <span class="home-row-title">오답 노트</span>
-          <span class="home-row-desc" id="home-wrong-desc">틀린 문제 모아 보기</span>
-        </span>
-        <span class="home-row-arrow">›</span>
-      </button>
-      <button class="home-row" onclick="switchTab('bones')">
-        <span class="home-row-icon">🦴</span>
-        <span class="home-row-body">
-          <span class="home-row-title">골학 문제은행</span>
-          <span class="home-row-desc">그림 보고 뼈 이름 맞히기</span>
-        </span>
-        <span class="home-row-arrow">›</span>
-      </button>
     </div>
 
     <!-- 최근 활동 -->
@@ -259,7 +248,6 @@
 
     <div class="result-nav">
       <button class="back-btn" onclick="showGenInput()">← 설정으로 돌아가기</button>
-      <button class="btn-ghost" onclick="showGenInput()">✨ 새 문제 생성</button>
     </div>
 
     <!-- 생성 도중 오류 — 첫 문제가 나온 뒤엔 입력 화면이 숨겨지므로 여기에 표시 -->

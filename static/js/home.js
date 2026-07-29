@@ -68,15 +68,16 @@ function openSessionFromHome(sess) {
   loadSessions();
 }
 
+// 카드 설명은 두 줄 구성이라 <br>로 줄을 맞춘다 (숫자만 들어가므로 안전)
 function renderHomeCounts(sessions, folders) {
-  document.getElementById('home-gen-desc').textContent = sessions.length
-    ? `저장된 세션 ${sessions.length}개 · 분석 없이 바로 생성`
-    : '강의자료로 예상문제 만들기';
+  document.getElementById('home-gen-desc').innerHTML = sessions.length
+    ? `저장된 세션 ${sessions.length}개<br>분석 없이 바로 생성`
+    : '강의자료로<br>예상문제 만들기';
 
   const items = folders.reduce((sum, f) => sum + (f.item_count || 0), 0);
-  document.getElementById('home-wrong-desc').textContent = folders.length
-    ? `폴더 ${folders.length}개 · 문제 ${items}개`
-    : '틀린 문제 모아 보기';
+  document.getElementById('home-wrong-desc').innerHTML = folders.length
+    ? `폴더 ${folders.length}개<br>문제 ${items}개`
+    : '틀린 문제<br>모아 보기';
 }
 
 function renderHomeRecent(sessions, folders) {
@@ -109,7 +110,7 @@ function renderHomeRecent(sessions, folders) {
         <span class="recent-name">${escHtml(r.name || '이름 없음')}</span>
         <span class="recent-meta">${escHtml(relativeDay(r.when))} · ${escHtml(r.meta)}</span>
       </span>
-      <span class="home-row-arrow">›</span>`;
+      <span class="recent-arrow">›</span>`;
     btn.onclick = r.onClick;
     list.appendChild(btn);
   });

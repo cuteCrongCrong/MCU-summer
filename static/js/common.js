@@ -26,12 +26,20 @@ function setStep(stepId, state) {
 // ── 상단 탭 전환 ──
 // 새 탭을 추가하려면 아래 배열에 id 접미사를 추가하세요. (예: 'login')
 // 'home'은 시작 화면 — 탭 바를 숨기고, 다른 탭으로 들어가면 다시 보인다.
+const TAB_TITLES = {
+  generator: '📝 문제 생성기',
+  wrong:     '❌ 오답 노트',
+  bones:     '🦴 골학 문제은행',
+};
+
 function switchTab(name) {
   ['home', 'generator', 'wrong', 'bones'].forEach(t => {
     document.getElementById('tab-' + t).classList.toggle('hidden', t !== name);
-    document.getElementById('tabbtn-' + t).classList.toggle('active', t === name);
   });
+  // 홈에서는 상단 바를 숨기고, 탭 안에서는 '← 홈' + 현재 위치를 보여준다
   document.getElementById('tab-bar').classList.toggle('hidden', name === 'home');
+  document.getElementById('tab-bar-title').textContent = TAB_TITLES[name] || '';
+
   if (name === 'home')  loadHome();
   if (name === 'wrong') loadWrongFolders();
   if (name === 'bones') loadBoneBank();
@@ -101,13 +109,20 @@ function renderSourceInfo(sourceInfo) {
 // ── 문제 카드 렌더링 (생성 결과 · 오답 폴더 보기 공용) ──
 // viewOpts.folder = {id, name, items} 이면 오답 폴더 보기 모드 (넣기 버튼 대신 빼기 버튼)
 // viewOpts.containerId / titleId 로 렌더링 대상 지정 (기본: 생성기 결과 영역)
-let currentQuestions = [];
+// viewOpts.ns = 카드 DOM id 접두사. 여러 컨테이너가 동시에 카드를 들고 있어도
+//   서로의 카드를 집지 않도록 반드시 컨테이너마다 다른 값을 준다. (기본 '' = 생성기)
+//   ⚠️ ns 없이 두 컨테이너를 함께 쓰면 getElementById가 문서 앞쪽 카드를 집어
+//      '정답 확인'이 엉뚱한 카드를 여는 버그가 난다.
+const questionsByNs = {};              // ns → 그 컨테이너에 그려진 문제 배열
+function getQuestions(ns) { return questionsByNs[ns || ''] || []; }
+
 function renderQuestions(questions, raw, viewOpts) {
   viewOpts = viewOpts || {};
   const folder = viewOpts.folder || null;
   const containerId = viewOpts.containerId || 'questions-container';
   const titleId = viewOpts.titleId || 'result-title';
-  currentQuestions = questions || [];
+  const ns = viewOpts.ns || '';
+  questionsByNs[ns] = questions || [];
 
   const container = document.getElementById(containerId);
   container.innerHTML = '';
@@ -130,7 +145,7 @@ function renderQuestions(questions, raw, viewOpts) {
     return;
   }
 
-  questions.forEach((q, idx) => container.appendChild(buildQuestionCard(q, idx, folder)));
+  questions.forEach((q, idx) => container.appendChild(buildQuestionCard(q, idx, folder, ns)));
 
   // 원본 펼치기 (오답 폴더 보기 모드에서는 원본 응답이 없으므로 생략)
   if (raw) appendRawSection(container, raw);
@@ -143,8 +158,9 @@ function appendRawSection(container, raw) {
   container.appendChild(raw_section);
 }
 
-// 문제 카드 1장을 만든다
-function buildQuestionCard(q, idx, folder) {
+// 문제 카드 1장을 만든다. ns는 이 카드가 속한 컨테이너의 id 접두사.
+function buildQuestionCard(q, idx, folder, ns) {
+    ns = ns || '';
     const choices = q['선택지'] || [];
     // 유형 판별: 명시된 유형 우선, 없으면 선택지 유무로 추정
     const rawType = (q['유형'] || '').replace(/\s/g, '');
@@ -158,7 +174,7 @@ function buildQuestionCard(q, idx, folder) {
 
     const card = document.createElement('div');
     card.className = 'question-card';
-    card.id = `qcard-${idx}`;
+    card.id = `${ns}qcard-${idx}`;
 
     const typeBadge = typeBadgeHtml(rawType, isObjective);
 
@@ -169,7 +185,7 @@ function buildQuestionCard(q, idx, folder) {
       const itemId = item ? item.id : null;
       actionBtn = `<button class="wrong-remove-btn" onclick="removeWrongItem(${itemId}, ${folder.id})" title="이 폴더에서 빼기">🗑️ 폴더에서 빼기</button>`;
     } else {
-      actionBtn = `<button class="wrong-add-btn" id="wbtn-${idx}" onclick="openWrongModal(${idx})" title="오답 노트에 넣기">🔖 오답에 넣기</button>`;
+      actionBtn = `<button class="wrong-add-btn" id="${ns}wbtn-${idx}" onclick="openWrongModal('${ns}', ${idx})" title="오답 노트에 넣기">🔖 오답에 넣기</button>`;
     }
     const headerHtml =
       `<div class="q-header"><span class="q-number">문제 ${idx + 1} ${typeBadge}</span>${actionBtn}</div>`;
@@ -184,7 +200,7 @@ function buildQuestionCard(q, idx, folder) {
       : '';
 
     const answerBlock = `
-      <div class="answer-section" id="ans-${idx}">
+      <div class="answer-section" id="${ns}ans-${idx}">
         <div class="answer-badge">✅ 정답: ${escHtml(q['정답'] || '-')}</div>
         ${q['해설'] ? `<div class="explain-box"><strong>💡 해설</strong>\n${escHtml(q['해설'])}</div>` : ''}
         ${q['함정포인트'] ? `<div class="trap-box"><strong>⚠️ 함정포인트</strong>\n${escHtml(q['함정포인트'])}</div>` : ''}
@@ -195,14 +211,14 @@ function buildQuestionCard(q, idx, folder) {
       const answerNum = (q['정답'] || '').replace(/[^①②③④⑤\d]/g, '');
       const answerIdx = ['①','②','③','④','⑤'].indexOf(answerNum.length === 1 && isNaN(answerNum) ? answerNum : ['①','②','③','④','⑤'][parseInt(answerNum)-1]);
       const choiceHtml = choices.map((c, i) =>
-        `<li data-idx="${i}" onclick="selectChoice(this, ${idx}, ${answerIdx})">${escHtml(c)}</li>`
+        `<li data-idx="${i}" onclick="selectChoice(this, '${ns}', ${idx}, ${answerIdx})">${escHtml(c)}</li>`
       ).join('');
       card.innerHTML = `
         ${headerHtml}
         ${imageHtml}
         <div class="q-text">${escHtml(q['문제'] || '')}</div>
-        <ul class="choices" id="choices-${idx}">${choiceHtml}</ul>
-        <button class="check-btn" onclick="checkAnswer(${idx}, ${answerIdx})">정답 확인</button>
+        <ul class="choices" id="${ns}choices-${idx}">${choiceHtml}</ul>
+        <button class="check-btn" onclick="checkAnswer('${ns}', ${idx}, ${answerIdx})">정답 확인</button>
         ${answerBlock}
       `;
     } else if (useBlankInputs) {
@@ -210,13 +226,13 @@ function buildQuestionCard(q, idx, folder) {
       const blankInputsHtml = blankAnswers.map((_, i) => `
         <div class="blank-input-item">
           <span class="blank-label">빈칸 ${i + 1}</span>
-          <input type="text" class="blank-input" id="blank-${idx}-${i}" placeholder="답을 입력하세요" />
+          <input type="text" class="blank-input" id="${ns}blank-${idx}-${i}" placeholder="답을 입력하세요" />
         </div>`).join('');
       card.innerHTML = `
         ${headerHtml}
         <div class="q-text">${escHtml(q['문제'] || '')}</div>
         <div class="blank-input-row">${blankInputsHtml}</div>
-        <button class="check-btn" onclick="checkBlanks(${idx})">정답 확인</button>
+        <button class="check-btn" onclick="checkBlanks('${ns}', ${idx})">정답 확인</button>
         ${answerBlock}
       `;
     } else {
@@ -225,43 +241,45 @@ function buildQuestionCard(q, idx, folder) {
         ${headerHtml}
         ${imageHtml}
         <div class="q-text">${escHtml(q['문제'] || '')}</div>
-        <textarea class="subj-input" id="subj-${idx}" placeholder="답을 작성해 보세요..." rows="3"></textarea>
-        <button class="check-btn" onclick="revealAnswer(${idx})">정답 확인</button>
+        <textarea class="subj-input" id="${ns}subj-${idx}" placeholder="답을 작성해 보세요..." rows="3"></textarea>
+        <button class="check-btn" onclick="revealAnswer('${ns}', ${idx})">정답 확인</button>
         ${answerBlock}
       `;
     }
     return card;
 }
 
-function selectChoice(el, qIdx, answerIdx) {
-  const list = document.getElementById(`choices-${qIdx}`);
+// 아래 채점 함수들은 카드가 속한 컨테이너를 ns로 받는다.
+// (ns 없이 id만 쓰면 다른 탭에 남아 있는 같은 번호의 카드를 집는다)
+function selectChoice(el, ns, qIdx, answerIdx) {
+  const list = document.getElementById(`${ns}choices-${qIdx}`);
   list.querySelectorAll('li').forEach(li => li.classList.remove('selected'));
   el.classList.add('selected');
 }
 
-function revealAnswer(qIdx) {
-  document.getElementById(`ans-${qIdx}`).style.display = 'block';
+function revealAnswer(ns, qIdx) {
+  document.getElementById(`${ns}ans-${qIdx}`).style.display = 'block';
 }
 
 // 빈칸채우기(빈칸 2개 이상): 빈칸별 입력값을 정답과 각각 비교해 O/X 표시
-function checkBlanks(qIdx) {
-  const q = currentQuestions[qIdx] || {};
+function checkBlanks(ns, qIdx) {
+  const q = getQuestions(ns)[qIdx] || {};
   const answers = (q['정답'] || '').split('|').map(s => s.trim()).filter(Boolean);
   const norm = s => (s || '').trim().replace(/\s+/g, '').toLowerCase();
 
   answers.forEach((ans, i) => {
-    const input = document.getElementById(`blank-${qIdx}-${i}`);
+    const input = document.getElementById(`${ns}blank-${qIdx}-${i}`);
     if (!input) return;
     input.classList.remove('correct', 'wrong');
     input.classList.add(norm(input.value) === norm(ans) ? 'correct' : 'wrong');
     input.disabled = true;
   });
 
-  document.getElementById(`ans-${qIdx}`).style.display = 'block';
+  document.getElementById(`${ns}ans-${qIdx}`).style.display = 'block';
 }
 
-function checkAnswer(qIdx, answerIdx) {
-  const list = document.getElementById(`choices-${qIdx}`);
+function checkAnswer(ns, qIdx, answerIdx) {
+  const list = document.getElementById(`${ns}choices-${qIdx}`);
   const items = list.querySelectorAll('li');
   const selected = list.querySelector('li.selected');
 
@@ -273,7 +291,7 @@ function checkAnswer(qIdx, answerIdx) {
     selected.classList.add('wrong');
   }
 
-  document.getElementById(`ans-${qIdx}`).style.display = 'block';
+  document.getElementById(`${ns}ans-${qIdx}`).style.display = 'block';
 }
 
 // 원본(이름 표시) 이미지를 공용 모달로 표시 — 골학 문제은행/오답 노트 공용

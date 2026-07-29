@@ -368,25 +368,23 @@ input:focus { outline: none; border-color: var(--primary); }
 }
 .wrong-remove-btn:hover { background: #fee2e2; color: var(--danger); border-color: #fca5a5; }
 
-/* ── 상단 탭 ── */
-.tabs {
+/* 탭 안에서만 보이는 상단 바 — 홈으로 돌아가기 + 현재 위치 */
+.tab-bar {
   max-width: 860px; margin: 24px auto 0; padding: 0 16px;
-  display: flex; gap: 8px;
+  display: flex; align-items: center; gap: 12px;
 }
-.tab-btn {
-  flex: 1; padding: 13px 16px;
-  border: 1px solid var(--border); border-bottom: none;
-  border-radius: 12px 12px 0 0;
-  background: #e2e8f0; color: var(--text-muted);
-  font-size: 0.98rem; font-weight: 700; font-family: inherit;
-  cursor: pointer; transition: all 0.15s;
+.home-back-btn {
+  padding: 9px 18px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface); color: var(--text); font-size: 0.9rem; font-weight: 700;
+  font-family: inherit; cursor: pointer; flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s;
 }
-.tab-btn:hover { background: #d7dfea; }
-.tab-btn.active {
-  background: var(--surface); color: var(--primary);
-  box-shadow: 0 -3px 10px rgba(0,0,0,0.05);
+.home-back-btn:hover { border-color: var(--primary); color: var(--primary); }
+.home-back-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.tab-bar-title {
+  font-size: 1rem; font-weight: 700; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.tab-btn-home { flex: 0 0 auto; }
 main { margin-top: 20px; }
 .hidden { display: none !important; }
 
@@ -411,28 +409,39 @@ main { margin-top: 20px; }
 .resume-actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
 .resume-primary { flex: 1 1 220px; margin: 0; }
 
-/* 기능 목록 (한 줄 = 한 기능) */
-.home-list {
+/* 기능 카드 (정사각형에 가까운 3분할) */
+.home-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+.home-card {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; min-height: 190px; padding: 22px 16px;
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  font-family: inherit; text-align: center; cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
 }
-.home-row {
-  width: 100%; display: flex; align-items: center; gap: 14px;
-  padding: 16px 18px; border: none; border-bottom: 1px solid var(--border);
-  background: var(--surface); font-family: inherit; text-align: left; cursor: pointer;
-  transition: background 0.15s;
+.home-card:hover {
+  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(37,99,235,0.14);
 }
-.home-row:last-child { border-bottom: none; }
-.home-row:hover { background: #f8fafc; }
-.home-row:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
-.home-row-icon { font-size: 1.5rem; width: 32px; text-align: center; flex-shrink: 0; }
-.home-row-body { flex: 1; min-width: 0; }
-.home-row-title { display: block; font-size: 1rem; font-weight: 700; color: var(--text); }
-.home-row-desc {
-  display: block; margin-top: 2px; font-size: 0.83rem; color: var(--text-muted);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.home-card:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.home-card:active { transform: translateY(0); }
+.home-card-icon { font-size: 2.3rem; line-height: 1; }
+.home-card-title { font-size: 1.05rem; font-weight: 700; color: var(--text); }
+.home-card-desc { font-size: 0.82rem; color: var(--text-muted); line-height: 1.55; }
+/* 3열로 놓이는 넓은 화면에서만 정사각형에 가깝게 (좁은 화면에선 과하게 길어짐).
+   그리드 아이템은 stretch로 높이가 정해져 aspect-ratio가 무시되므로 높이를 직접 준다. */
+@media (min-width: 660px) {
+  .home-card { min-height: 240px; }
 }
-.home-row-arrow { font-size: 1.4rem; color: #cbd5e1; flex-shrink: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .home-card { transition: border-color 0.15s; }
+  .home-card:hover { transform: none; }
+}
 
 /* 최근 활동 */
 .recent-row {
@@ -451,6 +460,7 @@ main { margin-top: 20px; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .recent-meta { display: block; margin-top: 2px; font-size: 0.75rem; color: #94a3b8; }
+.recent-arrow { font-size: 1.3rem; color: #cbd5e1; flex-shrink: 0; }
 /* 탭 패널 / 서브뷰 안의 카드들도 세로 간격 유지 */
 .tab-panel, #gen-input-view, #gen-result-view, #wrong-view {
   display: flex; flex-direction: column; gap: 24px;
