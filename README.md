@@ -21,7 +21,7 @@ yama/
 ├── features/
 │   ├── question_gen.py   ← 문제 생성 라우트 (/generate, /sessions, /models ...)
 │   ├── wrong_note.py     ← 오답 노트 라우트 (/wrong-folders ...)
-│   └── auth.py           ← 구글 로그인 + 게스트 익명 id
+│   └── auth.py           ← Google 로그인 + 게스트 익명 id
 ├── index.html            ← 프론트엔드 뼈대
 ├── static/
 │   ├── css/style.css
