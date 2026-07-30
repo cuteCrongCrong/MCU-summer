@@ -9,7 +9,7 @@
   - features/question_gen.py  : 문제 생성 라우트 (/generate, /sessions, /models ...)
   - features/wrong_note.py    : 오답 노트 라우트 (/wrong-folders ...)
   - features/topic_analysis.py: 기출 주제 분석 라우트 (/analyze-topics)
-  - features/auth.py          : 구글 로그인 + 게스트 익명 id
+  - features/auth.py          : Google 로그인 + 게스트 익명 id
   - 정적 파일(css/js)          : static/ , 화면(HTML): index.html
 
 로컬 실행: python app.py  /  py app.py   (또는 실행.bat)   접속: http://localhost:5000
@@ -47,11 +47,11 @@ app.config.update(
 )
 
 # 리버스 프록시 뒤에 있으면 X-Forwarded-* 를 신뢰해야 https·호스트를 올바로 인식한다.
-# (안 켜면 구글 OAuth 콜백 주소가 http:// 로 만들어져 리다이렉트 URI 불일치로 실패)
+# (안 켜면 Google OAuth 콜백 주소가 http:// 로 만들어져 리다이렉트 URI 불일치로 실패)
 if config.TRUST_PROXY:
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
-init_auth(app)                        # Authlib(구글 OAuth) 초기화
+init_auth(app)                        # Authlib(Google OAuth) 초기화
 app.register_blueprint(gen_bp)
 app.register_blueprint(wrong_bp)
 app.register_blueprint(topic_bp)

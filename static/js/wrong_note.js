@@ -1,6 +1,6 @@
 // ══════════════════════════════════════════════
 // wrong_note.js — 오답 노트 탭 (폴더 목록 · 저장 모달 · 폴더 보기)
-//   common.js 이후 로드. renderQuestions/currentQuestions/escHtml 은 common.js 것을 재사용.
+//   common.js 이후 로드. renderQuestions/getQuestions/escHtml 은 common.js 것을 재사용.
 // ══════════════════════════════════════════════
 
 // ── 오답 폴더 보기 닫기 (폴더 목록으로) ──
@@ -11,8 +11,8 @@ function closeWrongView() {
 }
 
 let wrongFolderCache = [];
-let wrongPendingIdx = null;       // 생성기 카드 저장 시: currentQuestions 내 인덱스
-let wrongPendingQuestion = null;  // 임의 문제 객체 저장 시 (예: 골학 문제은행)
+let wrongPendingIdx = null;       // 미리보기 문구용 문제 번호 (없으면 null)
+let wrongPendingQuestion = null;  // 저장할 문제 객체 — 저장은 항상 이 값으로 한다
 let wrongPendingBtnId = null;     // 저장 성공 시 '저장됨'으로 바꿀 버튼 id
 
 async function loadWrongFolders() {
@@ -60,6 +60,7 @@ async function viewWrongFolder(fid) {
       folder: { id: f.id, name: f.name, items: f.items },
       containerId: 'wrong-questions-container',
       titleId: 'wrong-view-title',
+      ns: 'wrong-',   // 생성기 카드와 DOM id가 겹치지 않도록
     });
     document.getElementById('wrong-card').classList.add('hidden');
     document.getElementById('wrong-view').classList.remove('hidden');
@@ -99,6 +100,7 @@ async function removeWrongItem(itemId, folderId) {
       folder: { id: f.id, name: f.name, items: f.items },
       containerId: 'wrong-questions-container',
       titleId: 'wrong-view-title',
+      ns: 'wrong-',   // 생성기 카드와 DOM id가 겹치지 않도록
     });
   } catch (err) {
     closeWrongView();
@@ -106,11 +108,12 @@ async function removeWrongItem(itemId, folderId) {
 }
 
 // ── 저장 모달 ──
-// (A) 생성기 결과 카드용: currentQuestions[idx] 를 저장
-function openWrongModal(idx) {
-  const q = currentQuestions[idx] || {};
+// (A) 렌더링된 카드용: 그 컨테이너(ns)에 그려진 문제를 저장
+function openWrongModal(ns, idx) {
+  const q = getQuestions(ns)[idx] || {};
   const text = `문제 ${idx + 1}. ${(q['문제'] || '').slice(0, 120)}${(q['문제'] || '').length > 120 ? '…' : ''}`;
-  openWrongModalCommon({ idx, question: null, btnId: 'wbtn-' + idx, preview: text });
+  // 저장 시점에 다시 찾을 수 있도록 문제 객체를 그대로 넘긴다 (인덱스만으로는 ns를 잃는다)
+  openWrongModalCommon({ idx, question: q, btnId: `${ns}wbtn-${idx}`, preview: text });
 }
 
 // (B) 임의 문제 객체용 (골학 문제은행 등): 문제 객체를 직접 저장
@@ -165,7 +168,7 @@ function renderModalFolders() {
 }
 
 async function saveToFolder(fid) {
-  const q = wrongPendingQuestion || (wrongPendingIdx != null ? currentQuestions[wrongPendingIdx] : null);
+  const q = wrongPendingQuestion;   // 모달을 열 때 문제 객체를 그대로 담아둔다
   if (!q) return;
   const btnId = wrongPendingBtnId;   // closeWrongModal 전에 캡처
   const form = new FormData();

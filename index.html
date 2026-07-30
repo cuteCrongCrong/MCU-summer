@@ -8,24 +8,100 @@
 </head>
 <body>
 
+<!-- Google G 로고 (스프라이트) — 로그인 버튼들이 <use href="#google-g">로 참조한다.
+     마크 정의는 여기 한 곳에만 두고, 헤더 위젯(auth.js)과 안내 모달이 같이 쓴다. -->
+<svg width="0" height="0" style="position:absolute;" aria-hidden="true" focusable="false">
+  <symbol id="google-g" viewBox="0 0 18 18">
+    <path fill="#4285F4" d="M17.64 9.2045c0-.6381-.0573-1.2518-.1636-1.8409H9v3.4814h4.8436c-.2086 1.125-.8427 2.0782-1.7959 2.7164v2.2581h2.9087c1.7018-1.5668 2.6836-3.874 2.6836-6.615z"/>
+    <path fill="#34A853" d="M9 18c2.43 0 4.4673-.806 5.9564-2.1805l-2.9087-2.2581c-.8059.54-1.8368.859-3.0477.859-2.344 0-4.3282-1.5831-5.036-3.7104H.9573v2.3318C2.4382 15.9832 5.4818 18 9 18z"/>
+    <path fill="#FBBC05" d="M3.964 10.71c-.18-.54-.2822-1.1168-.2822-1.71s.1022-1.17.2822-1.71V4.9582H.9573A8.9965 8.9965 0 0 0 0 9c0 1.4523.3477 2.8268.9573 4.0418L3.964 10.71z"/>
+    <path fill="#EA4335" d="M9 3.5795c1.3214 0 2.5077.4541 3.4405 1.346l2.5813-2.5814C13.4632.8918 11.426 0 9 0 5.4818 0 2.4382 2.0168.9573 4.9582L3.964 7.29C4.6718 5.1627 6.656 3.5795 9 3.5795z"/>
+  </symbol>
+</svg>
+
 <header style="position:relative;">
   <div id="auth-widget" style="position:absolute;top:14px;right:18px;color:#fff;"></div>
   <h1>🩺 의대 예상문제 생성기</h1>
   <p>강의자료 + 기출문제를 업로드하면 AI가 새로운 예상문제를 만들어줍니다 </p>
 </header>
 
-<!-- ── 상단 탭 ── -->
-<nav class="tabs">
-  <button class="tab-btn active" id="tabbtn-generator" onclick="switchTab('generator')">📝 문제 생성기</button>
-  <button class="tab-btn" id="tabbtn-wrong" onclick="switchTab('wrong')">❌ 오답 노트</button>
-  <button class="tab-btn" id="tabbtn-bones" onclick="switchTab('bones')">🦴 골학 문제은행</button>
-  <button class="tab-btn" id="tabbtn-topics" onclick="switchTab('topics')">🔍 기출 주제 분석</button>
+<!-- ── 탭 안에서만 보이는 상단 바 (홈으로 돌아가기 + 현재 위치) ── -->
+<nav class="tab-bar hidden" id="tab-bar">
+  <button class="home-back-btn" onclick="switchTab('home')">← 홈</button>
+  <span class="tab-bar-title" id="tab-bar-title"></span>
 </nav>
 
 <main>
 
+  <!-- ══════════ 탭: 홈 (시작 화면) ══════════ -->
+  <div class="tab-panel" id="tab-home">
+
+    <!-- 인사 + 요약 -->
+    <div class="home-greeting">
+      <h2 id="home-hello">안녕하세요</h2>
+      <p id="home-subtitle">강의자료와 기출문제를 올리면 예상문제를 만들어 드려요</p>
+    </div>
+
+    <!-- 기능 카드 (홈의 주 진입점) -->
+    <div class="home-cards">
+      <button class="home-card" onclick="openGenerator()">
+        <span class="home-card-icon">📝</span>
+        <span class="home-card-title">문제 생성</span>
+        <span class="home-card-desc" id="home-gen-desc">강의자료로<br>예상문제 만들기</span>
+      </button>
+      <button class="home-card" onclick="switchTab('archive')">
+        <span class="home-card-icon">🗂️</span>
+        <span class="home-card-title">생성한 문제</span>
+        <span class="home-card-desc" id="home-archive-desc">만든 문제<br>다시 보기</span>
+      </button>
+      <button class="home-card" onclick="switchTab('wrong')">
+        <span class="home-card-icon">❌</span>
+        <span class="home-card-title">오답 노트</span>
+        <span class="home-card-desc" id="home-wrong-desc">틀린 문제<br>모아 보기</span>
+      </button>
+      <button class="home-card" onclick="switchTab('bones')">
+        <span class="home-card-icon">🦴</span>
+        <span class="home-card-title">골학 문제은행</span>
+        <span class="home-card-desc">그림 보고<br>뼈 이름 맞히기</span>
+      </button>
+      <button class="home-card" onclick="switchTab('topics')">
+        <span class="home-card-icon">🔍</span>
+        <span class="home-card-title">기출 주제 분석</span>
+        <span class="home-card-desc">기출에 나온<br>주제 찾기</span>
+      </button>
+    </div>
+
+    <!-- 이어서 하기 (세션이 있을 때만) -->
+    <div class="card resume-card hidden" id="resume-card">
+      <div class="resume-label">이어서 하기</div>
+      <div class="resume-name" id="resume-name"></div>
+      <div class="resume-meta" id="resume-meta"></div>
+      <div class="resume-actions">
+        <button class="btn btn-primary resume-primary" id="resume-btn">✨ 이 세션으로 바로 생성</button>
+        <button class="btn-ghost" onclick="openGenerator(true)">다른 자료로 시작</button>
+      </div>
+    </div>
+
+    <!-- 첫 사용자 안내 (세션이 없을 때만) -->
+    <div class="card resume-card hidden" id="welcome-card">
+      <div class="resume-label">시작하기</div>
+      <div class="resume-name">아직 만든 문제가 없어요</div>
+      <div class="resume-meta">강의자료 PDF와 기출문제 PDF를 올리면 예상문제를 만들어 드립니다.</div>
+      <div class="resume-actions">
+        <button class="btn btn-primary resume-primary" onclick="openGenerator(true)">✨ 첫 문제 만들러 가기</button>
+      </div>
+    </div>
+
+    <!-- 최근 활동 -->
+    <div class="card hidden" id="home-recent-card">
+      <div class="card-title">🕘 최근 활동</div>
+      <div id="home-recent-list"></div>
+    </div>
+
+  </div>
+
   <!-- ══════════ 탭: 문제 생성기 ══════════ -->
-  <div class="tab-panel" id="tab-generator">
+  <div class="tab-panel hidden" id="tab-generator">
 
   <!-- ── 서브뷰 A: 설정/입력 ── -->
   <div id="gen-input-view">
@@ -37,12 +113,6 @@
       <button onclick="loadSessions()" style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
     </div>
     <div id="session-list" style="margin-top:6px;font-size:0.88rem;color:#64748b;">불러오는 중…</div>
-  </div>
-
-  <!-- ⓪-b 생성 이력 (활성 세션 있을 때만) -->
-  <div class="card" id="history-card" style="display:none;">
-    <div class="card-title">🗂️ 생성 이력 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 이 세션에서 만든 문제 모음</span></div>
-    <div id="history-list" style="margin-top:6px;font-size:0.88rem;color:#64748b;"></div>
   </div>
 
   <!-- ① 업로드 카드 -->
@@ -150,34 +220,42 @@
       <div id="weight-hint" style="font-size:0.78rem;color:#475569;margin-top:8px;"></div>
     </div>
 
+    <!-- 이번에 만들 문제 세트 이름 (선택) -->
+    <div style="margin-top:20px;">
+      <label for="gen-title">📛 이 문제 세트 이름 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 선택</span></label>
+      <input type="text" id="gen-title" maxlength="100" placeholder="예: 중간고사 대비 1회" autocomplete="off" />
+      <div style="font-size:0.75rem;color:#64748b;margin-top:4px;">비워두면 <b>제N회</b>로 표시됩니다. 나중에 보관함에서 바꿀 수 있어요.</div>
+    </div>
+
     <button class="btn btn-primary" id="generate-btn" onclick="generate()">
       ✨ 예상문제 생성하기
     </button>
   </div>
 
-  <!-- ② 진행 상태 -->
+  <!-- ② 진행 상태 — id는 서버가 보내는 단계 키(stage.key)와 1:1로 대응 -->
   <div id="status-box" class="card">
-    <div class="card-title">생성 진행 상태</div>
+    <div class="card-title">
+      생성 진행 상태
+      <span id="overall-pct" class="overall-pct">0%</span>
+      <button type="button" id="cancel-btn" class="cancel-btn" onclick="cancelGenerate()">■ 중지</button>
+    </div>
+    <div class="progress-track"><div class="progress-bar" id="overall-bar"></div></div>
     <ul class="step-list">
-      <li class="step-item wait" id="step1">
+      <li class="step-item wait" id="step-extract">
         <span class="step-icon">📄</span>
-        <span class="step-text">PDF 텍스트 추출 중...</span>
+        <span class="step-text">PDF 텍스트 추출</span>
       </li>
-      <li class="step-item wait" id="step2">
+      <li class="step-item wait" id="step-concepts">
         <span class="step-icon">🧠</span>
-        <span class="step-text">강의자료 핵심 개념 분석 중...</span>
+        <span class="step-text">강의·기출 핵심 개념 분석</span>
       </li>
-      <li class="step-item wait" id="step3">
-        <span class="step-icon">📋</span>
-        <span class="step-text">기출문제 원문 예시 추출 중...</span>
-      </li>
-      <li class="step-item wait" id="step4">
+      <li class="step-item wait" id="step-format">
         <span class="step-icon">🔍</span>
-        <span class="step-text">기출 형식 분석 중...</span>
+        <span class="step-text">기출 예시 추출 · 형식 분석</span>
       </li>
-      <li class="step-item wait" id="step5">
+      <li class="step-item wait" id="step-generate">
         <span class="step-icon">✏️</span>
-        <span class="step-text">예상문제 생성 중...</span>
+        <span class="step-text">예상문제 생성</span>
       </li>
     </ul>
   </div>
@@ -191,9 +269,12 @@
   <div id="gen-result-view" class="hidden">
 
     <div class="result-nav">
-      <button class="back-btn" onclick="showGenInput()">← 설정으로 돌아가기</button>
-      <button class="btn-ghost" onclick="showGenInput()">✨ 새 문제 생성</button>
+      <button class="back-btn" onclick="showGenInput()">✨ 새 문제 생성</button>
+      <button class="btn-ghost" onclick="switchTab('archive')">🗂️ 보관함에서 보기</button>
     </div>
+
+    <!-- 생성 도중 오류 — 첫 문제가 나온 뒤엔 입력 화면이 숨겨지므로 여기에 표시 -->
+    <div class="error-box" id="result-error-box"></div>
 
     <!-- ④ 분석 결과 요약 -->
     <div id="analysis-box" class="card">
@@ -203,8 +284,12 @@
 
     <!-- ⑤ 생성된 문제 -->
     <div id="result-box">
-      <div class="card-title" id="result-title" style="padding: 0 4px; margin-bottom:16px;">
-        📋 생성된 예상문제
+      <div class="result-head">
+        <div class="card-title" id="result-title" style="padding:0 4px;margin-bottom:0;">
+          📋 생성된 예상문제
+        </div>
+        <button class="title-edit-btn" id="result-rename-btn" onclick="renameCurrentResult()"
+                title="이름 붙이기" aria-label="이름 붙이기" style="display:none;">✏️</button>
       </div>
       <div id="questions-container"></div>
     </div>
@@ -212,6 +297,43 @@
   </div><!-- /gen-result-view -->
 
   </div><!-- /tab-generator -->
+
+  <!-- ══════════ 탭: 생성 문제 관리 (보관함) ══════════ -->
+  <div class="tab-panel hidden" id="tab-archive">
+
+    <!-- ── 서브뷰 A: 시험지 목록 ── -->
+    <div id="archive-list-view">
+      <div class="card">
+        <div class="card-title">
+          🗂️ 생성한 문제
+          <span id="archive-summary" style="font-weight:400;font-size:0.8rem;color:#64748b;"></span>
+          <button type="button" onclick="loadArchive(true)" title="새로고침"
+                  style="margin-left:auto;font-size:0.76rem;padding:4px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
+        </div>
+        <div id="archive-filter-row" class="hidden" style="margin-bottom:14px;">
+          <select id="archive-session-filter" class="select-field" onchange="renderArchive()"></select>
+        </div>
+        <div id="archive-grid"></div>
+      </div>
+    </div>
+
+    <!-- ── 서브뷰 B: 시험지 한 장 열람 ── -->
+    <div id="archive-view" class="hidden">
+      <div class="result-nav">
+        <button class="back-btn" onclick="closeArchiveView()">← 목록으로</button>
+      </div>
+      <div class="card" id="archive-paper-head">
+        <div class="card-title" id="archive-paper-title">시험지</div>
+        <div id="archive-paper-meta" style="font-size:0.83rem;color:#64748b;"></div>
+        <div class="resume-actions">
+          <button class="btn-ghost" id="archive-rename-btn">✏️ 이름 변경</button>
+          <button class="btn-ghost" id="archive-delete-btn">🗑️ 이 시험지 삭제</button>
+        </div>
+      </div>
+      <div id="archive-questions-container"></div>
+    </div>
+
+  </div><!-- /tab-archive -->
 
   <!-- ══════════ 탭: 오답 노트 ══════════ -->
   <div class="tab-panel hidden" id="tab-wrong">
@@ -488,7 +610,7 @@
 
     <!-- flex-wrap + flex-basis: 좁은 화면(모바일)에서는 버튼이 세로로 쌓인다 -->
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:18px;">
-      <button onclick="authWelcomeLogin()" style="flex:1 1 150px;padding:11px;border:none;border-radius:8px;background:#2563eb;color:#fff;font-weight:700;font-size:0.88rem;font-family:inherit;cursor:pointer;">🔐 구글로 로그인</button>
+      <button onclick="authWelcomeLogin()" style="flex:1 1 150px;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px;border:none;border-radius:8px;background:#2563eb;color:#fff;font-weight:700;font-size:0.88rem;font-family:inherit;cursor:pointer;"><span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#fff;border-radius:4px;flex-shrink:0;"><svg width="15" height="15" aria-hidden="true"><use href="#google-g" /></svg></span>Google로 로그인</button>
       <button onclick="authCloseWelcome()" style="flex:1 1 150px;padding:11px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#475569;font-size:0.88rem;font-family:inherit;cursor:pointer;">로그인 없이 둘러보기</button>
     </div>
   </div>
@@ -501,6 +623,10 @@
 <script src="/static/js/bone_bank.js"></script>
 <script src="/static/js/topic_analysis.js"></script>
 <script src="/static/js/auth.js"></script>
+<!-- home.js 는 다른 모듈의 함수(setActiveSession, viewWrongFolder 등)를 쓰므로 마지막에 -->
+<script src="/static/js/home.js"></script>
+<!-- archive.js 는 home.js의 relativeDay, question_gen.js의 providerLabel 을 쓴다 -->
+<script src="/static/js/archive.js"></script>
 
 </body>
 </html>

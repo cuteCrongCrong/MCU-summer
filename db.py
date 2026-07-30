@@ -128,11 +128,11 @@ def init_db():
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_wrong_folder ON wrong_items(folder_id)"
         )
-        # ── 로그인: 구글 계정 사용자 ──
+        # ── 로그인: Google 계정 사용자 ──
         conn.execute(
             """CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                google_sub TEXT UNIQUE NOT NULL,   -- 구글 계정 고유 id
+                google_sub TEXT UNIQUE NOT NULL,   -- Google 계정 고유 id
                 email TEXT,
                 name TEXT,
                 picture TEXT,
@@ -163,6 +163,9 @@ def init_db():
                     f"UPDATE {table} SET provider=? WHERE provider IS NULL",
                     (LEGACY_PROVIDER,),
                 )
+        # 생성 회차에 사용자가 붙인 이름. 백필하지 않는다 —
+        # NULL(이름 없음)과 사용자가 지은 이름을 구분해야 화면에서 '제N회'로 대체할 수 있다.
+        _ensure_column(conn, "generations", "title", "TEXT")
         conn.commit()
     finally:
         conn.close()

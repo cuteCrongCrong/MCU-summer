@@ -154,6 +154,1616 @@
           ]
         }
       ]
+    },
+    {
+      "id": "femur_proximal",
+      "title": "대퇴골 근위부 (Proximal Femur)",
+      "category": "lower_limb",
+      "subcategory": "thigh_leg",
+      "image": "/static/images/bones/femur_proximal_numbered.svg",
+      "original": "/static/images/bones/femur-proximal.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "대퇴골두",
+            "femoral head",
+            "head of femur"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "대퇴골경",
+            "femoral neck",
+            "neck of femur"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "대퇴골두오목",
+            "fovea capitis",
+            "fovea for ligament of head"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "대전자",
+            "greater trochanter"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "소전자",
+            "lesser trochanter"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "전자간능선",
+            "intertrochanteric crest"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "대퇴골체",
+            "body of femur",
+            "shaft of femur"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "femur_distal",
+      "title": "대퇴골 원위부 (Distal Femur, 전방·후방)",
+      "category": "lower_limb",
+      "subcategory": "thigh_leg",
+      "image": "/static/images/bones/femur_distal_numbered.svg",
+      "original": "/static/images/bones/femur-distal.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "내측과상선",
+            "medial supracondylar line"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "외측과상선",
+            "lateral supracondylar line"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "내전근결절",
+            "adductor tubercle"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "외측상과",
+            "lateral epicondyle"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "외측상과",
+            "lateral epicondyle"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "내측상과",
+            "medial epicondyle"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "외측과",
+            "lateral condyle"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "내측과",
+            "medial condyle"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "과간와",
+            "intercondylar fossa"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "외측과",
+            "lateral condyle"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "슬개면",
+            "patellar surface",
+            "trochlear surface"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tibia_fibula_superior",
+      "title": "경골·비골 근위부 (위에서 본 모습, Tibial Plateau)",
+      "category": "lower_limb",
+      "subcategory": "thigh_leg",
+      "image": "/static/images/bones/tibia_fibula_superior_numbered.svg",
+      "original": "/static/images/bones/tibia-fibula-superior.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "과간융기",
+            "intercondylar eminence"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "후과간구역",
+            "posterior intercondylar area"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "비골두",
+            "fibula head",
+            "head of fibula"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "외측과",
+            "lateral condyle"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "내측과",
+            "medial condyle"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "경골조면",
+            "tibial tuberosity"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "전과간구역",
+            "anterior intercondylar area"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tibia_fibula_inferior",
+      "title": "경골·비골 원위부 (아래에서 본 모습)",
+      "category": "lower_limb",
+      "subcategory": "thigh_leg",
+      "image": "/static/images/bones/tibia_fibula_inferior_numbered.svg",
+      "original": "/static/images/bones/tibia-fibula-inferior.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "외과관절면",
+            "articular surface of lateral malleolus"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "하관절면",
+            "inferior articular surface"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "내과관절면",
+            "articular surface of medial malleolus"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "비골",
+            "fibula"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "외과",
+            "외측복사뼈",
+            "lateral malleolus"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "내과",
+            "내측복사뼈",
+            "medial malleolus"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "외과와",
+            "외과오목",
+            "lateral malleolar fossa"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "경골",
+            "tibia"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "femur_proximal_lateral_medial",
+      "title": "대퇴골 근위부 (외측·내측면, Lateral & Medial View)",
+      "category": "lower_limb",
+      "subcategory": "thigh_leg",
+      "image": "/static/images/bones/femur_proximal_lateral_medial_numbered.svg",
+      "original": "/static/images/bones/femur-proximal-latereal-medial.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "대퇴골두",
+            "femoral head",
+            "head of femur"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "대퇴골두",
+            "femoral head",
+            "head of femur"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "대전자",
+            "greater trochanter"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "대퇴골두오목",
+            "fovea capitis",
+            "fovea"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "전자와",
+            "trochanteric fossa"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "대전자",
+            "greater trochanter"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "방형결절",
+            "quadrate tubercle"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "대퇴골경",
+            "femoral neck",
+            "neck of femur"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "전자간능선",
+            "intertrochanteric crest"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "소전자",
+            "lesser trochanter"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "전자간선끝",
+            "end of intertrochanteric line"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "소전자",
+            "lesser trochanter"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "치골근선",
+            "나선선",
+            "pectineal line",
+            "spiral line"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "대퇴골체",
+            "body of femur",
+            "shaft of femur"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "knee_joint",
+      "title": "무릎 관절 (Knee Joint, 후면)",
+      "category": "lower_limb",
+      "subcategory": "thigh_leg",
+      "image": "/static/images/bones/knee_joint_numbered.svg",
+      "original": "/static/images/bones/knee-joint.jpeg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "대퇴골",
+            "femur"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "슬개골저",
+            "base of patella"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "슬개골",
+            "patella"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "내전근결절",
+            "adductor tubercle"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "슬개골첨",
+            "apex of patella"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "내측상과",
+            "medial epicondyle"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "외측상과",
+            "lateral epicondyle"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "슬와구",
+            "popliteal groove"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "과간와",
+            "intercondylar fossa"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "내측과",
+            "medial condyle"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "외측과",
+            "lateral condyle"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "내측과",
+            "medial condyle"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "외측과",
+            "lateral condyle"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "비골두",
+            "fibula head",
+            "head of fibula"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "내측결절",
+            "medial tubercle"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "비골",
+            "fibula"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "과간융기",
+            "intercondylar eminence"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "외측결절",
+            "lateral tubercle"
+          ]
+        },
+        {
+          "num": 19,
+          "answers": [
+            "경골",
+            "tibia"
+          ]
+        },
+        {
+          "num": 20,
+          "answers": [
+            "경골조면",
+            "tibial tuberosity"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tibia_fibula_transverse",
+      "title": "경골·비골 횡단면 (Transverse Section)",
+      "category": "lower_limb",
+      "subcategory": "thigh_leg",
+      "image": "/static/images/bones/tibia_fibula_transverse_numbered.svg",
+      "original": "/static/images/bones/tibia-fibula-transverse.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "후면",
+            "posterior surface"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "후면",
+            "posterior surface"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "외측면",
+            "lateral surface"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "골간막",
+            "interosseous membrane"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "경골",
+            "tibia"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "비골",
+            "fibula"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "내측면",
+            "medial surface"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "내측면",
+            "medial surface"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "외측면",
+            "lateral surface"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "전연",
+            "anterior border"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "femur_anterior_posterior",
+      "title": "대퇴골 전체 (전방·후방, Right Femur)",
+      "category": "lower_limb",
+      "subcategory": "thigh_leg",
+      "image": "/static/images/bones/femur_anterior_posterior_numbered.svg",
+      "original": "/static/images/bones/femur-anterior-posterior.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "전자간선",
+            "intertrochanteric line"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "전자간능선",
+            "intertrochanteric crest"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "대퇴골두",
+            "femoral head",
+            "head of femur"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "대퇴골두오목",
+            "fovea capitis"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "둔근조면",
+            "gluteal trochanter"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "대퇴골경",
+            "femoral neck",
+            "neck of femur"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "대전자",
+            "greater trochanter"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "전자와",
+            "trochanteric fossa"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "둔근조면",
+            "gluteal tuberosity"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "소전자",
+            "lesser trochanter"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "대퇴골체",
+            "shaft of femur",
+            "body of femur"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "치골근선",
+            "pectineal line"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "조선",
+            "linea aspera"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "외측과상선",
+            "lateral supracondylar line"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "내측과상선",
+            "medial supracondylar line"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "슬개면",
+            "patellar surface"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "외측상과",
+            "lateral epicondyle"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "외측상과",
+            "lateral epicondyle"
+          ]
+        },
+        {
+          "num": 19,
+          "answers": [
+            "과간선",
+            "intercondylar line"
+          ]
+        },
+        {
+          "num": 20,
+          "answers": [
+            "슬와면",
+            "popliteal surface"
+          ]
+        },
+        {
+          "num": 21,
+          "answers": [
+            "내전근결절",
+            "adductor tubercle"
+          ]
+        },
+        {
+          "num": 22,
+          "answers": [
+            "외측과",
+            "lateral condyle"
+          ]
+        },
+        {
+          "num": 23,
+          "answers": [
+            "내측상과",
+            "medial epicondyle"
+          ]
+        },
+        {
+          "num": 24,
+          "answers": [
+            "외측상과",
+            "lateral epicondyle"
+          ]
+        },
+        {
+          "num": 25,
+          "answers": [
+            "외측과",
+            "lateral condyle"
+          ]
+        },
+        {
+          "num": 26,
+          "answers": [
+            "내측과",
+            "medial condyle"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tibia_fibula_anterior_posterior",
+      "title": "경골·비골 전체 (전방·후방)",
+      "category": "lower_limb",
+      "subcategory": "thigh_leg",
+      "image": "/static/images/bones/tibia_fibula_anterior_posterior_numbered.svg",
+      "original": "/static/images/bones/tibia-fibula-anterior-posterior.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "과간결절",
+            "intercondylar tubercles"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "과간결절",
+            "intercondylar tubercles"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "외측경골고평부",
+            "lateral tibial plateau"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "내측경골고평부",
+            "medial tibial plateau"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "내측경골고평부",
+            "medial tibial plateau"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "외측경골고평부",
+            "lateral tibial plateau"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "외측과",
+            "lateral condyle"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "내측과",
+            "medial condyle"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "내측과",
+            "medial condyle"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "외측과",
+            "lateral condyle"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "비골두첨",
+            "apex of head of fibula"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "과간융기",
+            "intercondylar eminence"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "비골두첨",
+            "apex of head of fibula"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "거디결절",
+            "gerdy tubercle",
+            "anterolateral tibial tubercle"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "후과간구역",
+            "posterior intercondylar area"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "비골두",
+            "head of fibula"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "비골두",
+            "head of fibula"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "경골조면",
+            "tibial tuberosity"
+          ]
+        },
+        {
+          "num": 19,
+          "answers": [
+            "내측능",
+            "medial crest"
+          ]
+        },
+        {
+          "num": 20,
+          "answers": [
+            "전경골혈관구멍",
+            "opening for anterior tibial vessels"
+          ]
+        },
+        {
+          "num": 21,
+          "answers": [
+            "골간막",
+            "interosseous membrane"
+          ]
+        },
+        {
+          "num": 22,
+          "answers": [
+            "가자미근선",
+            "soleal line"
+          ]
+        },
+        {
+          "num": 23,
+          "answers": [
+            "영양공",
+            "nutrient foramen"
+          ]
+        },
+        {
+          "num": 24,
+          "answers": [
+            "골간막",
+            "interosseous membrane"
+          ]
+        },
+        {
+          "num": 25,
+          "answers": [
+            "골간연",
+            "interosseous border"
+          ]
+        },
+        {
+          "num": 26,
+          "answers": [
+            "내측면",
+            "medial surface"
+          ]
+        },
+        {
+          "num": 27,
+          "answers": [
+            "후면",
+            "posterior surface"
+          ]
+        },
+        {
+          "num": 28,
+          "answers": [
+            "전연",
+            "anterior border"
+          ]
+        },
+        {
+          "num": 29,
+          "answers": [
+            "내측연",
+            "medial border"
+          ]
+        },
+        {
+          "num": 30,
+          "answers": [
+            "골간연",
+            "interosseous border"
+          ]
+        },
+        {
+          "num": 31,
+          "answers": [
+            "전연",
+            "anterior border"
+          ]
+        },
+        {
+          "num": 32,
+          "answers": [
+            "비골체",
+            "shaft of fibula"
+          ]
+        },
+        {
+          "num": 33,
+          "answers": [
+            "비골체",
+            "shaft of fibula"
+          ]
+        },
+        {
+          "num": 34,
+          "answers": [
+            "외측면",
+            "lateral surface"
+          ]
+        },
+        {
+          "num": 35,
+          "answers": [
+            "경골체",
+            "shaft of tibia"
+          ]
+        },
+        {
+          "num": 36,
+          "answers": [
+            "경골체",
+            "shaft of tibia"
+          ]
+        },
+        {
+          "num": 37,
+          "answers": [
+            "후연",
+            "posterior border"
+          ]
+        },
+        {
+          "num": 38,
+          "answers": [
+            "비골절흔",
+            "fibular notch"
+          ]
+        },
+        {
+          "num": 39,
+          "answers": [
+            "비골절흔",
+            "fibular notch"
+          ]
+        },
+        {
+          "num": 40,
+          "answers": [
+            "후경골근건구",
+            "groove for tendon of tibialis posterior"
+          ]
+        },
+        {
+          "num": 41,
+          "answers": [
+            "외과",
+            "lateral malleolus"
+          ]
+        },
+        {
+          "num": 42,
+          "answers": [
+            "내과",
+            "medial malleolus"
+          ]
+        },
+        {
+          "num": 43,
+          "answers": [
+            "내과",
+            "medial malleolus"
+          ]
+        },
+        {
+          "num": 44,
+          "answers": [
+            "외과",
+            "lateral malleolus"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "patella",
+      "title": "슬개골 (Patella)",
+      "category": "lower_limb",
+      "subcategory": "thigh_leg",
+      "image": "/static/images/bones/patella_numbered.svg",
+      "original": "/static/images/bones/patella.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "저",
+            "base"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "외측관절면",
+            "facet for lateral condyle of femur"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "내측관절면",
+            "facet for medial condyle of femur"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "내측연",
+            "medial border"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "외측연",
+            "lateral border"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "첨",
+            "apex"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "슬개인대부착면",
+            "surface for patellar ligament"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "foot_lateral",
+      "title": "발뼈 외측면 (Foot, Lateral View)",
+      "category": "lower_limb",
+      "subcategory": "foot_bones",
+      "image": "/static/images/bones/foot_lateral_numbered.svg",
+      "original": "/static/images/bones/foot-lateral.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "주상골",
+            "navicular"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "외과관절면",
+            "lateral malleolar facet"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "중간쐐기골",
+            "intermediate cuneiform"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "외측쐐기골",
+            "lateral cuneiform"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "비골활차",
+            "fibular trochlea"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "종골결절",
+            "calcaneal tuberosity"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "입방골",
+            "cuboid"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "제5중족골조면",
+            "tuberosity of metatarsal v",
+            "tuberosity of the fifth metatarsal"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "foot_bones_anterior",
+      "title": "발뼈 전면 (Foot, Anterior/Dorsal View)",
+      "category": "lower_limb",
+      "subcategory": "foot_bones",
+      "image": "/static/images/bones/foot_bones_anterior_numbered.svg",
+      "original": "/static/images/bones/foot-bones-anterior.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "비골",
+            "fibula"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "경골",
+            "tibia"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "외과",
+            "외측복사뼈",
+            "lateral malleolus"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "내과",
+            "내측복사뼈",
+            "medial malleolus"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "거골하관절",
+            "distal subtalar joint",
+            "talocalcaneal joint"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "거골하관절",
+            "talocrural joint",
+            "ankle joint"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "종골",
+            "calcaneus"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "거골두",
+            "head of talus"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "입방골",
+            "cuboid"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "주상골",
+            "navicular"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "거주관절",
+            "talonavicular joint"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "족근중족관절",
+            "tarsometatarsal joints"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "종입방관절",
+            "calcaneocuboid joint"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "가로발목뼈관절",
+            "transverse tarsal joint"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "중족골",
+            "metatarsals"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "지골",
+            "phalanges"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "중족지관절",
+            "metatarsophalangeal joints"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "지절간관절",
+            "interphalangeal joints"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "foot_bones_superior",
+      "title": "발뼈 상면 (Foot Bones, Superior View)",
+      "category": "lower_limb",
+      "subcategory": "foot_bones",
+      "image": "/static/images/bones/foot_bones_superior_numbered.svg",
+      "original": "/static/images/bones/foot-bones-superior.gif",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "원위지골",
+            "distal phalanx"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "중위지골",
+            "middle phalanx"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "근위지골",
+            "proximal phalanx"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "중족골",
+            "metatarsal bones",
+            "metatarsal"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "내측(제1)쐐기골",
+            "medial cuneiform",
+            "1st cuneiform"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "중간(제2)쐐기골",
+            "intermediate cuneiform",
+            "2nd cuneiform"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "외측(제3)쐐기골",
+            "lateral cuneiform",
+            "3rd cuneiform"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "입방골",
+            "cuboid bone",
+            "cuboid"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "주상골",
+            "navicular bone",
+            "navicular"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "거골두",
+            "head of talus"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "거골",
+            "talus"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "거골경",
+            "neck of talus"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "거골체",
+            "body of talus"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "종골",
+            "calcaneus"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "foot_medial",
+      "title": "발뼈 내측면 (Foot, Medial View)",
+      "category": "lower_limb",
+      "subcategory": "foot_bones",
+      "image": "/static/images/bones/foot_medial_numbered.svg",
+      "original": "/static/images/bones/foot-medial.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "거골두",
+            "head of talus",
+            "head of the talus"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "주상골",
+            "navicular"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "재거돌기",
+            "sustentaculum tali"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "내측쐐기골",
+            "medial cuneiform"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "제1중족골",
+            "1st metatarsal",
+            "first metatarsal"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "거골후돌기",
+            "posterior talar process",
+            "posterior process of talus"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "엄지근위지골",
+            "proximal phalanx of hallux"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "입방골조면",
+            "cuboid tuberosity"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "엄지원위지골",
+            "distal phalanx of hallux"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "종골결절내측돌기",
+            "medial process of calcaneal tuberosity"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "종자골",
+            "sesamoid bones"
+          ]
+        }
+      ]
     }
   ]
 }

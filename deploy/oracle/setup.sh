@@ -112,7 +112,7 @@ PORT=$APP_PORT
 # 프록시(Caddy)가 같은 서버에 있으므로 127.0.0.1만 신뢰한다.
 TRUSTED_PROXY=127.0.0.1
 
-# 구글 로그인 — 값을 채우면 로그인 버튼이 나타난다. 비워두면 게스트 전용으로 동작.
+# Google 로그인 — 값을 채우면 로그인 버튼이 나타난다. 비워두면 게스트 전용으로 동작.
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 EOF
@@ -164,7 +164,7 @@ cat <<EOF
 
 다음 할 일:
 
- 1) 구글 로그인을 쓰려면 $ENV_FILE 에
+ 1) Google 로그인을 쓰려면 $ENV_FILE 에
     GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET 를 채우고:
         sudo systemctl restart mcu
 
