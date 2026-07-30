@@ -18,6 +18,13 @@ sessions.db
 *.sqlite
 *.sqlite3
 
+# WAL 모드(db.py의 journal_mode = WAL)가 DB 파일 옆에 만드는 동반 파일.
+# 이름이 sessions.db-wal 이라서 위의 *.db 패턴으로는 잡히지 않고,
+# 서버를 켤 때마다 git status 에 untracked 로 떠서 커밋할 것을 가린다.
+*.db-wal
+*.db-shm
+*.db-journal
+
 # ──────────────────────────────────────────────
 #  비밀정보 / API 키  ── ⚠️ 절대 커밋 금지 ⚠️
 #  한 번이라도 push되면 기록에 영구히 남습니다.
