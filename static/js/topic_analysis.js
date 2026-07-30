@@ -167,6 +167,7 @@ async function topicAnalyze() {
   form.append('api_key', apiKey);
   form.append('model', model);
   form.append('provider', topicCurrentProvider || '');
+  form.append('title', document.getElementById('topic-title').value.trim());
   lectureFiles.forEach(f => form.append('lectures', f));
   examFiles.forEach(f => form.append('exams', f));
 
@@ -207,12 +208,12 @@ const TOPIC_VIEWS = {
   main: {
     sourceId: 'topic-source-content', listId: 'topic-list',
     emptyId: 'topic-list-empty', countId: 'topic-count-label',
-    searchId: 'topic-search', copyId: 'topic-copy-text',
+    searchId: 'topic-search',
   },
   saved: {
     sourceId: 'saved-topic-source-content', listId: 'saved-topic-list',
     emptyId: 'saved-topic-list-empty', countId: 'saved-topic-count-label',
-    searchId: 'saved-topic-search', copyId: 'saved-topic-copy-text',
+    searchId: 'saved-topic-search',
   },
 };
 
@@ -249,9 +250,9 @@ function topicRenderDocs(docs, label) {
   </div>`;
 }
 
-// "주제: 강의록 12p - 기출 4번" 한 줄 (사용자가 요청한 형식 · 복사용으로도 씀)
 // 주제 이름 뒤에 붙는 출처 부분 — "강의록 12p, 13p - 기출 4번, 7번"
-// (앞에 "주제: "를 붙이면 사용자가 요청한 한 줄 형식이 된다. 파일명은 줄이지 않은 전체 이름)
+// (앞에 "주제: "를 붙이면 "주제: 강의록 몇p - 기출 몇번" 한 줄 형식이 된다.
+//  파일명은 줄이지 않은 전체 이름을 쓴다 — 여러 개 있어도 헷갈리지 않게)
 function topicRefLine(t) {
   const lec = (t['강의록'] || []).map(r =>
     `${topicShortName(r['자료'])} ${r['페이지'].map(p => p + 'p').join(', ')}`).join(' / ');
@@ -342,24 +343,26 @@ function topicRenderList(topics, viewKey) {
     </div>`;
   }).join('');
 
-  // 한 줄 요약 (복사용) — 주제 이름은 위 목록과 같이 굵게.
-  // <b>는 표시용일 뿐이고 복사할 때는 textContent를 쓰므로 태그 없는 순수 텍스트가 나간다.
-  const lines = topics.map(t =>
-    `<b>${escHtml(t['주제'])}</b>: ${escHtml(topicRefLine(t))}`).join('\n');
+  // 한 줄 요약 (복사용) — "주제: 강의록 몇p - 기출 몇번" 평문 한 줄 = 카드 한 장.
+  // 위 "📌 기출에 나온 주제" 목록과 같은 형식(테두리 있는 흰 카드 행)으로 보이게 하되,
+  // 굵게 강조하지는 않는다. 복사 텍스트는 DOM을 다시 읽지 않고 이 배열을 그대로 쓴다.
+  const lines = topics.map(t => `${t['주제']}: ${topicRefLine(t)}`);
+  view.summaryLines = lines;
+  const rowsHtml = lines.map(l => `<div class="topic-summary-row">${escHtml(l)}</div>`).join('');
   const key = viewKey || 'main';
   const extra = document.createElement('div');
   extra.innerHTML = `
     <details>
       <summary>📋 한 줄 요약 보기 (복사용)</summary>
-      <button class="check-btn" style="margin:10px 0 0;" onclick="topicCopyLines('${key}')">📋 전체 복사</button>
-      <pre id="${view.copyId}" class="topic-summary">${lines}</pre>
+      <button class="check-btn" style="margin:10px 0;" onclick="topicCopyLines('${key}')">📋 전체 복사</button>
+      <div class="topic-summary-list">${rowsHtml}</div>
     </details>`;
   listEl.appendChild(extra);
 }
 
 function topicCopyLines(viewKey) {
   const view = topicView(viewKey);
-  const text = (document.getElementById(view.copyId) || {}).textContent || '';
+  const text = (view.summaryLines || []).join('\n');
   if (!text) return;
   navigator.clipboard.writeText(text)
     .then(() => alert('한 줄 요약을 복사했습니다.'))

@@ -8,8 +8,9 @@
   - 강의록·기출을 **여러 개** 올릴 수 있다 ("어떤 강의록/어떤 기출"을 구분해 보여줘야 하므로)
   - 세션(분석 자산 캐시)을 쓰지 않는다. 세션에는 페이지 번호가 없어서 출처를 만들 수 없다.
     분석 결과는 재사용 자산이 아니라 완성된 결과물이라 한 행으로 그대로 보관한다.
-제목: LLM이 주제들을 대표하는 키워드 구(句)로 지어준다 (llm.clean_topic_title / build_topic_title).
-      사용자가 보관함에서 바꿀 수 있고, 비우면 자동 제목으로 되돌아간다.
+제목: 문제 생성기(generations.title)와 같은 방식. 입력 화면의 '이 분석 세트 이름'
+      (선택)을 그대로 저장하고, 비워두면 NULL로 두어 화면에서 '제N회'로 대체한다.
+      LLM에게 제목을 짓게 하지 않는다 — 회차 번호가 항상 유일하고 저렴하다.
 LLM 프롬프트·파싱은 llm.py의 '기출 주제 분석' 섹션에 있다.
 """
 
@@ -24,10 +25,7 @@ from providers.base import (
     ProviderError, ProviderAuthError, ProviderRateLimitError,
 )
 from providers.factory import UnknownProviderError, get_provider
-from llm import (
-    extract_labeled_docs, run_topic_analysis, build_topic_title,
-    clean_topic_title,
-)
+from llm import extract_labeled_docs, run_topic_analysis
 
 topic_bp = Blueprint("topic", __name__)
 
@@ -60,8 +58,11 @@ def _doc_meta(d: dict) -> dict:
 # ──────────────────────────────────────────────
 
 def save_analysis(result: dict, lecture_docs: list, exam_docs: list,
-                  model: str, provider: str, owner) -> int:
-    """분석 한 건을 보관하고 id 반환."""
+                  model: str, provider: str, owner, title: str = None) -> int:
+    """
+    분석 한 건을 보관하고 id 반환.
+    title은 사용자가 입력 화면에서 붙인 이름 — 비우면 NULL로 두고 화면에서 '제N회'로 대체한다.
+    """
     user_id, guest_id = owner
     conn = get_conn()
     try:
@@ -71,7 +72,7 @@ def save_analysis(result: dict, lecture_docs: list, exam_docs: list,
                 topics, dropped, total_questions, user_id, guest_id)
                VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (
-                result.get("title", ""),
+                (title or "").strip() or None,
                 datetime.now().strftime("%Y-%m-%d %H:%M"),
                 model,
                 provider or LEGACY_PROVIDER,
@@ -147,28 +148,17 @@ def load_analysis(aid: int, owner):
     }
 
 
-def rename_analysis(aid: int, title: str, owner):
-    """
-    제목 변경. 빈 문자열을 주면 보관된 주제들로 자동 제목을 다시 만든다
-    (이름을 지웠을 때 목록에 빈 칸이 남지 않게).
-    실제로 저장된 제목을 반환하고, 그 분석이 없으면 None을 반환한다.
-    """
+def rename_analysis(aid: int, title: str, owner) -> bool:
+    """소유한 분석만 이름 변경. 빈 값을 보내면 이름을 지워 '제N회' 표시로 되돌린다."""
     frag, params = owner_clause(owner)
     conn = get_conn()
     try:
-        row = conn.execute(
-            f"SELECT topics FROM topic_analyses WHERE id=? AND {frag}", [aid] + params
-        ).fetchone()
-        if not row:
-            return None
-        if not title:
-            title = build_topic_title(json.loads(row["topics"] or "[]"))
-        conn.execute(
+        cur = conn.execute(
             f"UPDATE topic_analyses SET title=? WHERE id=? AND {frag}",
-            [title, aid] + params,
+            [(title or "").strip() or None, aid] + params,
         )
         conn.commit()
-        return title
+        return cur.rowcount > 0
     finally:
         conn.close()
 
@@ -203,13 +193,13 @@ def topic_analysis_get(aid):
 
 @topic_bp.route("/topic-analysis/<int:aid>/rename", methods=["POST"])
 def topic_analysis_rename(aid):
-    # 빈 값으로 보내면 자동 제목이 다시 만들어지므로, 저장된 제목을 그대로 돌려준다
-    # (프런트가 목록·헤더를 재요청 없이 갱신할 수 있게)
-    saved = rename_analysis(aid, clean_topic_title(request.form.get("title", "")),
-                            current_owner())
-    if saved is None:
+    """분석 이름 변경. 빈 값을 보내면 이름을 지워 '제N회' 표시로 되돌린다."""
+    title = request.form.get("title", "").strip()
+    if len(title) > 100:
+        return jsonify({"error": "이름은 100자 이내로 입력해주세요."}), 400
+    if not rename_analysis(aid, title, current_owner()):
         return jsonify({"error": "분석 결과를 찾을 수 없습니다."}), 404
-    return jsonify({"success": True, "title": saved})
+    return jsonify({"success": True, "title": title})
 
 
 @topic_bp.route("/topic-analysis/<int:aid>", methods=["DELETE"])
@@ -230,6 +220,11 @@ def analyze_topics():
         except UnknownProviderError as e:
             return jsonify({"error": str(e)}), 400
         model = request.form.get("model", "").strip() or provider.default_model
+
+        # 이번에 분석할 내용 이름(선택). 비우면 화면에서 '제N회'로 표시된다.
+        title = request.form.get("title", "").strip()
+        if len(title) > 100:
+            return jsonify({"error": "분석 세트 이름은 100자 이내로 입력해주세요."}), 400
 
         lectures, err = _collect_pdfs("lectures")
         if err:
@@ -274,12 +269,12 @@ def analyze_topics():
         analysis_id = None
         if result["topics"]:
             analysis_id = save_analysis(result, lecture_docs, exam_docs,
-                                        model, provider.name, current_owner())
+                                        model, provider.name, current_owner(), title)
 
         return jsonify({
             "success": True,
             "analysis_id": analysis_id,       # 보관된 분석 id (주제가 없으면 null)
-            "title": result.get("title", ""),
+            "title": title,                   # 사용자가 붙인 이름 (없으면 "")
             "topics": result["topics"],
             "dropped": result["dropped"],
             "total_questions": result["total_questions"],

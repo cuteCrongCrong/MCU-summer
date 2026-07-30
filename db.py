@@ -173,7 +173,7 @@ def init_db():
         conn.execute(
             """CREATE TABLE IF NOT EXISTS topic_analyses (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT,                        -- LLM이 뽑은 키워드 구(句). 사용자가 바꿀 수 있다
+                title TEXT,                        -- 사용자가 붙인 이름. 비우면 NULL(화면은 '제N회')
                 created_at TEXT NOT NULL,
                 model TEXT,
                 provider TEXT,
