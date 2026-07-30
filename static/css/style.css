@@ -14,6 +14,20 @@
   --border: #e2e8f0;
   --radius: 12px;
   --shadow: 0 4px 24px rgba(0,0,0,0.08);
+
+  /* ── 아래는 새로 만든 색이 아니라, 이미 파일 곳곳에 하드코딩돼 있던 값에
+        이름만 붙인 것이다. (#eff6ff=.file-drop:hover, #bfdbfe=#status-box,
+        #94a3b8=.paper-meta, 헤더 그라디언트=header) ── */
+  --primary-soft: #eff6ff;
+  --border-soft:  #bfdbfe;
+  --text-faint:   #94a3b8;   /* 장식 전용(화살표 등). 읽어야 하는 글자엔 쓰지 않는다 */
+  --header-from:  #1e40af;
+  --header-to:    #0369a1;
+
+  /* 그림자 3단 — 홈에서 '떠 있는' 요소를 하나로 줄이기 위해.
+     기능 카드는 sm, 이어서 하기 카드만 key. */
+  --shadow-sm:  0 1px 3px rgba(15,23,42,0.05);
+  --shadow-key: 0 6px 20px rgba(37,99,235,0.14);
 }
 body {
   font-family: system-ui, 'Apple SD Gothic Neo', 'Nanum Gothic', sans-serif;
@@ -24,7 +38,7 @@ body {
 
 /* ── 레이아웃 ── */
 header {
-  background: linear-gradient(135deg, #1e40af 0%, #0369a1 100%);
+  background: linear-gradient(135deg, var(--header-from) 0%, var(--header-to) 100%);
   color: white;
   padding: 28px 24px;
   text-align: center;
@@ -396,9 +410,19 @@ main { margin-top: 20px; }
 .home-greeting p { margin-top: 6px; font-size: 0.9rem; color: var(--text-muted); }
 
 /* 이어서 하기 / 첫 사용자 안내 — 홈에서 가장 강조되는 카드 */
+/* 홈 안의 카드는 전부 낮게 깔고(--shadow-sm), 그림자로 '떠 있는' 것은
+   '이어서 하기'(+첫 사용자 안내) 하나만 남긴다.
+   #tab-home .card 가 .resume-card 보다 명시도가 높으므로,
+   resume 쪽도 #tab-home 으로 올려서 뒤에 둬야 이긴다.
+   다른 탭의 .card 는 기존 --shadow 를 그대로 쓴다. */
+#tab-home .card { box-shadow: var(--shadow-sm); }
 .resume-card { border: 2px solid var(--primary); }
+#tab-home .resume-card { box-shadow: var(--shadow-key); }
 .resume-label {
-  font-size: 0.75rem; font-weight: 800; color: var(--primary);
+  display: inline-block;
+  padding: 3px 9px; border-radius: 999px;
+  background: var(--primary-soft); color: var(--primary-dark);
+  font-size: 0.75rem; font-weight: 800;
   letter-spacing: 0.3px; margin-bottom: 8px;
 }
 .resume-name {
@@ -408,6 +432,19 @@ main { margin-top: 20px; }
 .resume-meta { margin-top: 4px; font-size: 0.83rem; color: var(--text-muted); }
 .resume-actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
 .resume-primary { flex: 1 1 220px; margin: 0; }
+
+/* .btn-ghost 는 이름과 달리 solid 파랑이라(아래 정의) 주 버튼과 등급이 같았다.
+   같은 클래스를 결과 화면·보관함·골학에서도 쓰므로 전역은 그대로 두고
+   홈의 '이어서 하기' 카드 안에서만 진짜 ghost 로 덮어쓴다.
+   높이를 주 버튼에 맞추지 않으면 흰 배경이 되는 순간 단차가 눈에 띈다. */
+#tab-home .resume-actions .btn-ghost {
+  min-height: 45px; padding: 10px 18px;
+  border: 1.5px solid var(--border-soft);
+  background: var(--surface); color: var(--primary-dark);
+}
+#tab-home .resume-actions .btn-ghost:hover {
+  background: var(--primary-soft); border-color: var(--primary);
+}
 
 /* 기능 카드 (정사각형에 가까운 3분할) */
 .home-cards {
@@ -419,14 +456,14 @@ main { margin-top: 20px; }
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 8px; min-height: 190px; padding: 22px 16px;
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); box-shadow: var(--shadow);
+  border-radius: var(--radius); box-shadow: var(--shadow-sm);
   font-family: inherit; text-align: center; cursor: pointer;
   transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
 }
 .home-card:hover {
   border-color: var(--primary);
   transform: translateY(-2px);
-  box-shadow: 0 8px 28px rgba(37,99,235,0.14);
+  box-shadow: var(--shadow-key);
 }
 .home-card:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .home-card:active { transform: translateY(0); }
@@ -542,8 +579,10 @@ main { margin-top: 20px; }
   display: block; font-size: 0.9rem; font-weight: 600; color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.recent-meta { display: block; margin-top: 2px; font-size: 0.75rem; color: #94a3b8; }
-.recent-arrow { font-size: 1.3rem; color: #cbd5e1; flex-shrink: 0; }
+/* #94a3b8 은 이 크기에서 대비 2.57:1 로 WCAG AA 미달이었다.
+   세션과 오답 폴더를 구분하는 유일한 텍스트라 장식이 아니라 정보다. */
+.recent-meta { display: block; margin-top: 2px; font-size: 0.75rem; color: var(--text-muted); }
+.recent-arrow { font-size: 1.3rem; color: var(--text-faint); flex-shrink: 0; }
 /* 탭 패널 / 서브뷰 안의 카드들도 세로 간격 유지 */
 .tab-panel, #gen-input-view, #gen-result-view, #wrong-view {
   display: flex; flex-direction: column; gap: 24px;
