@@ -1764,6 +1764,700 @@
           ]
         }
       ]
+    },
+    {
+      "id": "hip_anterior",
+      "title": "골반뼈 전면 (Pelvic Girdle, Anterior View)",
+      "category": "lower_limb",
+      "subcategory": "pelvic_girdle",
+      "image": "/static/images/bones/hip_anterior_numbered.svg",
+      "original": "/static/images/bones/hip-anterior.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "횡돌기",
+            "transverse process"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "천골갑",
+            "sacral promontory"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "대좌골절흔",
+            "greater sciatic notch"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "장골능",
+            "iliac crest"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "장골능결절",
+            "tubercle of iliac crest"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "장골익",
+            "wing of ilium",
+            "ala of ilium"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "전상장골극",
+            "anterior superior iliac spine"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "전하장골극",
+            "anterior inferior iliac spine"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "장치융기",
+            "iliopubic eminence"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "좌골극",
+            "ischial spine"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "치골근선",
+            "pectineal line"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "미골",
+            "coccyx"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "상치골지",
+            "superior pubic ramus"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "관절연골",
+            "articular cartilage"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "치골결절",
+            "pubic tubercle"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "대퇴골대전자",
+            "greater trochanter of femur"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "소좌골절흔",
+            "lesser sciatic notch"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "폐쇄공",
+            "obturator foramen"
+          ]
+        },
+        {
+          "num": 19,
+          "answers": [
+            "치골궁",
+            "pubic arch"
+          ]
+        },
+        {
+          "num": 20,
+          "answers": [
+            "하치골지",
+            "inferior pubic ramus"
+          ]
+        },
+        {
+          "num": 21,
+          "answers": [
+            "좌골결절",
+            "ischial tuberosity"
+          ]
+        },
+        {
+          "num": 22,
+          "answers": [
+            "치골결합",
+            "pubic symphysis"
+          ]
+        },
+        {
+          "num": 23,
+          "answers": [
+            "대퇴골소전자",
+            "lesser trochanter of femur"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hip_lateral",
+      "title": "골반뼈 외측면 (Hip Bone, Lateral View)",
+      "category": "lower_limb",
+      "subcategory": "pelvic_girdle",
+      "image": "/static/images/bones/hip_lateral_numbered.svg",
+      "original": "/static/images/bones/hip-lateral.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "전둔선",
+            "anterior gluteal line"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "후둔선",
+            "posterior gluteal line"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "장골익",
+            "ala"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "장골",
+            "ilium"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "장골능",
+            "iliac crest"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "후상장골극",
+            "posterior superior iliac spine"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "전상장골극",
+            "anterior superior iliac spine"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "후하장골극",
+            "posterior inferior iliac spine"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "하둔선",
+            "inferior gluteal line"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "대좌골절흔",
+            "greater sciatic notch"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "좌골체",
+            "ischial body"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "전하장골극",
+            "anterior inferior iliac spine"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "좌골극",
+            "ischial spine"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "관골구",
+            "acetabulum"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "소좌골절흔",
+            "lesser sciatic notch"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "치골체",
+            "pubic body"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "좌골결절",
+            "ischial tuberosity"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "좌골",
+            "ischium"
+          ]
+        },
+        {
+          "num": 19,
+          "answers": [
+            "치골하지",
+            "inferior ramus of pubis"
+          ]
+        },
+        {
+          "num": 20,
+          "answers": [
+            "치골",
+            "pubis"
+          ]
+        },
+        {
+          "num": 21,
+          "answers": [
+            "좌골지",
+            "ischial ramus"
+          ]
+        },
+        {
+          "num": 22,
+          "answers": [
+            "폐쇄공",
+            "obturator foramen"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hip_lateral_medial",
+      "title": "골반뼈 외측·내측면 (Hip Bone, Lateral & Medial View)",
+      "category": "lower_limb",
+      "subcategory": "pelvic_girdle",
+      "image": "/static/images/bones/hip_lateral_medial_numbered.svg",
+      "original": "/static/images/bones/hip-lateral-medial.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "장골와",
+            "iliac fossa"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "전둔선",
+            "anterior gluteal line"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "장골능",
+            "iliac crest"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "후둔선",
+            "posterior gluteal line"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "하둔선",
+            "inferior gluteal line"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "장골조면",
+            "iliac tuberosity"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "전상장골극",
+            "anterior superior iliac spine"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "후상장골극",
+            "posterior superior iliac spine"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "후상장골극",
+            "posterior superior iliac spine"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "궁상선",
+            "arcuate line"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "후하장골극",
+            "posterior inferior iliac spine"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "상치골지",
+            "superior pubic ramus"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "후하장골극",
+            "posterior inferior iliac spine"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "대좌골절흔",
+            "greater sciatic notch"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "전하장골극",
+            "anterior inferior iliac spine"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "이개면",
+            "auricular surface"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "대좌골절흔",
+            "greater sciatic notch"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "좌골극",
+            "ischial spine"
+          ]
+        },
+        {
+          "num": 19,
+          "answers": [
+            "치골근선",
+            "pectineal line"
+          ]
+        },
+        {
+          "num": 20,
+          "answers": [
+            "치골결절",
+            "pubic tubercle"
+          ]
+        },
+        {
+          "num": 21,
+          "answers": [
+            "좌골극",
+            "ischial spine"
+          ]
+        },
+        {
+          "num": 22,
+          "answers": [
+            "소좌골절흔",
+            "lesser sciatic notch"
+          ]
+        },
+        {
+          "num": 23,
+          "answers": [
+            "폐쇄공",
+            "obturator foramen"
+          ]
+        },
+        {
+          "num": 24,
+          "answers": [
+            "좌골결절",
+            "ischial tuberosity"
+          ]
+        },
+        {
+          "num": 25,
+          "answers": [
+            "치골결합면",
+            "symphysial surface"
+          ]
+        },
+        {
+          "num": 26,
+          "answers": [
+            "좌골결절",
+            "ischial tuberosity"
+          ]
+        },
+        {
+          "num": 27,
+          "answers": [
+            "하치골지",
+            "inferior pubic ramus"
+          ]
+        },
+        {
+          "num": 28,
+          "answers": [
+            "좌골지",
+            "ramus of ischium"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hip_medial",
+      "title": "골반뼈 내측면 (Hip Bone, Medial View)",
+      "category": "lower_limb",
+      "subcategory": "pelvic_girdle",
+      "image": "/static/images/bones/hip_medial_numbered.svg",
+      "original": "/static/images/bones/hip-medial.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "장골능",
+            "iliac crest"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "장골와",
+            "iliac fossa"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "후상장골극",
+            "posterior superior iliac spine"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "전상장골극",
+            "anterior superior iliac spine",
+            "iliac spine"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "이개면",
+            "auricular surface"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "전하장골극",
+            "anterior inferior iliac spine",
+            "inferior iliac spine"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "후하장골극",
+            "posterior inferior iliac spine"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "궁상선",
+            "arcuate line"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "대좌골절흔",
+            "greater sciatic notch"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "치골근선",
+            "pectineal line"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "좌골극",
+            "ischial spine"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "치골결절",
+            "pubic tubercle"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "상치골지",
+            "superior pubic ramus"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "좌골체",
+            "body of ischium"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "소좌골절흔",
+            "lesser sciatic notch"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "치골결합면",
+            "symphysial surface"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "폐쇄공",
+            "obturator foramen"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "하치골지",
+            "inferior pubic ramus"
+          ]
+        },
+        {
+          "num": 19,
+          "answers": [
+            "좌골지",
+            "ramus of ischium"
+          ]
+        },
+        {
+          "num": 20,
+          "answers": [
+            "좌골결절",
+            "ischial tuberosity"
+          ]
+        }
+      ]
     }
   ]
 }
