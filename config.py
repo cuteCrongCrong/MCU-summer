@@ -1,8 +1,8 @@
 """
 설정 로더 — 비밀값 + 배포 설정.
 
-비밀값(구글 OAuth·세션키): 환경변수 우선, 없으면 gitignore된 secret_config.py 에서 폴백.
-  값이 없어도 앱은 정상 실행되며(구글 로그인만 비활성화), 값이 채워지면 로그인이 켜진다.
+비밀값(Google OAuth·세션키): 환경변수 우선, 없으면 gitignore된 secret_config.py 에서 폴백.
+  값이 없어도 앱은 정상 실행되며(Google 로그인만 비활성화), 값이 채워지면 로그인이 켜진다.
   → 팀원이 OAuth 자격증명을 아직 안 만들었어도 앱의 나머지 기능은 그대로 쓸 수 있다.
 
 배포 설정(호스트·포트·DB 경로 등): 비밀값이 아니므로 환경변수만 사용.
@@ -38,7 +38,7 @@ _DEFAULT_SECRET_KEY  = "dev-insecure-secret-change-me"
 FLASK_SECRET_KEY     = _get("FLASK_SECRET_KEY", _DEFAULT_SECRET_KEY)
 FLASK_SECRET_KEY_IS_DEFAULT = (FLASK_SECRET_KEY == _DEFAULT_SECRET_KEY)
 
-# client id/secret이 모두 있을 때만 구글 로그인 활성화
+# client id/secret이 모두 있을 때만 Google 로그인 활성화
 GOOGLE_LOGIN_ENABLED = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
 
 
@@ -70,7 +70,7 @@ PORT  = _int("PORT", 5000)              # Render 등은 PORT를 자동으로 넣
 DEBUG = _flag("FLASK_DEBUG", default=not IS_PRODUCTION)
 
 # 리버스 프록시(Render/nginx) 뒤에 있으면 켠다.
-# 안 켜면 url_for(_external=True)가 http:// 를 만들어 구글 OAuth 콜백이 불일치로 실패한다.
+# 안 켜면 url_for(_external=True)가 http:// 를 만들어 Google OAuth 콜백이 불일치로 실패한다.
 TRUST_PROXY = _flag("TRUST_PROXY", default=IS_PRODUCTION)
 
 # 프록시로 신뢰할 접속 IP. waitress는 이 값이 없으면 X-Forwarded-* 를 아예 제거한다.
