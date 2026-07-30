@@ -32,7 +32,7 @@ services:
       # ⚠️ 이 값이 바뀌면 모든 게스트가 자기 데이터를 잃는다(쿠키 서명 무효화).
       - key: FLASK_SECRET_KEY
         generateValue: true
-      # 구글 OAuth 자격증명 — 대시보드에서 직접 입력 (저장소에 남기지 않음)
+      # Google OAuth 자격증명 — 대시보드에서 직접 입력 (저장소에 남기지 않음)
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
