@@ -97,12 +97,13 @@ function renderArchive() {
     return `
       <div class="paper-card">
         <div class="paper-source">📄 ${escHtml(r.session_name || '이름 없는 강의자료')}</div>
-        <div class="paper-title">${escHtml(title || nth)}${short}</div>
+        <div class="paper-title"><span>${escHtml(title || nth)}</span
+          ><button class="title-edit-btn" onclick="renamePaper(${r.id})"
+                   title="이름 변경" aria-label="이름 변경">✏️</button>${short}</div>
         <div class="paper-meta">${title ? escHtml(nth) + ' · ' : ''}${escHtml(relativeDay(r.created_at))} ${escHtml((r.created_at || '').split(' ')[1] || '')} · ${r.num_questions}문항</div>
         ${badges ? `<div class="paper-badges">${badges}</div>` : ''}
         <div class="paper-actions">
           <button class="paper-open" onclick="openPaper(${r.id})">▶ 풀기</button>
-          <button class="paper-edit" onclick="renamePaper(${r.id})" title="이름 변경">✏️</button>
           <button class="paper-del" onclick="deletePaper(${r.id})" title="삭제">🗑️</button>
         </div>
       </div>`;
@@ -110,9 +111,9 @@ function renderArchive() {
 }
 
 // ── 시험지 한 장 열람 ──
-let detailCache = null;   // 상세 화면에 그려진 회차 (이름 변경 후 헤더만 다시 그릴 때 사용)
 
-// 상세 헤더(제목·메타·버튼)를 그린다. 이름이 바뀌면 이것만 다시 부르면 된다.
+// 상세 헤더(제목·메타)를 그린다. 이름 변경은 목록에서만 하므로 여기서
+// 다시 그릴 일은 없고, openPaper가 열 때 한 번 부른다.
 function applyPaperHeader(gid, g) {
   const row = archiveRows.find(r => r.id === gid) || {};
   const title = (row.title || g.title || '').trim();
@@ -122,8 +123,6 @@ function applyPaperHeader(gid, g) {
     [title ? (row.session_name || '') : '', g.created_at || '',
      `${(g.questions || []).length}문항`, `강도 ${g.weight}/10`,
      `${providerLabel(g.provider)} / ${g.model || ''}`].filter(Boolean).join(' · ');
-  document.getElementById('archive-rename-btn').onclick = () => renamePaper(gid, true);
-  document.getElementById('archive-delete-btn').onclick = () => deletePaper(gid, true);
 }
 
 async function openPaper(gid) {
@@ -132,7 +131,6 @@ async function openPaper(gid) {
     const g = await resp.json();
     if (!resp.ok || g.error) return alert(g.error || '시험지를 불러오지 못했습니다.');
 
-    detailCache = g;
     applyPaperHeader(gid, g);
 
     // ns를 주지 않으면 생성기·오답노트 카드와 DOM id가 겹친다
@@ -156,7 +154,8 @@ function closeArchiveView() {
 }
 
 // 이름 변경 — 빈 값으로 두면 이름을 지워 '제N회' 표시로 되돌린다.
-async function renamePaper(gid, fromDetail) {
+// 목록 카드의 제목 옆 연필에서만 호출된다(상세 화면에는 버튼이 없다).
+async function renamePaper(gid) {
   const row = archiveRows.find(r => r.id === gid) || {};
   const cur = (row.title || '').trim();
   const next = prompt('이 문제 세트의 이름을 입력하세요.\n(비우면 「제N회」로 표시됩니다)', cur);
@@ -170,13 +169,13 @@ async function renamePaper(gid, fromDetail) {
 
   row.title = next.trim();               // 캐시도 갱신 (목록 재요청 없이 반영)
   renderArchive();
-  if (fromDetail) applyPaperHeader(gid, detailCache);
 }
 
-async function deletePaper(gid, fromDetail) {
+// 삭제도 목록 카드에서만 한다. 상세 화면(풀기)에는 버튼이 없으므로
+// 삭제 시점에 상세 화면이 열려 있는 경우는 없다.
+async function deletePaper(gid) {
   if (!confirm('이 시험지를 삭제할까요? 담긴 문제도 함께 사라집니다.')) return;
   await fetch('/generation/' + gid, { method: 'DELETE' });
   archiveRows = archiveRows.filter(r => r.id !== gid);
-  if (fromDetail) closeArchiveView();
   renderArchive();
 }

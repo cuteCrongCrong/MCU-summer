@@ -562,16 +562,34 @@ main { margin-top: 20px; }
   transition: background 0.15s;
 }
 .paper-open:hover { background: var(--primary-dark); }
-.paper-edit, .paper-del {
+/* 이름 변경은 카드 제목 옆 .title-edit-btn 으로 옮겼다(결과 화면과 같은 어법).
+   그래서 액션 줄에는 '풀기'와 삭제만 남는다.
+   목록에서는 두 가지를 조정한다.
+   ① 크기: 기본 0.95rem 은 이모지 글리프가 실제 글자보다 커 보여서 제목(1.02rem)
+      옆에서 튄다. 0.85rem 이면 글리프 높이가 이름의 약 8할로, 나란히 놓았을 때
+      이름보다 살짝 작게 읽힌다. (브라우저에서 실측해 맞춘 값)
+   ② 선명도: 기본 opacity 0.55 는 제목 옆에 상시 놓이면 흐릿해 보인다.
+      목록에서는 이름 변경의 유일한 입구라 처음부터 또렷해야 한다. */
+.paper-title .title-edit-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  position: relative;
+  padding: 2px 4px;
+  font-size: 0.85rem;
+  opacity: 1;
+}
+/* 글리프를 작게 만들면 누를 곳도 같이 작아진다. 레이아웃을 밀지 않도록
+   보이지 않는 영역만 넓혀 모바일 터치 타깃을 확보한다. */
+.paper-title .title-edit-btn::after {
+  content: ''; position: absolute; inset: -9px;
+}
+.paper-del {
   padding: 8px 11px; border-radius: 8px;
   background: var(--surface);
   font-size: 0.85rem; font-family: inherit; cursor: pointer;
+  border: 1px solid #fecaca; color: var(--danger);
 }
-.paper-edit { border: 1px solid var(--border); color: var(--text-muted); }
-.paper-edit:hover { border-color: var(--primary); background: #eff6ff; }
-.paper-del { border: 1px solid #fecaca; color: var(--danger); }
 .paper-del:hover { background: #fef2f2; }
-.paper-open:focus-visible, .paper-edit:focus-visible, .paper-del:focus-visible {
+.paper-open:focus-visible, .paper-del:focus-visible {
   outline: 2px solid var(--primary); outline-offset: 2px;
 }
 @media (prefers-reduced-motion: reduce) {
