@@ -1560,6 +1560,210 @@
           ]
         }
       ]
+    },
+    {
+      "id": "foot_bones_superior",
+      "title": "발뼈 상면 (Foot Bones, Superior View)",
+      "category": "lower_limb",
+      "subcategory": "foot_bones",
+      "image": "/static/images/bones/foot_bones_superior_numbered.svg",
+      "original": "/static/images/bones/foot-bones-superior.gif",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "원위지골",
+            "distal phalanx"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "중위지골",
+            "middle phalanx"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "근위지골",
+            "proximal phalanx"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "중족골",
+            "metatarsal bones",
+            "metatarsal"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "내측(제1)쐐기골",
+            "medial cuneiform",
+            "1st cuneiform"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "중간(제2)쐐기골",
+            "intermediate cuneiform",
+            "2nd cuneiform"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "외측(제3)쐐기골",
+            "lateral cuneiform",
+            "3rd cuneiform"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "입방골",
+            "cuboid bone",
+            "cuboid"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "주상골",
+            "navicular bone",
+            "navicular"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "거골두",
+            "head of talus"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "거골",
+            "talus"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "거골경",
+            "neck of talus"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "거골체",
+            "body of talus"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "종골",
+            "calcaneus"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "foot_medial",
+      "title": "발뼈 내측면 (Foot, Medial View)",
+      "category": "lower_limb",
+      "subcategory": "foot_bones",
+      "image": "/static/images/bones/foot_medial_numbered.svg",
+      "original": "/static/images/bones/foot-medial.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "거골두",
+            "head of talus",
+            "head of the talus"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "주상골",
+            "navicular"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "재거돌기",
+            "sustentaculum tali"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "내측쐐기골",
+            "medial cuneiform"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "제1중족골",
+            "1st metatarsal",
+            "first metatarsal"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "거골후돌기",
+            "posterior talar process",
+            "posterior process of talus"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "엄지근위지골",
+            "proximal phalanx of hallux"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "입방골조면",
+            "cuboid tuberosity"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "엄지원위지골",
+            "distal phalanx of hallux"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "종골결절내측돌기",
+            "medial process of calcaneal tuberosity"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "종자골",
+            "sesamoid bones"
+          ]
+        }
+      ]
     }
   ]
 }
