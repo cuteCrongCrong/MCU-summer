@@ -163,6 +163,9 @@ def init_db():
                     f"UPDATE {table} SET provider=? WHERE provider IS NULL",
                     (LEGACY_PROVIDER,),
                 )
+        # 생성 회차에 사용자가 붙인 이름. 백필하지 않는다 —
+        # NULL(이름 없음)과 사용자가 지은 이름을 구분해야 화면에서 '제N회'로 대체할 수 있다.
+        _ensure_column(conn, "generations", "title", "TEXT")
         conn.commit()
     finally:
         conn.close()

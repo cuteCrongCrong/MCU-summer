@@ -179,6 +179,51 @@ input:focus { outline: none; border-color: var(--primary); }
 .step-item.done  .step-text { color: var(--success); }
 .step-item.active .step-text { color: var(--primary); font-weight: 600; }
 .step-item.wait  .step-text { color: var(--text-muted); }
+/* 단계 옆 부가 정보 (예: 문제 3/10) */
+.step-note { font-size: 0.82rem; color: var(--text-muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+.step-item.active .step-note { color: var(--primary); font-weight: 600; }
+.step-item.done  .step-note { color: var(--success); }
+
+/* 전체 진행률 */
+.overall-pct {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+}
+.progress-track {
+  height: 8px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: -8px 0 18px;
+}
+.progress-bar {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--primary) 0%, var(--accent) 100%);
+  transition: width 0.35s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress-bar { transition: none; }
+}
+
+/* 생성 중지 버튼 — 진행 중일 때만 노출 */
+.cancel-btn {
+  display: none;
+  margin-left: auto;
+  font-size: 0.78rem;
+  padding: 4px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--danger);
+  font-family: inherit;
+  cursor: pointer;
+}
+.cancel-btn:hover { background: #fef2f2; }
+.cancel-btn:focus-visible { outline: 2px solid var(--danger); outline-offset: 2px; }
 
 /* ── 개념/패턴 요약 ── */
 #analysis-box { display: none; }
@@ -339,26 +384,182 @@ input:focus { outline: none; border-color: var(--primary); }
 }
 .wrong-remove-btn:hover { background: #fee2e2; color: var(--danger); border-color: #fca5a5; }
 
-/* ── 상단 탭 ── */
-.tabs {
+/* 탭 안에서만 보이는 상단 바 — 홈으로 돌아가기 + 현재 위치 */
+.tab-bar {
   max-width: 860px; margin: 24px auto 0; padding: 0 16px;
-  display: flex; gap: 8px;
+  display: flex; align-items: center; gap: 12px;
 }
-.tab-btn {
-  flex: 1; padding: 13px 16px;
-  border: 1px solid var(--border); border-bottom: none;
-  border-radius: 12px 12px 0 0;
-  background: #e2e8f0; color: var(--text-muted);
-  font-size: 0.98rem; font-weight: 700; font-family: inherit;
-  cursor: pointer; transition: all 0.15s;
+.home-back-btn {
+  padding: 9px 18px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface); color: var(--text); font-size: 0.9rem; font-weight: 700;
+  font-family: inherit; cursor: pointer; flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s;
 }
-.tab-btn:hover { background: #d7dfea; }
-.tab-btn.active {
-  background: var(--surface); color: var(--primary);
-  box-shadow: 0 -3px 10px rgba(0,0,0,0.05);
+.home-back-btn:hover { border-color: var(--primary); color: var(--primary); }
+.home-back-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.tab-bar-title {
+  font-size: 1rem; font-weight: 700; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 main { margin-top: 20px; }
 .hidden { display: none !important; }
+
+/* ── 홈(시작) 화면 ── */
+.home-greeting { padding: 4px 4px 0; }
+.home-greeting h2 {
+  font-size: 1.35rem; font-weight: 800; color: var(--text); letter-spacing: -0.4px;
+}
+.home-greeting p { margin-top: 6px; font-size: 0.9rem; color: var(--text-muted); }
+
+/* 이어서 하기 / 첫 사용자 안내 — 홈에서 가장 강조되는 카드 */
+.resume-card { border: 2px solid var(--primary); }
+.resume-label {
+  font-size: 0.75rem; font-weight: 800; color: var(--primary);
+  letter-spacing: 0.3px; margin-bottom: 8px;
+}
+.resume-name {
+  font-size: 1.05rem; font-weight: 700; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.resume-meta { margin-top: 4px; font-size: 0.83rem; color: var(--text-muted); }
+.resume-actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+.resume-primary { flex: 1 1 220px; margin: 0; }
+
+/* 기능 카드 (정사각형에 가까운 3분할) */
+.home-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+.home-card {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; min-height: 190px; padding: 22px 16px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  font-family: inherit; text-align: center; cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+.home-card:hover {
+  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(37,99,235,0.14);
+}
+.home-card:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.home-card:active { transform: translateY(0); }
+.home-card-icon { font-size: 2.3rem; line-height: 1; }
+.home-card-title { font-size: 1.05rem; font-weight: 700; color: var(--text); }
+.home-card-desc { font-size: 0.82rem; color: var(--text-muted); line-height: 1.55; }
+/* 3열로 놓이는 넓은 화면에서만 정사각형에 가깝게 (좁은 화면에선 과하게 길어짐).
+   그리드 아이템은 stretch로 높이가 정해져 aspect-ratio가 무시되므로 높이를 직접 준다. */
+@media (min-width: 660px) {
+  .home-card { min-height: 240px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-card { transition: border-color 0.15s; }
+  .home-card:hover { transform: none; }
+}
+
+/* 결과 제목 + 이름 변경 아이콘 */
+.result-head {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 16px;
+}
+.title-edit-btn {
+  padding: 4px 8px; border: 1px solid transparent; border-radius: 7px;
+  background: transparent; font-size: 0.95rem; font-family: inherit;
+  cursor: pointer; line-height: 1; opacity: 0.55;
+  transition: opacity 0.15s, border-color 0.15s, background 0.15s;
+}
+.title-edit-btn:hover { opacity: 1; border-color: var(--border); background: var(--surface); }
+.title-edit-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; opacity: 1; }
+
+/* 세션 목록 더 보기 / 접기 */
+.session-more-btn {
+  width: 100%; margin-top: 8px; padding: 9px 12px;
+  border: 1px dashed var(--border); border-radius: 10px;
+  background: var(--surface); color: var(--text-muted);
+  font-size: 0.82rem; font-weight: 600; font-family: inherit; cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.session-more-btn:hover { border-color: var(--primary); color: var(--primary); }
+.session-more-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* ── 생성 문제 관리(보관함) — 시험지 카드 ── */
+.paper-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+.paper-card {
+  display: flex; flex-direction: column;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: 0 12px 12px 0;
+  padding: 15px 17px;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+.paper-card:hover {
+  border-color: var(--primary);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(37,99,235,0.10);
+}
+.paper-source {
+  font-size: 0.72rem; color: #94a3b8;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.paper-title {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 1.02rem; font-weight: 700; color: var(--text); margin-top: 4px;
+}
+.paper-short {
+  font-size: 0.7rem; font-weight: 600; color: #92400e;
+  background: #fef3c7; border-radius: 6px; padding: 2px 7px;
+}
+.paper-meta { font-size: 0.75rem; color: #94a3b8; margin-top: 3px; }
+.paper-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+.paper-actions { display: flex; gap: 8px; margin-top: 14px; }
+.paper-open {
+  flex: 1; padding: 8px 12px; border: none; border-radius: 8px;
+  background: var(--primary); color: #fff;
+  font-size: 0.85rem; font-weight: 700; font-family: inherit; cursor: pointer;
+  transition: background 0.15s;
+}
+.paper-open:hover { background: var(--primary-dark); }
+.paper-edit, .paper-del {
+  padding: 8px 11px; border-radius: 8px;
+  background: var(--surface);
+  font-size: 0.85rem; font-family: inherit; cursor: pointer;
+}
+.paper-edit { border: 1px solid var(--border); color: var(--text-muted); }
+.paper-edit:hover { border-color: var(--primary); background: #eff6ff; }
+.paper-del { border: 1px solid #fecaca; color: var(--danger); }
+.paper-del:hover { background: #fef2f2; }
+.paper-open:focus-visible, .paper-edit:focus-visible, .paper-del:focus-visible {
+  outline: 2px solid var(--primary); outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .paper-card { transition: border-color 0.15s; }
+  .paper-card:hover { transform: none; }
+}
+
+/* 최근 활동 */
+.recent-row {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface); font-family: inherit; text-align: left;
+  cursor: pointer; margin-top: 8px; transition: border-color 0.15s;
+}
+.recent-row:first-child { margin-top: 0; }
+.recent-row:hover { border-color: var(--primary); }
+.recent-row:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.recent-icon { font-size: 1.1rem; flex-shrink: 0; }
+.recent-body { flex: 1; min-width: 0; }
+.recent-name {
+  display: block; font-size: 0.9rem; font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.recent-meta { display: block; margin-top: 2px; font-size: 0.75rem; color: #94a3b8; }
+.recent-arrow { font-size: 1.3rem; color: #cbd5e1; flex-shrink: 0; }
 /* 탭 패널 / 서브뷰 안의 카드들도 세로 간격 유지 */
 .tab-panel, #gen-input-view, #gen-result-view, #wrong-view {
   display: flex; flex-direction: column; gap: 24px;
