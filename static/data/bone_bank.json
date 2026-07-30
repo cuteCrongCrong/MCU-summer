@@ -63,99 +63,6 @@
       ]
     },
     {
-      "id": "arm",
-      "title": "팔뼈 (상지)",
-      "category": "upper_limb",
-      "subcategory": "upper_arm_forearm",
-      "image": "/static/images/bones/arm_numbered.svg",
-      "original": "/static/images/bones/arm_original.svg",
-      "parts": [
-        {
-          "num": 1,
-          "answers": [
-            "상완골",
-            "위팔뼈",
-            "humerus"
-          ]
-        },
-        {
-          "num": 2,
-          "answers": [
-            "요골",
-            "노뼈",
-            "radius"
-          ]
-        },
-        {
-          "num": 3,
-          "answers": [
-            "척골",
-            "자뼈",
-            "ulna"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "humerus_proximal",
-      "title": "상완골 근위부 (Proximal Humerus)",
-      "category": "upper_limb",
-      "subcategory": "upper_arm_forearm",
-      "image": "/static/images/bones/humerus_proximal_numbered.svg",
-      "original": "/static/images/bones/humerus-proximal.jpg",
-      "parts": [
-        {
-          "num": 1,
-          "answers": [
-            "해부목",
-            "해부경",
-            "anatomical neck"
-          ]
-        },
-        {
-          "num": 2,
-          "answers": [
-            "상완골두",
-            "위팔뼈머리",
-            "head of humerus"
-          ]
-        },
-        {
-          "num": 3,
-          "answers": [
-            "대결절",
-            "큰결절",
-            "greater tubercle"
-          ]
-        },
-        {
-          "num": 4,
-          "answers": [
-            "외과목",
-            "외과경",
-            "surgical neck"
-          ]
-        },
-        {
-          "num": 5,
-          "answers": [
-            "소결절",
-            "작은결절",
-            "lesser tubercle"
-          ]
-        },
-        {
-          "num": 6,
-          "answers": [
-            "결절간구",
-            "이두근구",
-            "intertubercular sulcus",
-            "bicipital groove"
-          ]
-        }
-      ]
-    },
-    {
       "id": "femur_proximal",
       "title": "대퇴골 근위부 (Proximal Femur)",
       "category": "lower_limb",
@@ -2455,6 +2362,1927 @@
           "answers": [
             "좌골결절",
             "ischial tuberosity"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wrist_anterior",
+      "title": "손목뼈 전면 (Wrist, Anterior/Palmar View)",
+      "category": "upper_limb",
+      "subcategory": "hand_bones",
+      "image": "/static/images/bones/wrist_anterior_numbered.svg",
+      "original": "/static/images/bones/wrist-anterior.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "요골",
+            "radius"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "척골",
+            "ulna"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "요골경상돌기",
+            "radial styloid process"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "척골경상돌기",
+            "ulnar styloid process"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "주상골",
+            "scaphoid"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "월상골",
+            "lunate"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "대능형골",
+            "trapezium"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "주상골결절",
+            "tubercle of scaphoid"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "두상골",
+            "pisiform"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "삼각골",
+            "triquetrum"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "대능형골결절",
+            "tubercle of trapezium"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "유구골",
+            "hamate"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "유구골갈고리",
+            "hook of hamate"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "소능형골",
+            "trapezoid"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "유두골",
+            "capitate"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "중수골",
+            "metacarpal bones",
+            "metacarpals"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wrist_posterior",
+      "title": "손목뼈 후면 (Wrist, Posterior/Dorsal View)",
+      "category": "upper_limb",
+      "subcategory": "hand_bones",
+      "image": "/static/images/bones/wrist_posterior_numbered.svg",
+      "original": "/static/images/bones/wrist-posterior.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "요골",
+            "radius"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "척골",
+            "ulna"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "척골경상돌기",
+            "ulnar styloid process"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "요골배측결절",
+            "dorsal tubercle of radius"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "월상골",
+            "lunate"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "주상골",
+            "scaphoid"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "두상골",
+            "pisiform"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "요골경상돌기",
+            "radial styloid process"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "삼각골",
+            "triquetrum"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "대능형골",
+            "trapezium"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "유구골",
+            "hamate"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "소능형골",
+            "trapezoid"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "유두골",
+            "capitate"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "중수골",
+            "metacarpal bones",
+            "metacarpals"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hand",
+      "title": "손뼈 전면 (Right Hand, Anterior/Palmar View)",
+      "category": "upper_limb",
+      "subcategory": "hand_bones",
+      "image": "/static/images/bones/hand_numbered.svg",
+      "original": "/static/images/bones/hand.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "원위지골",
+            "distal phalanges"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "중위지골",
+            "middle phalanges"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "근위지골",
+            "proximal phalanges"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "우측",
+            "right"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "손바닥쪽",
+            "장측",
+            "palmar"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "종자골",
+            "sesamoid bones"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "중수골",
+            "metacarpal bones",
+            "metacarpals"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "소능형골",
+            "trapezoid"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "유구골갈고리",
+            "hook of hamate"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "유구골",
+            "hamate"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "수근골",
+            "carpal bones"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "유두골",
+            "capitate"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "대능형골결절",
+            "tubercle of trapezium",
+            "tubercle"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "두상골",
+            "pisiform"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "주상골결절",
+            "tubercle of scaphoid",
+            "tubercle"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "대능형골",
+            "trapezium"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "수근골",
+            "carpal bones"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "삼각골",
+            "triquetrum"
+          ]
+        },
+        {
+          "num": 19,
+          "answers": [
+            "월상골",
+            "lunate"
+          ]
+        },
+        {
+          "num": 20,
+          "answers": [
+            "주상골",
+            "scaphoid"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "clavicle_superior",
+      "title": "쇄골 상면 (Clavicle, Superior Surface)",
+      "category": "upper_limb",
+      "subcategory": "shoulder_girdle",
+      "image": "/static/images/bones/clavicle_superior_numbered.svg",
+      "original": "/static/images/bones/clavicle-superior.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "상면",
+            "superior",
+            "superior surface"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "후면",
+            "posterior"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "골간",
+            "shaft"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "흉골단",
+            "sternal end"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "견봉단",
+            "acromial end"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "전면",
+            "anterior"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "clavicle_inferior",
+      "title": "쇄골 하면 (Clavicle, Inferior Surface)",
+      "category": "upper_limb",
+      "subcategory": "shoulder_girdle",
+      "image": "/static/images/bones/clavicle_inferior_numbered.svg",
+      "original": "/static/images/bones/clavicle-inferior.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "견봉관절면",
+            "acromial facet"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "하면",
+            "inferior",
+            "inferior surface"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "늑쇄인대압흔",
+            "impression for costoclavicular ligament"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "전면",
+            "anterior"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "후면",
+            "posterior"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "승모근선",
+            "trapezoid line"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "흉골관절면",
+            "sternal facet"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "원추결절",
+            "conoid tubercle"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "쇄골하근구",
+            "subclavian groove"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "scapula_lateral",
+      "title": "견갑골 외측면 (Scapula, Lateral View)",
+      "category": "upper_limb",
+      "subcategory": "shoulder_girdle",
+      "image": "/static/images/bones/scapula_lateral_numbered.svg",
+      "original": "/static/images/bones/scapula-lateral.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "상각",
+            "superior angle"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "견봉",
+            "acromion"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "관절와상결절",
+            "supraglenoid tubercle"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "오구돌기",
+            "coracoid process"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "극돌기",
+            "spinous process",
+            "spine of scapula"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "관절와",
+            "glenoid cavity"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "관절와하결절",
+            "infraglenoid tubercle"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "외측연",
+            "lateral border"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "하각",
+            "inferior angle"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "shoulder_girdle_anterior",
+      "title": "어깨이음뼈 전면 (Shoulder Girdle, Anterior View)",
+      "category": "upper_limb",
+      "subcategory": "shoulder_girdle",
+      "image": "/static/images/bones/shoulder_girdle_anterior_numbered.svg",
+      "original": "/static/images/bones/shoulder-girdle-anterior.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "견봉",
+            "acromion"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "오구돌기",
+            "coracoid process"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "쇄골",
+            "clavicle"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "상각",
+            "superior angle"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "상연",
+            "superior border"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "해부목",
+            "anatomic neck",
+            "anatomical neck"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "견갑절흔",
+            "suprascapular notch"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "경부",
+            "neck"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "대결절",
+            "greater tubercle"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "소결절",
+            "lesser tubercle"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "내측연",
+            "medial border"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "외과목",
+            "surgical neck"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "관절와",
+            "glenoid"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "견갑하와",
+            "subscapular fossa"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "결절간구",
+            "intertubercular sulcus",
+            "bicipital groove"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "대결절능",
+            "crest of greater tubercle"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "상완골두",
+            "head of humerus"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "외측연",
+            "lateral border"
+          ]
+        },
+        {
+          "num": 19,
+          "answers": [
+            "소결절능",
+            "crest of lesser tubercle"
+          ]
+        },
+        {
+          "num": 20,
+          "answers": [
+            "하각",
+            "inferior angle"
+          ]
+        },
+        {
+          "num": 21,
+          "answers": [
+            "견갑골",
+            "scapula"
+          ]
+        },
+        {
+          "num": 22,
+          "answers": [
+            "삼각근조면",
+            "deltoid tuberosity"
+          ]
+        },
+        {
+          "num": 23,
+          "answers": [
+            "상완골",
+            "humerus"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "shoulder_girdle_posterior",
+      "title": "어깨이음뼈 후면 (Shoulder Girdle, Posterior View)",
+      "category": "upper_limb",
+      "subcategory": "shoulder_girdle",
+      "image": "/static/images/bones/shoulder_girdle_posterior_numbered.svg",
+      "original": "/static/images/bones/shoulder-girdle-posterior.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "쇄골",
+            "clavicle"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "견갑절흔",
+            "suprascapular notch"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "상연",
+            "superior border"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "오구돌기",
+            "coracoid process"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "견봉",
+            "acromion"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "상각",
+            "superior angle"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "견봉각",
+            "acromial angle"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "극상와",
+            "supraspinous fossa"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "극관절와절흔",
+            "spinoglenoid notch"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "극",
+            "spine",
+            "spine of scapula"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "대결절",
+            "greater tubercle"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "경부",
+            "neck"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "상완골두",
+            "head of humerus"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "극하와",
+            "infraspinous fossa"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "해부목",
+            "anatomic neck",
+            "anatomical neck"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "내측연",
+            "medial border"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "외과목",
+            "surgical neck"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "외측연",
+            "lateral border"
+          ]
+        },
+        {
+          "num": 19,
+          "answers": [
+            "하각",
+            "inferior angle"
+          ]
+        },
+        {
+          "num": 20,
+          "answers": [
+            "견갑골",
+            "scapula"
+          ]
+        },
+        {
+          "num": 21,
+          "answers": [
+            "삼각근조면",
+            "deltoid tuberosity"
+          ]
+        },
+        {
+          "num": 22,
+          "answers": [
+            "상완골",
+            "humerus"
+          ]
+        },
+        {
+          "num": 23,
+          "answers": [
+            "요골신경구",
+            "radial groove"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "humerus_head_anterior",
+      "title": "상완골두 전면 (Humeral Head, Anterior View)",
+      "category": "upper_limb",
+      "subcategory": "upper_arm_forearm",
+      "image": "/static/images/bones/humerus_head_anterior_numbered.svg",
+      "original": "/static/images/bones/humerus-head-anterior.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "대결절",
+            "greater tubercle"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "전면",
+            "anterior",
+            "anterior view"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "극상근면",
+            "superior facet on greater tubercle",
+            "supraspinatus facet"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "결절간구",
+            "intertubercular sulcus",
+            "bicipital groove"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "소결절",
+            "lesser tubercle",
+            "subscapularis facet"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "상완골두",
+            "head"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "해부목",
+            "anatomical neck"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "결절간구",
+            "intertubercular sulcus",
+            "bicipital groove"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "외과목",
+            "surgical neck"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "humerus_head_posterior",
+      "title": "상완골두 후면 (Humeral Head, Posterior View)",
+      "category": "upper_limb",
+      "subcategory": "upper_arm_forearm",
+      "image": "/static/images/bones/humerus_head_posterior_numbered.svg",
+      "original": "/static/images/bones/humerus-head-posterior.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "대결절",
+            "greater tubercle"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "극상근면",
+            "superior facet",
+            "supraspinatus facet"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "해부목",
+            "anatomical neck"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "극하근면",
+            "middle facet",
+            "infraspinatus facet"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "외과목",
+            "surgical neck"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "소원근면",
+            "inferior facet",
+            "teres minor facet"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "elbow_anterior",
+      "title": "팔꿈치 전면 (Elbow, Anterior View)",
+      "category": "upper_limb",
+      "subcategory": "upper_arm_forearm",
+      "image": "/static/images/bones/elbow_anterior_numbered.svg",
+      "original": "/static/images/bones/elbow-anterior.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "내측과상능선",
+            "medial supracondylar ridge"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "외측과상능선",
+            "lateral supracondylar ridge"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "구상와",
+            "coronoid fossa"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "내측상과",
+            "medial epicondyle"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "요골와",
+            "radial fossa"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "외측상과",
+            "lateral epicondyle"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "활차",
+            "trochlea"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "구상돌기",
+            "coronoid process"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "소두",
+            "capitellum"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "척골조면",
+            "ulnar tuberosity"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "요골두",
+            "radial head"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "요골경",
+            "radial neck"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "요골조면",
+            "radial tuberosity"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "척골",
+            "ulna"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "elbow_posterior",
+      "title": "팔꿈치 후면 (Elbow, Posterior View)",
+      "category": "upper_limb",
+      "subcategory": "upper_arm_forearm",
+      "image": "/static/images/bones/elbow_posterior_numbered.svg",
+      "original": "/static/images/bones/elbow-posterior.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "외측과상능선",
+            "lateral supracondylar ridge"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "상완골",
+            "humerus"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "주두와",
+            "olecranon fossa"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "내측과상능선",
+            "medial supracondylar ridge"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "주두",
+            "olecranon"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "외측상과",
+            "lateral epicondyle"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "내측상과",
+            "medial epicondyle"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "요골두",
+            "radial head"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "요골경",
+            "radial neck"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "척골",
+            "ulna"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "요골",
+            "radius"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "humerus_distal",
+      "title": "상완골 원위부 (Distal Humerus, 전방·후방)",
+      "category": "upper_limb",
+      "subcategory": "upper_arm_forearm",
+      "image": "/static/images/bones/humerus_distal_numbered.svg",
+      "original": "/static/images/bones/humerus-distal.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "전외측면",
+            "anterolateral surface"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "전내측면",
+            "anteromedial surface"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "내측연",
+            "medial border"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "외측연",
+            "lateral border"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "외측과상능선",
+            "lateral supracondylar ridge"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "내측과상능선",
+            "medial supracondylar ridge"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "외측과상능선",
+            "lateral supracondylar ridge"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "요골와",
+            "radial fossa"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "구상와",
+            "coronoid fossa"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "외측상과",
+            "lateral epicondyle"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "외측상과",
+            "lateral epicondyle"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "내측상과",
+            "medial epicondyle"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "소두",
+            "capitellum"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "활차",
+            "trochlea"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "척골신경구",
+            "groove for ulnar nerve",
+            "ulnar groove"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "주두와",
+            "olecranon fossa"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "활차",
+            "trochlea"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "상완골과",
+            "condyle of humerus"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "humerus_anterior_posterior",
+      "title": "상완골 전체 (Humerus, 전방·후방)",
+      "category": "upper_limb",
+      "subcategory": "upper_arm_forearm",
+      "image": "/static/images/bones/humerus_anterior_posterior_numbered.svg",
+      "original": "/static/images/bones/humerus-anterior-posterior.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "해부목",
+            "anatomical neck"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "상완골두",
+            "humeral head"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "해부목",
+            "anatomical neck"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "대결절",
+            "greater tuberosity"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "소결절",
+            "lesser tuberosity"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "대결절",
+            "greater tuberosity"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "결절간구",
+            "intertubercular groove"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "외과목",
+            "surgical neck"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "외측상과",
+            "lateral epicondyle"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "구상와",
+            "coronoid fossa"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "주두와",
+            "olecranon fossa"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "외측상과",
+            "lateral epicondyle"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "척골신경구",
+            "ulnar nerve groove"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "내측상과",
+            "medial epicondyle"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "상완골소두",
+            "humeral capitulum"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "활차",
+            "humeral trochlea"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "전방",
+            "anterior aspect",
+            "anterior view"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "후방",
+            "posterior aspect",
+            "posterior view"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ulna_radius_anterior",
+      "title": "요골·척골 (Radius & Ulna, 전방)",
+      "category": "upper_limb",
+      "subcategory": "upper_arm_forearm",
+      "image": "/static/images/bones/ulna_radius_anterior_numbered.svg",
+      "original": "/static/images/bones/ulna-radius-anterior.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "주두",
+            "올레크라논",
+            "olecranon"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "요골오목",
+            "와상돌기",
+            "fovea"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "활차절흔",
+            "trochlear notch"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "요골두",
+            "head"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "요골절흔",
+            "radial notch"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "요골경",
+            "neck"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "이두박근조면",
+            "bicipital tuberosity"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "구상돌기",
+            "coronoid process"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "요골의 골간연",
+            "interosseous crest of radius"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "척골의 골간연",
+            "interosseous crest of ulna"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "요골경상돌기",
+            "styloid process of radius"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "척골경상돌기",
+            "styloid process of ulna"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "요골",
+            "radius"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "척골",
+            "ulna"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "좌측",
+            "left"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "전방",
+            "anterior"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ulna_radius_posterior",
+      "title": "요골·척골 (Radius & Ulna, 후방)",
+      "category": "upper_limb",
+      "subcategory": "upper_arm_forearm",
+      "image": "/static/images/bones/ulna_radius_posterior_numbered.svg",
+      "original": "/static/images/bones/ulna-radius-posterior.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "주두",
+            "올레크라논",
+            "olecranon"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "관절둘레",
+            "articular circumference"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "요골경",
+            "neck"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "이두박근조면",
+            "bicipital tuberosity"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "요골의 골간연",
+            "interosseous crest of radius"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "척골경상돌기",
+            "styloid process of ulna"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "요골경상돌기",
+            "styloid process of radius"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "척골",
+            "ulna"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "요골",
+            "radius"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "좌측",
+            "left"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "후방",
+            "posterior"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ulna_radius_anterior_posterior",
+      "title": "요골·척골 (Radius & Ulna, 전방·후방)",
+      "category": "upper_limb",
+      "subcategory": "upper_arm_forearm",
+      "image": "/static/images/bones/ulna_radius_anterior_posterior_numbered.svg",
+      "original": "/static/images/bones/ulna-radius-anterior-posterior.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "주두",
+            "올레크라논",
+            "olecranon"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "활차절흔",
+            "trochlear notch"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "주두",
+            "올레크라논",
+            "olecranon"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "척골의 요골절흔",
+            "radial notch of ulna"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "요골두",
+            "head of radius"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "요골두",
+            "head of radius"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "구상돌기",
+            "coronoid process"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "요골경",
+            "neck of radius"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "요골경",
+            "neck of radius"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "척골조면",
+            "ulnar tuberosity"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "요골조면",
+            "radial tuberosity"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "척골",
+            "ulna"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "요골",
+            "radius"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "골간연",
+            "interosseous borders"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "골간막",
+            "interosseous membrane"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "요골의 척골절흔",
+            "ulnar notch of radius"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "척골두",
+            "head of ulna"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "경상돌기",
+            "styloid process"
+          ]
+        },
+        {
+          "num": 19,
+          "answers": [
+            "경상돌기",
+            "styloid process"
+          ]
+        },
+        {
+          "num": 20,
+          "answers": [
+            "관절면",
+            "articular facets"
+          ]
+        },
+        {
+          "num": 21,
+          "answers": [
+            "경상돌기",
+            "styloid process"
+          ]
+        },
+        {
+          "num": 22,
+          "answers": [
+            "전방",
+            "anterior"
+          ]
+        },
+        {
+          "num": 23,
+          "answers": [
+            "후방",
+            "posterior"
           ]
         }
       ]
