@@ -346,13 +346,36 @@
   <div class="tab-panel hidden" id="tab-bones">
     <div class="card">
       <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span>🦴 골학 문제은행 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 그림 속 번호 부위의 이름 맞히기 (랜덤 무한 출제)</span></span>
+        <span>🦴 골학 문제은행 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 그림 속 번호 부위의 이름 맞히기 (범위 선택 후 랜덤·중복 없이 출제)</span></span>
         <span id="bone-score" style="font-size:0.85rem;color:#475569;"></span>
       </div>
 
       <div id="bone-empty" style="font-size:0.9rem;color:#64748b;">불러오는 중…</div>
 
+      <!-- ① 범위 선택: 최상위 카테고리 4개 + 전체 Random -->
+      <div id="bone-category-view">
+        <div style="font-size:0.85rem;color:#64748b;margin-bottom:12px;">공부할 범위를 선택하세요.</div>
+        <div class="bone-cat-grid" id="bone-category-grid"></div>
+      </div>
+
+      <!-- ② 범위 선택: 카테고리 안의 세부 범위 -->
+      <div id="bone-subcategory-view" style="display:none;">
+        <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <button type="button" onclick="boneBackToCategories()"
+                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">← 카테고리로</button>
+          <span id="bone-subcategory-title" style="font-weight:700;"></span>
+        </div>
+        <div class="bone-cat-grid" id="bone-subcategory-grid"></div>
+      </div>
+
+      <!-- ③ 퀴즈 화면 -->
       <div id="bone-quiz" style="display:none;">
+        <div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+          <button type="button" onclick="boneBackToSubcategories()"
+                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">← 범위 다시 선택</button>
+          <span id="bone-scope-label" style="font-size:0.82rem;color:#2563eb;font-weight:700;"></span>
+        </div>
+
         <div style="text-align:center;margin:8px 0 16px;">
           <img id="bone-image" alt="골학 번호 그림"
                style="max-width:100%;max-height:340px;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;" />
@@ -374,6 +397,16 @@
           <button class="check-btn" id="bone-giveup-btn" onclick="boneGiveUp()"
                   style="border-color:#cbd5e1;color:#64748b;">모르겠어요</button>
           <button class="btn-ghost" id="bone-next-btn" onclick="boneNextQuestion()" style="display:none;">다음 문제 →</button>
+        </div>
+      </div>
+
+      <!-- ④ 완료 화면: 범위 안 문제를 모두 풀었을 때 -->
+      <div id="bone-done" style="display:none;text-align:center;padding:24px 8px;">
+        <div style="font-size:2.4rem;margin-bottom:10px;">🏁</div>
+        <div id="bone-done-summary" style="font-size:0.98rem;line-height:1.7;margin-bottom:20px;"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+          <button class="check-btn" onclick="boneRetryScope()">🔁 이 범위 다시 풀기</button>
+          <button class="btn-ghost" onclick="boneBackToSubcategories()">📍 다른 범위 선택</button>
         </div>
       </div>
     </div>
