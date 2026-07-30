@@ -19,6 +19,7 @@
   <button class="tab-btn active" id="tabbtn-generator" onclick="switchTab('generator')">📝 문제 생성기</button>
   <button class="tab-btn" id="tabbtn-wrong" onclick="switchTab('wrong')">❌ 오답 노트</button>
   <button class="tab-btn" id="tabbtn-bones" onclick="switchTab('bones')">🦴 골학 문제은행</button>
+  <button class="tab-btn" id="tabbtn-topics" onclick="switchTab('topics')">🔍 기출 주제 분석</button>
 </nav>
 
 <main>
@@ -305,6 +306,133 @@
     </div>
   </div><!-- /tab-bones -->
 
+  <!-- ══════════ 탭: 기출 주제 분석 ══════════ -->
+  <!-- 문제 생성기와 같은 틀 (업로드 → 제공사/키/모델 → 실행 → 결과 페이지).
+       문제를 만들지 않으므로 '유형별 문제 수'·'기출 반영 강도'는 없다. -->
+  <div class="tab-panel hidden" id="tab-topics">
+
+  <!-- ── 서브뷰 A: 설정/입력 ── -->
+  <div id="topic-input-view">
+
+    <div class="card">
+      <div class="card-title">파일 업로드 및 설정</div>
+
+      <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:0.84rem;color:#1e3a8a;line-height:1.65;">
+        강의록에 있는 주제 중 <b>기출에 실제로 나온 것</b>만 골라
+        <b>어떤 강의록 몇 페이지 → 어떤 기출 몇 번</b> 형태로 정리합니다.<br />
+        주제 이름은 <b>강의록에 적힌 표현 그대로</b> 씁니다. (강의록에 없는 용어는 쓰지 않습니다)
+      </div>
+
+      <div class="form-grid">
+        <!-- 강의록 (여러 개 가능) -->
+        <div>
+          <label>📄 강의록 (PDF · 여러 개 선택 가능)</label>
+          <div class="file-drop" id="topic-drop-lecture">
+            <input type="file" id="topic-lecture-file" accept=".pdf" multiple />
+            <div class="icon">📂</div>
+            <div>파일을 끌어다 놓거나 클릭하세요</div>
+            <div class="hint">PDF만 · 최대 5개</div>
+            <div class="filename" id="topic-lecture-name"></div>
+          </div>
+        </div>
+        <!-- 기출문제 (여러 개 가능) -->
+        <div>
+          <label>📝 기출문제 (PDF · 여러 개 선택 가능)</label>
+          <div class="file-drop" id="topic-drop-exam">
+            <input type="file" id="topic-exam-file" accept=".pdf" multiple />
+            <div class="icon">📂</div>
+            <div>파일을 끌어다 놓거나 클릭하세요</div>
+            <div class="hint">PDF만 · 최대 5개</div>
+            <div class="filename" id="topic-exam-name"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LLM 제공사 선택 -->
+      <div style="margin-top:20px;">
+        <label for="topic-provider-select">🏛️ LLM 제공사</label>
+        <select id="topic-provider-select" class="select-field" onchange="topicSelectProvider(this.value)"></select>
+      </div>
+
+      <!-- API 키 -->
+      <div style="margin-top:20px;">
+        <label id="topic-api-key-label">🔑 API Key</label>
+        <input type="password" id="topic-api-key" placeholder="API 키 입력" autocomplete="off" onchange="topicLoadModels()" />
+        <div style="font-size:0.75rem;color:#64748b;margin-top:4px;">키를 입력하면 사용 가능한 모델 목록을 자동으로 불러옵니다.</div>
+        <div style="font-size:0.75rem;color:#16a34a;margin-top:4px;">🔒 입력한 키는 <b>서버·브라우저에 저장되지 않고</b>, 분석 요청 시에만 사용된 뒤 폐기됩니다.</div>
+      </div>
+
+      <!-- 모델 선택 -->
+      <div style="margin-top:20px;">
+        <label style="display:flex;align-items:center;gap:8px;">
+          🤖 사용할 모델 <span id="topic-model-load-msg" style="font-weight:400;font-size:0.8rem;color:#0ea5e9;"></span>
+          <button type="button" onclick="topicLoadModels()" title="모델 목록 새로고침" style="margin-left:auto;font-size:0.76rem;padding:4px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
+        </label>
+        <select id="topic-model-select" class="select-field"></select>
+      </div>
+
+      <button class="btn btn-primary" id="topic-analyze-btn" onclick="topicAnalyze()">
+        🔍 기출 주제 분석하기
+      </button>
+    </div>
+
+    <!-- 진행 상태 -->
+    <div id="topic-status-box" class="card status-panel hidden">
+      <div class="card-title">분석 진행 상태</div>
+      <ul class="step-list">
+        <li class="step-item wait" id="topic-step1">
+          <span class="step-icon">📄</span>
+          <span class="step-text">PDF 텍스트·페이지 번호 추출 중...</span>
+        </li>
+        <li class="step-item wait" id="topic-step2">
+          <span class="step-icon">📚</span>
+          <span class="step-text">강의록 주제 정리 중...</span>
+        </li>
+        <li class="step-item wait" id="topic-step3">
+          <span class="step-icon">📝</span>
+          <span class="step-text">기출 문항과 대조 중...</span>
+        </li>
+        <li class="step-item wait" id="topic-step4">
+          <span class="step-icon">🔗</span>
+          <span class="step-text">주제 · 출처 연결 정리 중...</span>
+        </li>
+      </ul>
+    </div>
+
+    <!-- 에러 -->
+    <div class="error-box" id="topic-error-box"></div>
+
+  </div><!-- /topic-input-view -->
+
+  <!-- ── 서브뷰 B: 분석 결과 ── -->
+  <div id="topic-result-view" class="hidden">
+
+    <div class="result-nav">
+      <button class="back-btn" onclick="topicShowInput()">← 설정으로 돌아가기</button>
+      <button class="btn-ghost" onclick="topicShowInput()">🔍 새로 분석</button>
+    </div>
+
+    <!-- 분석에 쓰인 파일 요약 -->
+    <div class="card" id="topic-source-box">
+      <div class="card-title">📥 분석에 사용한 파일</div>
+      <div id="topic-source-content"></div>
+    </div>
+
+    <!-- 주제 목록 -->
+    <div class="card" id="topic-list-box">
+      <div class="card-title" style="flex-wrap:wrap;">
+        <span>📌 기출에 나온 주제</span>
+        <span id="topic-count-label" style="margin-left:auto;font-weight:400;font-size:0.82rem;color:#64748b;"></span>
+      </div>
+      <input type="text" id="topic-search" placeholder="🔎 주제 · 파일명으로 걸러보기" oninput="topicFilter()" />
+      <div id="topic-list" style="margin-top:16px;"></div>
+      <div id="topic-list-empty" style="font-size:0.88rem;color:#64748b;"></div>
+    </div>
+
+  </div><!-- /topic-result-view -->
+
+  </div><!-- /tab-topics -->
+
 </main>
 
 <!-- 오답 노트 저장 모달 -->
@@ -371,6 +499,7 @@
 <script src="/static/js/question_gen.js"></script>
 <script src="/static/js/wrong_note.js"></script>
 <script src="/static/js/bone_bank.js"></script>
+<script src="/static/js/topic_analysis.js"></script>
 <script src="/static/js/auth.js"></script>
 
 </body>

@@ -8,6 +8,7 @@
   - providers/                : LLM 제공사별 호출 (전북대 게이트웨이·OpenAI·Anthropic·Gemini)
   - features/question_gen.py  : 문제 생성 라우트 (/generate, /sessions, /models ...)
   - features/wrong_note.py    : 오답 노트 라우트 (/wrong-folders ...)
+  - features/topic_analysis.py: 기출 주제 분석 라우트 (/analyze-topics)
   - features/auth.py          : 구글 로그인 + 게스트 익명 id
   - 정적 파일(css/js)          : static/ , 화면(HTML): index.html
 
@@ -28,6 +29,7 @@ from db import init_db, DB_PATH
 from providers.jbnu_gateway import GATEWAY_BASE_URL, DEFAULT_MODEL
 from features.question_gen import gen_bp
 from features.wrong_note import wrong_bp
+from features.topic_analysis import topic_bp
 from features.auth import auth_bp, init_auth
 
 # 배포 모드인데 시크릿 키가 기본값이거나 디버그가 켜져 있으면 여기서 즉시 중단한다.
@@ -52,6 +54,7 @@ if config.TRUST_PROXY:
 init_auth(app)                        # Authlib(구글 OAuth) 초기화
 app.register_blueprint(gen_bp)
 app.register_blueprint(wrong_bp)
+app.register_blueprint(topic_bp)
 app.register_blueprint(auth_bp)
 
 

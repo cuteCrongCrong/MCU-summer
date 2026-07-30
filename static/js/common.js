@@ -26,7 +26,7 @@ function setStep(stepId, state) {
 // ── 상단 탭 전환 ──
 // 새 탭을 추가하려면 아래 배열에 id 접미사를 추가하세요. (예: 'login')
 function switchTab(name) {
-  ['generator', 'wrong', 'bones'].forEach(t => {
+  ['generator', 'wrong', 'bones', 'topics'].forEach(t => {
     document.getElementById('tab-' + t).classList.toggle('hidden', t !== name);
     document.getElementById('tabbtn-' + t).classList.toggle('active', t === name);
   });

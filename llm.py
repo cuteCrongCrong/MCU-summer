@@ -11,6 +11,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 import fitz  # pymupdf
 
+from providers.base import ProviderError
 from providers.factory import get_provider
 
 # ──────────────────────────────────────────────
@@ -112,15 +113,19 @@ def truncate(text: str, max_chars: int = MAX_TEXT_CHARS) -> str:
     return text[:head] + "\n\n...(중략: 분량 초과로 일부 생략)...\n\n" + text[-tail:]
 
 
-def build_source_info(raw_text: str) -> dict:
-    """원문 추출 글자수 대비 LLM에 실제 반영된 범위 (truncate 여부·비율)."""
+def build_source_info(raw_text: str, limit: int = MAX_TEXT_CHARS) -> dict:
+    """
+    원문 추출 글자수 대비 LLM에 실제 반영된 범위 (truncate 여부·비율).
+    limit: 이 문서에 적용한 글자수 상한. 생략하면 기본 상한(MAX_TEXT_CHARS).
+           (기출 주제 분석처럼 여러 파일에 예산을 나눠 쓰는 경우 그 값을 넘긴다)
+    """
     chars = len(raw_text or "")
-    truncated = chars > MAX_TEXT_CHARS
-    used = MAX_TEXT_CHARS if truncated else chars
+    truncated = chars > limit
+    used = limit if truncated else chars
     return {
         "chars": chars,
         "used": used,
-        "limit": MAX_TEXT_CHARS,
+        "limit": limit,
         "truncated": truncated,
         "coverage": (round(used / chars * 100) if chars else 100),
     }
@@ -680,3 +685,272 @@ def run_analysis(lecture_text: str, exam_text: str, api_key: str, model: str,
         "priority_topics": priority_topics,
         "type_stats": type_stats,
     }
+
+
+# ══════════════════════════════════════════════
+# 기출 주제 분석 (features/topic_analysis.py 전용)
+#   "강의록 몇 페이지의 주제가 어떤 기출 몇 번 문제로 나왔는가" 대응표를 만든다.
+#   문제 생성과 달리 강의·기출을 여러 개 올릴 수 있어(어떤 강의록/어떤 기출을
+#   구분해 보여줘야 하므로) 파일마다 라벨을 붙여 프롬프트에 넣는다.
+# ══════════════════════════════════════════════
+
+# 한쪽(강의록 전체 / 기출 전체)에 배정하는 글자 예산.
+# 강의+기출을 한 프롬프트에 함께 넣으므로 문제 생성(문서당 MAX_TEXT_CHARS)보다 보수적으로 잡는다.
+TOPIC_SIDE_CHAR_BUDGET = 60000
+# 파일을 여러 개 올려도 문서당 이만큼은 보장 (예산 ÷ 파일수가 너무 작아지는 것 방지)
+TOPIC_DOC_MIN_CHARS = 12000
+# 주제 목록이 길어져도 JSON이 잘리지 않도록 (문제 생성과 같은 상한)
+TOPIC_MAX_TOKENS = 8000
+
+
+def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
+                         describe_images: bool = False, provider=None,
+                         side_budget: int = TOPIC_SIDE_CHAR_BUDGET) -> list:
+    """
+    업로드된 PDF 여러 개를 '라벨 + 페이지 마커가 붙은 텍스트'로 추출한다.
+
+    label_prefix: '강의록' / '기출' → 라벨은 강의록1, 강의록2 … (LLM이 출처를 가리킬 때 사용.
+                  긴 한글 파일명을 그대로 되풀이하게 하면 오타가 나므로 짧은 라벨을 쓰고
+                  파일명 복원은 파싱 단계에서 우리가 한다)
+    반환: [{label, name, text, pages, source}]  (text에는 [페이지 N] 마커가 들어 있다)
+    """
+    files = list(files or [])
+    if not files:
+        return []
+
+    # 예산을 파일 수로 나눠 배정 (파일이 많으면 문서당 최소치는 보장)
+    per_doc = max(TOPIC_DOC_MIN_CHARS, side_budget // len(files))
+
+    docs = []
+    for i, f in enumerate(files, start=1):
+        name = f.filename or f"{label_prefix}{i}"
+        try:
+            raw = extract_text_from_pdf(f, api_key, model,
+                                        describe_images=describe_images, provider=provider)
+        except ProviderError:
+            raise                      # 키·한도 오류는 라우트가 상태코드로 구분하므로 그대로
+        except Exception as e:
+            # 손상·암호 걸린 PDF (fitz의 영문 예외를 어떤 파일이 문제인지 알려주는 문구로)
+            raise ValueError(
+                f"'{name}' 파일을 읽을 수 없습니다. "
+                f"PDF가 손상되었거나 암호가 걸려 있는지 확인해주세요. (상세: {e})"
+            ) from e
+        text = truncate(raw, per_doc)
+        docs.append({
+            "label": f"{label_prefix}{i}",
+            "name": name,
+            "text": text,
+            # 내용이 잡힌 페이지 수 (스캔 PDF 판별·안내용).
+            # '[페이지 N]'과 '[페이지 N 이미지 설명]' 두 형태를 모두 센다 (set으로 중복 제거).
+            "pages": len(set(re.findall(r"\[페이지 (\d+)[\] ]", raw))),
+            "source": build_source_info(raw, per_doc),
+        })
+    return docs
+
+
+def build_topic_doc_block(docs: list) -> str:
+    """추출된 문서들을 라벨·파일명 구분선과 함께 하나의 프롬프트 블록으로 합친다."""
+    parts = []
+    for d in docs:
+        parts.append(
+            f"───────── [{d['label']}] 파일명: {d['name']} ─────────\n"
+            f"{d['text'] or '(텍스트를 추출하지 못했습니다)'}"
+        )
+    return "\n\n".join(parts)
+
+
+def build_topic_analysis_prompt(lecture_block: str, exam_block: str) -> str:
+    """
+    강의록 주제 ↔ 기출 문항 대응표 프롬프트.
+
+    설계 의도 두 가지:
+      ① 주제명은 **강의록에 실제로 있는 표현**만 쓰게 강제한다.
+         (LLM이 교과서 용어로 바꿔 쓰면 학생이 강의록에서 그 주제를 못 찾는다)
+      ② 페이지·문항 번호를 확인할 수 없는 항목은 아예 버리게 한다.
+         (틀린 출처는 없는 출처보다 나쁘다 — 학생이 그 페이지를 찾아보게 되므로)
+    """
+    return f"""당신은 한국 의과대학 시험 분석 전문가입니다.
+[강의록]에 적혀 있는 주제 중 [기출문제]에서 **실제로 출제된 것만** 골라
+"강의록 몇 페이지의 주제가 어떤 기출 몇 번 문제로 나왔는지" 대응표를 만드세요.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## [1] 강의록 (자료 라벨 · [페이지 N] 마커 포함)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{lecture_block}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## [2] 기출문제 (자료 라벨 · 문제 번호 포함)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{exam_block}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## [3] 규칙 (반드시 준수)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+① **용어 규칙 — 가장 중요**
+   - "주제"는 **강의록 본문에 그대로 등장하는 표현**만 쓰세요.
+   - 강의록에 없는 단어를 쓰지 마세요. 일반 의학 교과서 용어·영어 병기·상위 개념어를
+     새로 만들어 붙이지 마세요.
+   - 강의록의 표기(띄어쓰기·한자·약어·번호)를 그대로 옮기세요. 다듬거나 요약하지 말고,
+     강의록에 있는 어구를 **잘라서** 쓰세요.
+   - "출제형태" 문장도 강의록에 있는 용어로만 쓰세요.
+② **근거 규칙 — 추측 금지**
+   아래 두 가지가 위 텍스트에서 **모두 확인되는** 주제만 출력하세요.
+   - 강의록: 그 주제가 적힌 [페이지 N] 의 N
+   - 기출: 그 주제를 묻는 문제의 **문제 번호** (기출 텍스트에 적힌 번호 그대로)
+   페이지나 문제 번호를 확인할 수 없으면 그 주제는 **아예 넣지 마세요.**
+③ **범위 규칙** — 강의록에 없는 내용만 묻는 기출 문제는 무시하세요.
+④ 같은 주제를 여러 기출·여러 문항에서 물었다면 **한 항목에 모아** 넣으세요. (주제 중복 금지)
+⑤ 주제는 "골학 전체"처럼 넓게 잡지 말고, **한 문제로 물을 수 있는 단위**로 잡으세요.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## [4] 출력 형식 — 아래 JSON만 (코드블록·설명 문장 금지)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{{
+  "주제목록": [
+    {{
+      "주제": "강의록에 적힌 표현 그대로",
+      "강의록": [{{"자료": "강의록1", "페이지": [12, 13]}}],
+      "기출": [{{"자료": "기출1", "문항": ["4", "7"]}}],
+      "출제형태": "기출에서 이 주제를 무엇으로 물었는지 한 문장 (강의록 용어로만)"
+    }}
+  ]
+}}
+- "자료"에는 위에 표시된 **라벨**(강의록1, 기출1 …)만 쓰세요. 파일명을 쓰지 마세요.
+- "페이지"는 숫자만, "문항"은 기출에 적힌 번호 문자열만 담으세요.
+- 출제가 확인된 주제는 **빠짐없이** 넣으세요. (개수 제한 없음)"""
+
+
+def _resolve_doc_name(value: str, docs: list) -> str:
+    """LLM이 준 '자료' 값을 실제 파일명으로 복원. 라벨 → 파일명, 파일명이면 그대로."""
+    key = str(value or "").strip()
+    if not key:
+        return docs[0]["name"] if len(docs) == 1 else ""
+    for d in docs:
+        if key == d["label"] or key == d["name"]:
+            return d["name"]
+    # 라벨/파일명 어느 쪽과도 안 맞으면 부분 일치까지 시도 (확장자 누락 등)
+    for d in docs:
+        if key in d["name"] or d["name"] in key or key in d["label"]:
+            return d["name"]
+    return key
+
+
+def _page_sort_key(v: str):
+    """'12' → 12, '12-13' → 12, 숫자가 없으면 맨 뒤로."""
+    m = re.search(r"\d+", str(v))
+    return (0, int(m.group())) if m else (1, 0)
+
+
+def _normalize_refs(raw_refs, docs: list, item_key: str) -> list:
+    """
+    [{"자료": 라벨, item_key: [...]}] 형태를 파일명 기준으로 정규화·중복 제거·정렬.
+    같은 파일이 여러 번 나오면 하나로 합친다.
+    """
+    merged = {}
+    order = []
+    for ref in (raw_refs or []):
+        if not isinstance(ref, dict):
+            continue
+        name = _resolve_doc_name(ref.get("자료") or ref.get("파일") or "", docs)
+        if not name:
+            continue
+        values = ref.get(item_key)
+        if isinstance(values, (str, int, float)):
+            values = [values]
+        if not isinstance(values, list):
+            continue
+        if name not in merged:
+            merged[name] = []
+            order.append(name)
+        for v in values:
+            s = str(v).strip()
+            # '12p', '4번' 처럼 단위가 붙어 오는 경우가 있어 숫자/범위만 남긴다
+            s = re.sub(r"^(p|page|페이지|문제|문항)\s*", "", s, flags=re.I)
+            s = re.sub(r"\s*(p|페이지|쪽|번|번째)$", "", s, flags=re.I).strip()
+            if s and s not in merged[name]:
+                merged[name].append(s)
+
+    out = []
+    for name in order:
+        items = sorted(merged[name], key=_page_sort_key)
+        if items:
+            out.append({"자료": name, item_key: items})
+    return out
+
+
+def parse_topic_analysis(raw: str, lecture_docs: list, exam_docs: list) -> dict:
+    """
+    LLM JSON 응답 → 화면에 바로 그릴 수 있는 주제 목록으로 정규화.
+
+    - 자료 라벨을 실제 파일명으로 복원
+    - 같은 주제(표기 흔들림 포함)는 근거를 합쳐 하나로
+    - 기출 근거(문항 번호)가 없는 항목은 '기출에 나온 주제'가 아니므로 제외하고 개수만 남김
+    - 정렬: 기출 문항 수 많은 순 → 강의록 페이지 앞선 순 (페이지 미확인은 뒤로)
+    """
+    data = safe_parse_json(raw)
+    items = data.get("주제목록") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        items = []
+
+    topics = []
+    by_key = {}
+    dropped = 0
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("주제") or "").strip()
+        if not name:
+            continue
+        exam_refs = _normalize_refs(item.get("기출"), exam_docs, "문항")
+        if not exam_refs:          # 기출 근거 없음 → 이 기능의 대상이 아님
+            dropped += 1
+            continue
+        lecture_refs = _normalize_refs(item.get("강의록"), lecture_docs, "페이지")
+
+        # 표기 흔들림을 흡수한 키로 중복 판정. 괄호로 시작하는 이름 등은 키가 비므로 원문을 쓴다.
+        key = _norm_term(name) or name
+        if key in by_key:          # 같은 주제 중복 → 근거 병합
+            merge_into = by_key[key]
+            merge_into["강의록"] = _normalize_refs(
+                merge_into["강의록"] + lecture_refs, lecture_docs, "페이지")
+            merge_into["기출"] = _normalize_refs(
+                merge_into["기출"] + exam_refs, exam_docs, "문항")
+            continue
+
+        topic = {
+            "주제": name,
+            "강의록": lecture_refs,
+            "기출": exam_refs,
+            "출제형태": str(item.get("출제형태") or "").strip(),
+        }
+        by_key[key] = topic
+        topics.append(topic)
+
+    # 병합 후 문항 수 재계산 + 정렬
+    for t in topics:
+        t["문항수"] = sum(len(r["문항"]) for r in t["기출"])
+        first_pages = [_page_sort_key(p) for r in t["강의록"] for p in r["페이지"]]
+        t["_page"] = min(first_pages) if first_pages else (2, 0)
+    topics.sort(key=lambda t: (-t["문항수"], t["_page"], t["주제"]))
+    for t in topics:
+        t.pop("_page", None)
+
+    return {
+        "topics": topics,
+        "dropped": dropped,          # 근거가 없어 버린 항목 수 (조용히 삭제하지 않고 표시)
+        "total_questions": sum(t["문항수"] for t in topics),
+    }
+
+
+def run_topic_analysis(lecture_docs: list, exam_docs: list, api_key: str,
+                       model: str, provider=None) -> dict:
+    """추출된 강의록·기출 문서 목록 → 주제 대응표 (LLM 1회 호출)."""
+    prompt = build_topic_analysis_prompt(
+        build_topic_doc_block(lecture_docs),
+        build_topic_doc_block(exam_docs),
+    )
+    raw = call_llm(prompt, api_key, model, provider=provider,
+                   max_tokens=TOPIC_MAX_TOKENS)
+    result = parse_topic_analysis(raw, lecture_docs, exam_docs)
+    result["raw"] = raw
+    return result
