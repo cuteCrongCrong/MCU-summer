@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════
-// question_gen.js — 문제 생성기 탭 (업로드·세션·이력·모델·생성·분석요약)
+// question_gen.js — 문제 생성기 탭 (업로드·세션·이력·모델·생성)
 //   common.js 이후 로드. escHtml/renderQuestions/TYPE_BADGE 등은 common.js 것을 재사용.
 // ══════════════════════════════════════════════
 
@@ -132,7 +132,6 @@ async function generate() {
   document.getElementById('generate-btn').disabled = true;
   document.getElementById('status-box').style.display = 'block';
   clearErrors();
-  document.getElementById('analysis-box').style.display = 'none';
   document.getElementById('result-box').style.display   = 'none';
   document.getElementById('cancel-btn').style.display   = 'inline-block';
   resetSteps(useSession);
@@ -279,8 +278,6 @@ async function fallbackGenerate(form, signal) {
     setActiveSession(data.session_id, data.session_name);
     loadSessions();
   }
-  renderAnalysis(data.concepts, data.sample_questions, data.format_analysis, data.exam_concepts,
-                 data.priority_topics, data.type_stats, data.type_targets, data.source_info);
   document.getElementById('result-box').style.display = 'block';
   renderQuestions(data.questions, data.raw);
   applyGenerationResult(data);
@@ -368,14 +365,14 @@ async function streamGenerate(form, signal) {
       } else if (ev.type === 'progress') {
         setStageProgress(ev.key, ev.done, ev.total);
       } else if (ev.type === 'analysis') {
-        // 분석 결과는 미리 그려두고, 화면 전환은 문제까지 다 나온 뒤에 한다
+        // 분석 결과 자체는 화면에 표시하지 않는다(결과 화면은 문제만 보여준다).
+        // 다만 이 이벤트로 새로 저장된 세션을 알 수 있으므로 그것만 반영하고,
+        // 문제 컨테이너를 미리 열어둔다. 화면 전환은 문제까지 다 나온 뒤 done에서.
         const a = ev.payload;
         if (!a.reused && a.session_id) {
           setActiveSession(a.session_id, a.session_name);
           loadSessions();
         }
-        renderAnalysis(a.concepts, a.sample_questions, a.format_analysis, a.exam_concepts,
-                       a.priority_topics, a.type_stats, a.type_targets, a.source_info);
         document.getElementById('result-box').style.display = 'block';
       } else if (ev.type === 'question') {
         // 문제는 모아뒀다가 done에서 한 번에 보여준다 (진행률만 실시간)
@@ -477,16 +474,20 @@ function updateSessionListHighlight() {
   renderSessionList();
 }
 
+// 세션을 이번 생성의 활성 세션으로 지정한다.
+// 예전에는 여기서 분석 요약을 결과 화면에 띄웠지만(showGenResult), 분석 요약을
+// 없앤 뒤로는 띄울 것이 없어 빈 결과 화면이 된다. 그래서 화면을 전환하지 않고
+// 입력 화면에 머문다 — setActiveSession이 초록색 현재 세션 바를 띄우고,
+// 생성 버튼 문구를 바꾸고, 목록의 버튼을 '선택됨'으로 만들어 준다.
+//
+// fetch는 표시할 데이터가 아니라 세션이 실제로 존재하는지(그리고 내 것인지)
+// 확인하는 용도로만 남긴다. 다른 탭에서 지운 세션을 고르는 경우를 잡는다.
 async function useSessionRow(id) {
-  // 세션 상세를 불러와 분석 결과를 즉시 표시 + 활성 세션 설정
   try {
     const resp = await fetch('/session/' + id);
     const s = await resp.json();
     if (!resp.ok || s.error) return alert(s.error || '세션을 불러오지 못했습니다.');
     setActiveSession(s.id, s.name);
-    renderAnalysis(s.concepts, s.sample_questions, s.format_analysis, s.exam_concepts, s.priority_topics, s.type_stats, {}, s.source_info);
-    document.getElementById('result-box').style.display = 'none';  // 아직 생성된 문제 없음 (분석 미리보기만)
-    showGenResult();
   } catch (err) {
     alert('세션을 불러오지 못했습니다.');
   }
@@ -626,105 +627,6 @@ function clearErrors() {
   ['error-box', 'result-error-box'].forEach(id => {
     document.getElementById(id).style.display = 'none';
   });
-}
-
-// ── 분석 결과 렌더링 ──
-function renderAnalysis(concepts, sampleQuestions, formatAnalysis, examConcepts, priorityTopics, typeStats, typeTargets, sourceInfo) {
-  const box = document.getElementById('analysis-box');
-  const content = document.getElementById('analysis-content');
-  concepts = concepts || {};
-  examConcepts = examConcepts || {};
-  priorityTopics = priorityTopics || [];
-  typeStats = typeStats || {};
-  typeTargets = typeTargets || {};
-  sourceInfo = sourceInfo || {};
-
-  // 접을 수 있는 세부 항목 (details/summary). body가 비면 항목 자체를 생략.
-  const aSection = (summaryHtml, bodyHtml, open) =>
-    bodyHtml
-      ? `<details class="a-section"${open ? ' open' : ''}><summary>${summaryHtml}</summary><div class="a-body">${bodyHtml}</div></details>`
-      : '';
-
-  const tagGroup = (label, items, cls) => {
-    if (!items || !items.length) return '';
-    const tags = items.map(i => `<span class="tag ${cls}">${escHtml(i)}</span>`).join('');
-    return `<div class="tag-group">
-      <div class="tag-group-label">${label}</div>
-      <div class="tags">${tags}</div>
-    </div>`;
-  };
-
-  // ① 원문 반영 범위
-  const sourceBody = renderSourceInfo(sourceInfo);
-
-  // ② 기출 유형 구성
-  let typeBody = '';
-  if (typeStats['총문항']) {
-    const hasTarget = Object.keys(TYPE_BADGE).some(t => (typeTargets[t] || 0) > 0);
-    const targetTxt = hasTarget
-      ? ` &nbsp;→&nbsp; <b>생성 구성:</b> ${formatTypeCounts(typeTargets)}`
-      : '';
-    typeBody = `
-      <div style="font-size:0.86rem;color:#1e3a8a;">
-        ${formatTypeCounts(typeStats)} (총 ${typeStats['총문항']})${targetTxt}
-        <div style="font-size:0.75rem;color:#64748b;margin-top:4px;">${escHtml(typeStats['판별근거'] || '')}</div>
-      </div>`;
-  }
-
-  // ③ 우선 출제 주제 (강의 ∩ 기출)
-  const priorityBody = priorityTopics.length
-    ? `<div class="tags">${priorityTopics.map(t => `<span class="tag" style="background:#fde68a;color:#92400e;">${escHtml(t)}</span>`).join('')}</div>`
-    : '';
-
-  // ④ 강의자료 핵심 개념
-  const lectureBody =
-    tagGroup('핵심 질환', concepts['핵심질환'], 'tag-blue') +
-    tagGroup('핵심 개념', concepts['핵심개념'], 'tag-purple') +
-    tagGroup('중요 수치', concepts['중요수치'], 'tag-green') +
-    tagGroup('감별 진단', concepts['감별진단포인트'], 'tag-orange');
-
-  // ⑤ 기출 출제 경향
-  const examBody =
-    tagGroup('기출 출제 개념', examConcepts['기출출제개념'], 'tag-orange') +
-    tagGroup('빈출 포인트', examConcepts['빈출포인트'], 'tag-green') +
-    `<div style="font-weight:700;font-size:0.85rem;margin:14px 0 10px;color:#0369a1;">🔍 기출 형식 키워드</div>` +
-    renderFormatKeywords(formatAnalysis || '');
-
-  // ⑥ 기출문제 예시 (Few-shot)
-  const sampleBody = (sampleQuestions || '').trim()
-    ? `<pre style="background:#f1f5f9;border-radius:8px;padding:14px;font-size:0.8rem;line-height:1.7;white-space:pre-wrap;margin:0;">${escHtml(sampleQuestions)}</pre>`
-    : '';
-
-  content.innerHTML =
-    aSection('📥 원문 반영 범위', sourceBody, true) +
-    aSection('📊 기출 유형 구성', typeBody, true) +
-    aSection('⭐ 우선 출제 주제 <span style="font-weight:400;color:#92400e;font-size:0.8rem;">(강의자료 ∩ 기출 — 가중치 높음)</span>', priorityBody, true) +
-    aSection('📚 강의자료 핵심 개념', lectureBody, false) +
-    aSection('📈 기출 출제 경향', examBody, false) +
-    aSection('📋 추출된 기출문제 예시 (Few-shot 참조용)', sampleBody, false);
-
-  box.style.display = 'block';
-}
-
-// ── 형식 키워드 렌더링 ("라벨: 키워드1, 키워드2" 라인 → 태그 그룹) ──
-function renderFormatKeywords(text) {
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  let html = '';
-  for (const line of lines) {
-    const ci = line.indexOf(':');
-    if (ci < 0) continue;
-    const label = line.slice(0, ci).trim();
-    const rest  = line.slice(ci + 1).trim();
-    if (!rest) continue;
-    const kws = rest.split(/[,、]/).map(k => k.trim()).filter(Boolean);
-    const tags = kws.map(k => `<span class="tag tag-purple">${escHtml(k)}</span>`).join('');
-    html += `<div class="tag-group">
-      <div class="tag-group-label">${escHtml(label)}</div>
-      <div class="tags">${tags}</div>
-    </div>`;
-  }
-  // 라벨:키워드 형식이 전혀 없으면 원문 그대로 표시 (폴백)
-  return html || `<div style="font-size:0.85rem;color:#475569;line-height:1.8;white-space:pre-wrap;">${escHtml(text)}</div>`;
 }
 
 // ── 초기 로드 ──
