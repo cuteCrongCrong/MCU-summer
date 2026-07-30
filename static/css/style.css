@@ -239,20 +239,6 @@ input:focus { outline: none; border-color: var(--primary); }
 .cancel-btn:hover { background: #fef2f2; }
 .cancel-btn:focus-visible { outline: 2px solid var(--danger); outline-offset: 2px; }
 
-/* ── 개념/패턴 요약 ── */
-#analysis-box { display: none; }
-.tag-group { margin-bottom: 12px; }
-.tag-group-label { font-size: 0.78rem; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; }
-.tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.tag {
-  display: inline-block; padding: 4px 10px;
-  border-radius: 999px; font-size: 0.78rem; font-weight: 600;
-}
-.tag-blue   { background: #dbeafe; color: #1d4ed8; }
-.tag-green  { background: #dcfce7; color: #15803d; }
-.tag-orange { background: #ffedd5; color: #c2410c; }
-.tag-purple { background: #ede9fe; color: #7c3aed; }
-
 /* ── 문제 카드 ── */
 #result-box { display: none; }
 .question-card {
@@ -621,27 +607,6 @@ main { margin-top: 20px; }
   font-family: inherit; cursor: pointer; transition: all 0.15s;
 }
 .btn-ghost:hover { background: var(--primary-dark); }
-
-/* ── 분석 결과: 접을 수 있는 세부 항목 ── */
-.a-section {
-  border: 1.5px solid var(--border); border-radius: 10px;
-  margin-bottom: 12px; overflow: hidden; background: var(--surface);
-}
-.a-section > summary {
-  list-style: none; cursor: pointer;
-  padding: 12px 16px; font-size: 0.9rem; font-weight: 700; color: var(--text);
-  display: flex; align-items: center; gap: 8px;
-  background: #f8fafc; transition: background 0.15s;
-}
-.a-section > summary::-webkit-details-marker { display: none; }
-.a-section > summary::after {
-  content: '▸'; margin-left: auto; color: var(--text-muted);
-  transition: transform 0.15s; font-size: 0.9rem;
-}
-.a-section[open] > summary { border-bottom: 1px solid var(--border); }
-.a-section[open] > summary::after { transform: rotate(90deg); }
-.a-section:hover > summary { background: #eef2f7; }
-.a-section .a-body { padding: 14px 16px; }
 
 /* ── 오답 노트 모달 ── */
 .modal-overlay {
