@@ -8,7 +8,7 @@ LLM 도메인 로직 — PDF 텍스트/이미지 추출, 프롬프트 설계, �
 
 import json
 import re
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import fitz  # pymupdf
 
 from providers.factory import get_provider
@@ -42,16 +42,14 @@ TYPE_DEFINITIONS = (
 # LLM / PDF 유틸
 # ──────────────────────────────────────────────
 
-def extract_text_from_pdf(file_storage, api_key: str = None, model: str = None,
-                          describe_images: bool = True, provider=None) -> str:
+def read_pdf_pages(pdf, api_key: str = None, describe_images: bool = True):
     """
-    PDF에서 텍스트 레이어를 추출하고, 이미지/스캔 페이지는 Vision LLM으로
-    '무슨 이미지인지' 설명을 생성해 텍스트로 함께 남긴다.
-    - 텍스트가 거의 없는 페이지(스캔·사진) 또는 그림이 포함된 페이지를 이미지 설명 대상으로 선정
-    - 비용 상한: 최대 IMAGE_DESC_MAX개 페이지만 설명, 이미지 설명은 병렬 처리
+    PDF에서 텍스트 레이어를 뽑고, 이미지 설명이 필요한 페이지를 고른다. (LLM 호출 없음)
+    반환: (pages, img_jobs) — img_jobs는 pages 안 엔트리를 그대로 참조한다.
     """
-    prov = provider or _default_provider
-    pdf_bytes = file_storage.read()
+    # 업로드 객체(FileStorage)와 bytes 모두 허용 — 스트리밍 경로는 요청 컨텍스트가
+    # 닫힌 뒤에 실행되므로 라우트에서 미리 읽어둔 bytes를 넘긴다.
+    pdf_bytes = pdf.read() if hasattr(pdf, "read") else pdf
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
 
     pages = []       # {idx, text, png(optional), desc}
@@ -73,17 +71,33 @@ def extract_text_from_pdf(file_storage, api_key: str = None, model: str = None,
                 pass
         pages.append(entry)
     doc.close()
+    return pages, img_jobs
 
-    # 이미지 설명 병렬 생성 (게이트웨이가 이미지 미지원이면 폴백 문구)
-    if img_jobs:
-        with ThreadPoolExecutor(max_workers=4) as ex:
-            futs = {ex.submit(prov.describe_image, e["png"], api_key, model): e for e in img_jobs}
-            for fut, e in futs.items():
-                try:
-                    e["desc"] = fut.result()
-                except Exception:
-                    e["desc"] = "(이미지 설명 생성 실패 — 게이트웨이 이미지 미지원일 수 있음)"
 
+def describe_images_progressively(img_jobs, api_key: str, model: str, provider=None):
+    """
+    이미지 설명을 병렬로 만들되, 하나 끝날 때마다 완료 개수를 yield한다.
+    (진행률 표시용 — 호출부가 제너레이터를 돌리면서 이벤트를 낼 수 있게)
+    게이트웨이가 이미지를 지원하지 않으면 폴백 문구를 채운다.
+    """
+    if not img_jobs:
+        return
+    prov = provider or _default_provider
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        futs = {ex.submit(prov.describe_image, e["png"], api_key, model): e for e in img_jobs}
+        done = 0
+        for fut in as_completed(futs):
+            entry = futs[fut]
+            try:
+                entry["desc"] = fut.result()
+            except Exception:
+                entry["desc"] = "(이미지 설명 생성 실패 — 게이트웨이 이미지 미지원일 수 있음)"
+            done += 1
+            yield done
+
+
+def assemble_pdf_text(pages, img_job_count: int = 0) -> str:
+    """페이지 텍스트 + 이미지 설명을 하나의 텍스트로 합친다."""
     parts = []
     for e in pages:
         block = []
@@ -94,10 +108,26 @@ def extract_text_from_pdf(file_storage, api_key: str = None, model: str = None,
         if block:
             parts.append("\n".join(block))
 
-    if len(img_jobs) >= IMAGE_DESC_MAX:
+    if img_job_count >= IMAGE_DESC_MAX:
         parts.append(f"...(이미지 설명은 최대 {IMAGE_DESC_MAX}개까지만 생성됨)")
 
     return "\n\n".join(parts)
+
+
+def extract_text_from_pdf(pdf, api_key: str = None, model: str = None,
+                          describe_images: bool = True, provider=None) -> str:
+    """
+    PDF에서 텍스트 레이어를 추출하고, 이미지/스캔 페이지는 Vision LLM으로
+    '무슨 이미지인지' 설명을 생성해 텍스트로 함께 남긴다.
+    - 텍스트가 거의 없는 페이지(스캔·사진) 또는 그림이 포함된 페이지를 이미지 설명 대상으로 선정
+    - 비용 상한: 최대 IMAGE_DESC_MAX개 페이지만 설명, 이미지 설명은 병렬 처리
+
+    진행률이 필요한 곳(스트리밍)은 위 세 함수를 직접 조합한다. 결과는 동일하다.
+    """
+    pages, img_jobs = read_pdf_pages(pdf, api_key, describe_images)
+    for _ in describe_images_progressively(img_jobs, api_key, model, provider):
+        pass
+    return assemble_pdf_text(pages, len(img_jobs))
 
 
 def truncate(text: str, max_chars: int = MAX_TEXT_CHARS) -> str:
@@ -131,6 +161,14 @@ def call_llm(prompt: str, api_key: str, model: str, provider=None,
     # provider 계층으로 위임 — max_tokens를 주면 프로바이더 기본값 대신 그 값을 쓴다
     # (문제 생성처럼 응답이 길어 잘림을 막아야 할 때 호출부가 넉넉히 지정).
     return (provider or _default_provider).complete(
+        prompt, api_key, model, max_tokens=max_tokens
+    )
+
+
+def call_llm_stream(prompt: str, api_key: str, model: str, provider=None,
+                    max_tokens: int = None):
+    """응답을 조각으로 흘려받는다 (호출부에서 StreamingQuestionParser와 함께 사용)."""
+    return (provider or _default_provider).complete_stream(
         prompt, api_key, model, max_tokens=max_tokens
     )
 
@@ -550,67 +588,111 @@ def build_question_generation_prompt(
 # 파싱 함수
 # ──────────────────────────────────────────────
 
+# LLM 출력에서 문제 하나를 감싸는 구분자 (프롬프트의 출력 형식과 짝을 이룸)
+QUESTION_START = "---QUESTION---"
+QUESTION_END   = "---END---"
+
+
+def parse_question_block(block: str) -> dict:
+    """
+    구분자를 걷어낸 블록 하나를 문제 dict로 변환. '문제'가 없으면 None.
+
+    스트리밍 파서와 일괄 파서가 같은 결과를 내도록 파싱 로직은 여기 한 곳에만 둔다.
+    """
+    q = {}
+    current_key = None
+    choice_lines = []
+    buffer = []
+
+    def flush_buffer(key, buf):
+        if key and buf:
+            q[key] = "\n".join(buf).strip()
+
+    for line in block.split("\n"):
+        line = line.strip()
+        if line.startswith("유형:"):
+            flush_buffer(current_key, buffer); buffer = []
+            q["유형"] = line.replace("유형:", "").strip(); current_key = None
+        elif line.startswith("번호:"):
+            flush_buffer(current_key, buffer); buffer = []
+            q["번호"] = line.replace("번호:", "").strip(); current_key = None
+        elif line.startswith("문제:"):
+            flush_buffer(current_key, buffer); buffer = []
+            current_key = "문제"
+            val = line.replace("문제:", "").strip()
+            if val: buffer.append(val)
+        elif line == "선택지:":
+            flush_buffer(current_key, buffer); buffer = []
+            current_key = "선택지"
+        elif line.startswith(("①", "②", "③", "④", "⑤")):
+            choice_lines.append(line)
+        elif line.startswith("정답:"):
+            flush_buffer(current_key, buffer); buffer = []
+            q["정답"] = line.replace("정답:", "").strip(); current_key = None
+        elif line.startswith("해설:"):
+            flush_buffer(current_key, buffer); buffer = []
+            current_key = "해설"
+            val = line.replace("해설:", "").strip()
+            if val: buffer.append(val)
+        elif line.startswith("함정포인트:"):
+            flush_buffer(current_key, buffer); buffer = []
+            current_key = "함정포인트"
+            val = line.replace("함정포인트:", "").strip()
+            if val: buffer.append(val)
+        else:
+            if current_key: buffer.append(line)
+
+    flush_buffer(current_key, buffer)
+    if choice_lines:
+        q["선택지"] = choice_lines
+    q["유형"] = normalize_question_type(q.get("유형"), choice_lines, q.get("문제", ""))
+    return q if q.get("문제") else None
+
+
 def parse_questions(raw_text: str) -> list:
+    """응답 전문을 문제 리스트로 (기존 동작 그대로 — 스트리밍을 안 쓰는 경로용)."""
     questions = []
-    blocks = raw_text.split("---QUESTION---")
-    for block in blocks:
+    for block in (raw_text or "").split(QUESTION_START):
         block = block.strip()
-        if not block or "---END---" not in block:
+        if not block or QUESTION_END not in block:
             continue
-        block = block.replace("---END---", "").strip()
-
-        q = {}
-        lines = block.split("\n")
-        current_key = None
-        choice_lines = []
-        buffer = []
-
-        def flush_buffer(key, buf):
-            if key and buf:
-                q[key] = "\n".join(buf).strip()
-
-        for line in lines:
-            line = line.strip()
-            if line.startswith("유형:"):
-                flush_buffer(current_key, buffer); buffer = []
-                q["유형"] = line.replace("유형:", "").strip(); current_key = None
-            elif line.startswith("번호:"):
-                flush_buffer(current_key, buffer); buffer = []
-                q["번호"] = line.replace("번호:", "").strip(); current_key = None
-            elif line.startswith("문제:"):
-                flush_buffer(current_key, buffer); buffer = []
-                current_key = "문제"
-                val = line.replace("문제:", "").strip()
-                if val: buffer.append(val)
-            elif line == "선택지:":
-                flush_buffer(current_key, buffer); buffer = []
-                current_key = "선택지"
-            elif line.startswith(("①", "②", "③", "④", "⑤")):
-                choice_lines.append(line)
-            elif line.startswith("정답:"):
-                flush_buffer(current_key, buffer); buffer = []
-                q["정답"] = line.replace("정답:", "").strip(); current_key = None
-            elif line.startswith("해설:"):
-                flush_buffer(current_key, buffer); buffer = []
-                current_key = "해설"
-                val = line.replace("해설:", "").strip()
-                if val: buffer.append(val)
-            elif line.startswith("함정포인트:"):
-                flush_buffer(current_key, buffer); buffer = []
-                current_key = "함정포인트"
-                val = line.replace("함정포인트:", "").strip()
-                if val: buffer.append(val)
-            else:
-                if current_key: buffer.append(line)
-
-        flush_buffer(current_key, buffer)
-        if choice_lines:
-            q["선택지"] = choice_lines
-        q["유형"] = normalize_question_type(q.get("유형"), choice_lines, q.get("문제", ""))
-        if q.get("문제"):
+        q = parse_question_block(block.replace(QUESTION_END, "").strip())
+        if q:
             questions.append(q)
-
     return questions
+
+
+class StreamingQuestionParser:
+    """
+    LLM 응답 조각(chunk)을 받아, 문제가 하나씩 '완성될 때마다' 돌려주는 파서.
+
+    청크 경계는 문제 중간을 마음대로 자르기 때문에(예: '---EN' + 'D---'),
+    끝 구분자가 확인된 블록만 잘라내고 나머지는 버퍼에 남긴다.
+
+    끝 구분자 없이 끝난 마지막 블록은 버린다 — parse_questions()와 같은 규칙이라
+    스트리밍 여부에 따라 결과가 달라지지 않는다.
+    """
+
+    def __init__(self):
+        self.buffer = ""
+
+    def feed(self, chunk: str) -> list:
+        """청크를 넣고, 이번 호출에서 새로 완성된 문제들을 반환."""
+        self.buffer += chunk or ""
+        done = []
+        while True:
+            end = self.buffer.find(QUESTION_END)
+            if end == -1:
+                break
+            head, self.buffer = self.buffer[:end], self.buffer[end + len(QUESTION_END):]
+            # 끝 구분자 바로 앞의 시작 구분자부터가 이번 문제
+            start = head.rfind(QUESTION_START)
+            if start == -1:
+                continue            # 시작 없이 끝만 온 경우 → 버리고 계속
+            q = parse_question_block(head[start + len(QUESTION_START):].strip())
+            if q:
+                done.append(q)
+        return done
 
 
 def normalize_question_type(raw_type: str, choice_lines: list, question_text: str) -> str:
@@ -649,34 +731,83 @@ def safe_parse_json(text: str) -> dict:
 # 분석 파이프라인 (토큰 소모 집중 구간 — 세션에 저장해 재사용)
 # ──────────────────────────────────────────────
 
-def run_analysis(lecture_text: str, exam_text: str, api_key: str, model: str,
-                 provider=None) -> dict:
+def analyze_concepts_progressively(lecture_text: str, exam_text: str, api_key: str,
+                                   model: str, provider=None):
     """
-    강의·기출을 분석해 재사용 자산을 생성.
-    의존성 없는 두 LLM 호출을 병렬 실행해 대기시간 단축 (결과·동작은 순차 실행과 동일):
+    분석 1단계 — 의존성 없는 두 LLM 호출을 병렬 실행 (결과·동작은 순차와 동일):
       [동시] ① 강의 핵심개념  ┐
-      [동시] ② 기출 개념+유형통계 ┘ → ③ 예시추출 → ④ 형식분석
-    (④ 형식분석은 ③ 결과를 입력받으므로 ③에 의존 → 병렬 불가)
+      [동시] ② 기출 개념+유형통계 ┘
+
+    하나가 끝날 때마다 완료 개수를 yield하고, 마지막에 결과 dict를 return한다.
+    (호출부: `result = yield from analyze_concepts_progressively(...)`)
     """
-    # ①·② 동시 실행 (서로 독립)
     with ThreadPoolExecutor(max_workers=2) as ex:
         f_concepts = ex.submit(
             call_llm, build_concept_extraction_prompt(lecture_text), api_key, model, provider
         )
         f_exam = ex.submit(extract_exam_concepts, exam_text, api_key, model, provider)
+        done = 0
+        for fut in as_completed([f_concepts, f_exam]):
+            fut.result()          # 예외가 있으면 여기서 터뜨려 호출부가 잡게 한다
+            done += 1
+            yield done
         concepts = safe_parse_json(f_concepts.result())
         exam_concepts = safe_parse_json(f_exam.result())
 
-    # ③ 예시추출 (②의 유형통계를 힌트로 사용) → ④ 형식분석 (③에 의존)
-    type_stats = resolve_type_stats(exam_concepts, exam_text)  # LLM 4분류 우선, 정규식 폴백
-    sample_questions = extract_sample_questions(exam_text, api_key, model, type_stats, provider)
-    format_analysis = analyze_format(sample_questions, api_key, model, provider)
-    priority_topics = compute_priority_topics(concepts, exam_concepts)
     return {
         "concepts": concepts,
+        "exam_concepts": exam_concepts,
+        # LLM 4분류 우선, 실패 시 정규식 폴백
+        "type_stats": resolve_type_stats(exam_concepts, exam_text),
+        "priority_topics": compute_priority_topics(concepts, exam_concepts),
+    }
+
+
+def analyze_exam_format_progressively(exam_text: str, type_stats: dict, api_key: str,
+                                      model: str, provider=None):
+    """
+    분석 2단계 — ③ 예시추출 → ④ 형식분석.
+    ④는 ③의 결과를 입력으로 받으므로 병렬 불가. 각 단계가 끝날 때마다 yield.
+    """
+    sample_questions = extract_sample_questions(exam_text, api_key, model, type_stats, provider)
+    yield 1
+    format_analysis = analyze_format(sample_questions, api_key, model, provider)
+    yield 2
+    return {
         "sample_questions": sample_questions,
         "format_analysis": format_analysis,
-        "exam_concepts": exam_concepts,
-        "priority_topics": priority_topics,
-        "type_stats": type_stats,
     }
+
+
+def _drain(gen):
+    """진행률 제너레이터를 끝까지 돌리고 return 값만 받는다."""
+    while True:
+        try:
+            next(gen)
+        except StopIteration as stop:
+            return stop.value
+
+
+def analyze_concepts(lecture_text: str, exam_text: str, api_key: str, model: str,
+                     provider=None) -> dict:
+    return _drain(analyze_concepts_progressively(
+        lecture_text, exam_text, api_key, model, provider))
+
+
+def analyze_exam_format(exam_text: str, type_stats: dict, api_key: str, model: str,
+                        provider=None) -> dict:
+    return _drain(analyze_exam_format_progressively(
+        exam_text, type_stats, api_key, model, provider))
+
+
+def run_analysis(lecture_text: str, exam_text: str, api_key: str, model: str,
+                 provider=None) -> dict:
+    """
+    강의·기출을 분석해 재사용 자산을 생성 (두 단계를 순서대로 실행).
+
+    단계 사이에 진행 상황을 알려야 하는 곳(스트리밍)은 analyze_concepts /
+    analyze_exam_format 을 직접 호출한다. 어느 쪽이든 결과는 같다.
+    """
+    part1 = analyze_concepts(lecture_text, exam_text, api_key, model, provider)
+    part2 = analyze_exam_format(exam_text, part1["type_stats"], api_key, model, provider)
+    return {**part1, **part2}

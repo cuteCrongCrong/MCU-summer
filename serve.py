@@ -49,7 +49,7 @@ def main():
     if config.TRUST_PROXY:
         # waitress는 trusted_proxy가 지정돼 있지 않으면 X-Forwarded-* 를 환경에서 제거한다.
         # (스푸핑 방지 기본 동작) 그래서 이걸 켜주지 않으면 앱단의 ProxyFix가 헤더를
-        # 아예 못 보고, 구글 OAuth 콜백이 http:// 로 만들어져 로그인이 실패한다.
+        # 아예 못 보고, Google OAuth 콜백이 http:// 로 만들어져 로그인이 실패한다.
         opts.update(
             trusted_proxy=config.TRUSTED_PROXY,
             trusted_proxy_count=1,

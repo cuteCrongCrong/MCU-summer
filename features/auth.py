@@ -1,5 +1,5 @@
 """
-로그인 기능 — 구글 OAuth2(Authlib 서버 사이드 리다이렉트) + users 테이블.
+로그인 기능 — Google OAuth2(Authlib 서버 사이드 리다이렉트) + users 테이블.
 
 담당 테이블: users
 연결 계약: current_owner() 를 다른 기능(question_gen/wrong_note)이 import해
@@ -26,7 +26,7 @@ GOOGLE_METADATA_URL = "https://accounts.google.com/.well-known/openid-configurat
 
 
 def init_auth(app):
-    """app.py에서 호출 — Authlib를 앱에 붙이고 구글 provider 등록."""
+    """app.py에서 호출 — Authlib를 앱에 붙이고 Google provider 등록."""
     oauth.init_app(app)
     if config.GOOGLE_LOGIN_ENABLED:
         oauth.register(
@@ -77,7 +77,7 @@ def current_owner():
 # ── users DB ──
 
 def upsert_user(google_sub: str, email: str, name: str, picture: str) -> int:
-    """구글 sub 기준으로 사용자 생성/갱신 후 내부 user id 반환."""
+    """Google sub 기준으로 사용자 생성/갱신 후 내부 user id 반환."""
     conn = get_conn()
     try:
         row = conn.execute(
@@ -107,7 +107,7 @@ def upsert_user(google_sub: str, email: str, name: str, picture: str) -> int:
 @auth_bp.route("/login/google")
 def google_login():
     if not config.GOOGLE_LOGIN_ENABLED:
-        return ("구글 로그인이 설정되지 않았습니다. "
+        return ("Google 로그인이 설정되지 않았습니다. "
                 "secret_config.py에 GOOGLE_CLIENT_ID/SECRET을 채워주세요."), 503
     redirect_uri = url_for("auth.google_callback", _external=True)
     return oauth.google.authorize_redirect(redirect_uri)
@@ -127,7 +127,7 @@ def google_callback():
         userinfo = oauth.google.userinfo(token=token)
     sub = userinfo.get("sub")
     if not sub:
-        return "구글 계정 정보를 가져오지 못했습니다.", 400
+        return "Google 계정 정보를 가져오지 못했습니다.", 400
 
     uid = upsert_user(sub, userinfo.get("email"),
                       userinfo.get("name"), userinfo.get("picture"))

@@ -43,17 +43,21 @@ def _translate_errors():
         raise ProviderError("존재하지 않는 모델입니다. 모델 목록을 새로고침해주세요.")
 
 
-def _extract_text(response) -> str:
+def _check_refusal(response):
     """
-    content 블록 중 텍스트만 이어붙인다.
-    안전 필터가 요청을 거절하면 stop_reason='refusal'로 200이 오고 content가 비므로,
-    빈 문자열 대신 이유를 알 수 있는 오류로 바꿔준다.
+    안전 필터가 요청을 거절하면 stop_reason='refusal'로 200이 오고 content가 빈다.
+    빈 응답 대신 이유를 알 수 있는 오류로 바꿔준다. (스트리밍도 최종 메시지로 확인)
     """
     if getattr(response, "stop_reason", None) == "refusal":
         raise ProviderError(
             "모델이 이 자료에 대한 응답을 거부했습니다. "
             "다른 모델을 선택하거나 자료 범위를 좁혀서 다시 시도해주세요."
         )
+
+
+def _extract_text(response) -> str:
+    """content 블록 중 텍스트만 이어붙인다."""
+    _check_refusal(response)
     parts = [b.text for b in response.content if getattr(b, "type", None) == "text"]
     return "\n".join(parts).strip()
 
@@ -79,6 +83,26 @@ class AnthropicProvider(Provider):
                 messages=[{"role": "user", "content": prompt}],
             )
         return _extract_text(response)
+
+    def complete_stream(self, prompt: str, api_key: str, model: str,
+                        max_tokens: int = None):
+        """
+        Messages API의 스트리밍 헬퍼(messages.stream)를 쓴다.
+        OpenAI 호환 계층과 달리 델타를 직접 뒤질 필요 없이 text_stream이 텍스트만 준다.
+
+        주의 — 예외가 이터레이션 도중 발생하므로 _translate_errors()가
+        제너레이터 본문 전체를 감싸야 한다.
+        """
+        with _translate_errors():
+            with self._client(api_key).messages.stream(
+                model=model,
+                max_tokens=max_tokens or MAX_TOKENS,
+                messages=[{"role": "user", "content": prompt}],
+            ) as stream:
+                for text in stream.text_stream:
+                    yield text
+                # 거절은 텍스트 없이 끝나므로 최종 메시지에서 확인해야 알 수 있다
+                _check_refusal(stream.get_final_message())
 
     def describe_image(self, png_bytes: bytes, api_key: str, model: str) -> str:
         b64 = base64.b64encode(png_bytes).decode()

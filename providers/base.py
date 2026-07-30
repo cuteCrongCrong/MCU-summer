@@ -37,6 +37,17 @@ class Provider(ABC):
         """프롬프트 하나를 보내고 텍스트 응답을 받는다.
         max_tokens=None 이면 프로바이더 기본값을 쓴다."""
 
+    def complete_stream(self, prompt: str, api_key: str, model: str,
+                        max_tokens: int = None):
+        """
+        complete()와 같지만 응답을 조각(문자열)으로 나눠 yield 한다.
+        조각 경계는 의미 단위가 아니므로, 호출부가 이어붙여 해석해야 한다.
+
+        기본 구현은 complete()를 그대로 한 조각으로 내보낸다 —
+        스트리밍을 지원하지 않는 프로바이더도 같은 인터페이스로 쓸 수 있게.
+        """
+        yield self.complete(prompt, api_key, model, max_tokens)
+
     @abstractmethod
     def describe_image(self, png_bytes: bytes, api_key: str, model: str) -> str:
         """이미지를 vision 모델에 보내 한국어 설명을 받는다."""
