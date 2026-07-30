@@ -1,21 +1,33 @@
 """
 기출 주제 분석 기능 — "강의록 몇 페이지의 주제가 어떤 기출 몇 번 문제로 나왔는가" 대응표.
 
-담당 테이블: 없음 (결과를 저장하지 않고 응답으로만 돌려준다 → DB 스키마 영향 0)
+담당 테이블: topic_analyses (분석 결과 보관 — 보관함 '분석한 주제' 카드가 읽는다)
+사용자별 분리: 각 조회/저장은 current_owner()로 소유자를 필터한다. (question_gen과 같은 규칙)
 문제 생성기와의 차이:
   - 유형별 문제 수 · 기출 반영 강도 없음 (문제를 만들지 않으므로)
   - 강의록·기출을 **여러 개** 올릴 수 있다 ("어떤 강의록/어떤 기출"을 구분해 보여줘야 하므로)
   - 세션(분석 자산 캐시)을 쓰지 않는다. 세션에는 페이지 번호가 없어서 출처를 만들 수 없다.
-LLM 프롬프트·파싱은 llm.py의 '기출 주제 분석' 섹션에 있다. (라우트는 입력 검증·에러 변환만)
+    분석 결과는 재사용 자산이 아니라 완성된 결과물이라 한 행으로 그대로 보관한다.
+제목: LLM이 주제들을 대표하는 키워드 구(句)로 지어준다 (llm.clean_topic_title / build_topic_title).
+      사용자가 보관함에서 바꿀 수 있고, 비우면 자동 제목으로 되돌아간다.
+LLM 프롬프트·파싱은 llm.py의 '기출 주제 분석' 섹션에 있다.
 """
+
+import json
+from datetime import datetime
 
 from flask import Blueprint, request, jsonify
 
+from db import get_conn, owner_clause, LEGACY_PROVIDER
+from features.auth import current_owner
 from providers.base import (
     ProviderError, ProviderAuthError, ProviderRateLimitError,
 )
 from providers.factory import UnknownProviderError, get_provider
-from llm import extract_labeled_docs, run_topic_analysis
+from llm import (
+    extract_labeled_docs, run_topic_analysis, build_topic_title,
+    clean_topic_title,
+)
 
 topic_bp = Blueprint("topic", __name__)
 
@@ -31,6 +43,179 @@ def _collect_pdfs(field: str):
         if not f.filename.lower().endswith(".pdf"):
             return None, f"PDF 파일만 올릴 수 있습니다: {f.filename}"
     return files, None
+
+
+def _doc_meta(d: dict) -> dict:
+    """문서에서 원문 텍스트를 뺀 메타만 (응답·저장 공용). 텍스트는 보관하지 않는다."""
+    return {
+        "label": d["label"],
+        "name": d["name"],
+        "pages": d["pages"],
+        "source": d["source"],
+    }
+
+
+# ──────────────────────────────────────────────
+# 분석 결과 보관 (topic_analyses) — 사용자별 격리
+# ──────────────────────────────────────────────
+
+def save_analysis(result: dict, lecture_docs: list, exam_docs: list,
+                  model: str, provider: str, owner) -> int:
+    """분석 한 건을 보관하고 id 반환."""
+    user_id, guest_id = owner
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """INSERT INTO topic_analyses
+               (title, created_at, model, provider, lecture_docs, exam_docs,
+                topics, dropped, total_questions, user_id, guest_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                result.get("title", ""),
+                datetime.now().strftime("%Y-%m-%d %H:%M"),
+                model,
+                provider or LEGACY_PROVIDER,
+                json.dumps([_doc_meta(d) for d in lecture_docs], ensure_ascii=False),
+                json.dumps([_doc_meta(d) for d in exam_docs], ensure_ascii=False),
+                json.dumps(result.get("topics", []), ensure_ascii=False),
+                int(result.get("dropped", 0) or 0),
+                int(result.get("total_questions", 0) or 0),
+                user_id,
+                guest_id,
+            ),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def list_analyses(owner) -> list:
+    """보관된 분석 목록 (주제 배열은 제외한 가벼운 메타만). 소유자 것만, 최신순."""
+    frag, params = owner_clause(owner)
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            f"""SELECT id, title, created_at, model, provider, lecture_docs,
+                       exam_docs, dropped, total_questions,
+                       json_array_length(topics) AS num_topics
+                FROM topic_analyses WHERE {frag} ORDER BY id DESC""",
+            params,
+        ).fetchall()
+    finally:
+        conn.close()
+    return [
+        {
+            "id": r["id"],
+            "title": r["title"] or "",
+            "created_at": r["created_at"],
+            "model": r["model"] or "",
+            "provider": r["provider"] or LEGACY_PROVIDER,
+            "lecture_names": [d.get("name", "") for d in json.loads(r["lecture_docs"] or "[]")],
+            "exam_names": [d.get("name", "") for d in json.loads(r["exam_docs"] or "[]")],
+            "dropped": r["dropped"] or 0,
+            "total_questions": r["total_questions"] or 0,
+            "num_topics": r["num_topics"] or 0,
+        }
+        for r in rows
+    ]
+
+
+def load_analysis(aid: int, owner):
+    """분석 한 건 전체 복원. 소유자만. 없으면 None."""
+    frag, params = owner_clause(owner)
+    conn = get_conn()
+    try:
+        r = conn.execute(
+            f"SELECT * FROM topic_analyses WHERE id=? AND {frag}", [aid] + params
+        ).fetchone()
+    finally:
+        conn.close()
+    if not r:
+        return None
+    return {
+        "id": r["id"],
+        "title": r["title"] or "",
+        "created_at": r["created_at"],
+        "model": r["model"] or "",
+        "provider": r["provider"] or LEGACY_PROVIDER,
+        "lecture_docs": json.loads(r["lecture_docs"] or "[]"),
+        "exam_docs": json.loads(r["exam_docs"] or "[]"),
+        "topics": json.loads(r["topics"] or "[]"),
+        "dropped": r["dropped"] or 0,
+        "total_questions": r["total_questions"] or 0,
+    }
+
+
+def rename_analysis(aid: int, title: str, owner):
+    """
+    제목 변경. 빈 문자열을 주면 보관된 주제들로 자동 제목을 다시 만든다
+    (이름을 지웠을 때 목록에 빈 칸이 남지 않게).
+    실제로 저장된 제목을 반환하고, 그 분석이 없으면 None을 반환한다.
+    """
+    frag, params = owner_clause(owner)
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            f"SELECT topics FROM topic_analyses WHERE id=? AND {frag}", [aid] + params
+        ).fetchone()
+        if not row:
+            return None
+        if not title:
+            title = build_topic_title(json.loads(row["topics"] or "[]"))
+        conn.execute(
+            f"UPDATE topic_analyses SET title=? WHERE id=? AND {frag}",
+            [title, aid] + params,
+        )
+        conn.commit()
+        return title
+    finally:
+        conn.close()
+
+
+def delete_analysis(aid: int, owner):
+    """소유한 분석만 삭제."""
+    frag, params = owner_clause(owner)
+    conn = get_conn()
+    try:
+        conn.execute(f"DELETE FROM topic_analyses WHERE id=? AND {frag}", [aid] + params)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ──────────────────────────────────────────────
+# 라우트: 보관된 분석 (보관함 '분석한 주제')
+# ──────────────────────────────────────────────
+
+@topic_bp.route("/topic-analyses", methods=["GET"])
+def topic_analyses_list():
+    return jsonify({"analyses": list_analyses(current_owner())})
+
+
+@topic_bp.route("/topic-analysis/<int:aid>", methods=["GET"])
+def topic_analysis_get(aid):
+    data = load_analysis(aid, current_owner())
+    if not data:
+        return jsonify({"error": "분석 결과를 찾을 수 없습니다."}), 404
+    return jsonify(data)
+
+
+@topic_bp.route("/topic-analysis/<int:aid>/rename", methods=["POST"])
+def topic_analysis_rename(aid):
+    # 빈 값으로 보내면 자동 제목이 다시 만들어지므로, 저장된 제목을 그대로 돌려준다
+    # (프런트가 목록·헤더를 재요청 없이 갱신할 수 있게)
+    saved = rename_analysis(aid, clean_topic_title(request.form.get("title", "")),
+                            current_owner())
+    if saved is None:
+        return jsonify({"error": "분석 결과를 찾을 수 없습니다."}), 404
+    return jsonify({"success": True, "title": saved})
+
+
+@topic_bp.route("/topic-analysis/<int:aid>", methods=["DELETE"])
+def topic_analysis_delete(aid):
+    delete_analysis(aid, current_owner())
+    return jsonify({"success": True})
 
 
 @topic_bp.route("/analyze-topics", methods=["POST"])
@@ -84,22 +269,22 @@ def analyze_topics():
 
         result = run_topic_analysis(lecture_docs, exam_docs, api_key, model, provider)
 
-        # 문서 메타(파일명·페이지수·반영 범위)는 원문 텍스트를 뺀 형태로만 내려보낸다
-        def doc_meta(d):
-            return {
-                "label": d["label"],
-                "name": d["name"],
-                "pages": d["pages"],
-                "source": d["source"],
-            }
+        # 보관함('분석한 주제')에서 다시 볼 수 있도록 저장.
+        # 주제를 하나도 못 찾은 결과는 보관하지 않는다 — 목록에 빈 항목만 쌓인다.
+        analysis_id = None
+        if result["topics"]:
+            analysis_id = save_analysis(result, lecture_docs, exam_docs,
+                                        model, provider.name, current_owner())
 
         return jsonify({
             "success": True,
+            "analysis_id": analysis_id,       # 보관된 분석 id (주제가 없으면 null)
+            "title": result.get("title", ""),
             "topics": result["topics"],
             "dropped": result["dropped"],
             "total_questions": result["total_questions"],
-            "lecture_docs": [doc_meta(d) for d in lecture_docs],
-            "exam_docs": [doc_meta(d) for d in exam_docs],
+            "lecture_docs": [_doc_meta(d) for d in lecture_docs],
+            "exam_docs": [_doc_meta(d) for d in exam_docs],
             "raw": result["raw"],
             "model": model,
             "provider": provider.name,

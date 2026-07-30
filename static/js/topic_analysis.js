@@ -185,8 +185,11 @@ async function topicAnalyze() {
       return;
     }
 
-    topicRenderResult(data);
+    topicRenderResult(data, 'main');
     topicShowResult();
+    // 방금 분석한 것이 보관함에 저장됐으므로 목록 캐시를 버린다
+    // (안 버리면 보관함에 들어가도 직전에 받아둔 옛 목록이 그대로 보인다)
+    if (data.analysis_id) invalidateSavedTopics();
   } catch (err) {
     topicShowError('서버 연결에 실패했습니다. Flask 서버가 실행 중인지 확인하세요.\n' + err.message);
   } finally {
@@ -195,16 +198,34 @@ async function topicAnalyze() {
 }
 
 // ── 결과 렌더링 ──
-let topicResult = null;      // 필터링·복사에 재사용
-let topicCountText = '';     // 검색을 지웠을 때 되돌릴 요약 문구
+// 같은 렌더러를 두 화면이 함께 쓴다: 분석 탭의 결과 화면(main)과
+// 보관함 '분석한 주제'의 열람 화면(saved). 둘이 동시에 DOM에 살아 있으므로
+// 대상 element id를 뷰로 묶어 넘긴다 (renderQuestions의 ns와 같은 이유).
+// 화면 상태(data / countText)도 뷰별로 따로 담는다 — 공유하면 한쪽을 열었을 때
+// 다른 쪽 검색창이 엉뚱한 목록을 걸러낸다.
+const TOPIC_VIEWS = {
+  main: {
+    sourceId: 'topic-source-content', listId: 'topic-list',
+    emptyId: 'topic-list-empty', countId: 'topic-count-label',
+    searchId: 'topic-search', copyId: 'topic-copy-text',
+  },
+  saved: {
+    sourceId: 'saved-topic-source-content', listId: 'saved-topic-list',
+    emptyId: 'saved-topic-list-empty', countId: 'saved-topic-count-label',
+    searchId: 'saved-topic-search', copyId: 'saved-topic-copy-text',
+  },
+};
 
-function topicRenderResult(data) {
-  topicResult = data;
-  document.getElementById('topic-source-content').innerHTML =
+function topicView(key) { return TOPIC_VIEWS[key || 'main'] || TOPIC_VIEWS.main; }
+
+function topicRenderResult(data, viewKey) {
+  const view = topicView(viewKey);
+  view.data = data;
+  document.getElementById(view.sourceId).innerHTML =
     topicRenderDocs(data.lecture_docs || [], '📄 강의록') +
     topicRenderDocs(data.exam_docs || [], '📝 기출문제');
-  document.getElementById('topic-search').value = '';
-  topicRenderList(data.topics || []);
+  document.getElementById(view.searchId).value = '';
+  topicRenderList(data.topics || [], viewKey);
 }
 
 // 분석에 쓰인 파일 목록 (파일명 · 페이지 수 · 반영 범위)
@@ -254,19 +275,20 @@ function topicDisplayName(name) {
   return s.slice(0, 11).trim() + '…' + s.slice(-7).trim();
 }
 
-function topicRenderList(topics) {
-  const listEl = document.getElementById('topic-list');
-  const emptyEl = document.getElementById('topic-list-empty');
-  const countEl = document.getElementById('topic-count-label');
-  const data = topicResult || {};
+function topicRenderList(topics, viewKey) {
+  const view = topicView(viewKey);
+  const listEl = document.getElementById(view.listId);
+  const emptyEl = document.getElementById(view.emptyId);
+  const countEl = document.getElementById(view.countId);
+  const data = view.data || {};
 
   const dropNote = data.dropped
     ? ` · 출처(페이지·문항 번호)를 확인할 수 없어 제외한 항목 ${data.dropped}개`
     : '';
-  topicCountText = topics.length
+  view.countText = topics.length
     ? `주제 ${topics.length}개 · 기출 ${data.total_questions || 0}문항${dropNote}`
     : '';
-  countEl.textContent = topicCountText;
+  countEl.textContent = view.countText;
 
   if (!topics.length) {
     listEl.innerHTML = '';
@@ -324,18 +346,20 @@ function topicRenderList(topics) {
   // <b>는 표시용일 뿐이고 복사할 때는 textContent를 쓰므로 태그 없는 순수 텍스트가 나간다.
   const lines = topics.map(t =>
     `<b>${escHtml(t['주제'])}</b>: ${escHtml(topicRefLine(t))}`).join('\n');
+  const key = viewKey || 'main';
   const extra = document.createElement('div');
   extra.innerHTML = `
     <details>
       <summary>📋 한 줄 요약 보기 (복사용)</summary>
-      <button class="check-btn" style="margin:10px 0 0;" onclick="topicCopyLines()">📋 전체 복사</button>
-      <pre id="topic-copy-text" class="topic-summary">${lines}</pre>
+      <button class="check-btn" style="margin:10px 0 0;" onclick="topicCopyLines('${key}')">📋 전체 복사</button>
+      <pre id="${view.copyId}" class="topic-summary">${lines}</pre>
     </details>`;
   listEl.appendChild(extra);
 }
 
-function topicCopyLines() {
-  const text = (document.getElementById('topic-copy-text') || {}).textContent || '';
+function topicCopyLines(viewKey) {
+  const view = topicView(viewKey);
+  const text = (document.getElementById(view.copyId) || {}).textContent || '';
   if (!text) return;
   navigator.clipboard.writeText(text)
     .then(() => alert('한 줄 요약을 복사했습니다.'))
@@ -343,9 +367,10 @@ function topicCopyLines() {
 }
 
 // ── 주제 걸러보기 (주제명·파일명·출제형태 대상) ──
-function topicFilter() {
-  const q = document.getElementById('topic-search').value.trim().toLowerCase();
-  const items = document.querySelectorAll('#topic-list .topic-item');
+function topicFilter(viewKey) {
+  const view = topicView(viewKey);
+  const q = document.getElementById(view.searchId).value.trim().toLowerCase();
+  const items = document.querySelectorAll('#' + view.listId + ' .topic-item');
   let shown = 0;
   items.forEach(el => {
     const hit = !q || (el.dataset.search || '').includes(q);
@@ -353,8 +378,8 @@ function topicFilter() {
     if (hit) shown++;
   });
   // 검색 중에는 몇 개가 걸렸는지, 지우면 원래 요약 문구로 되돌린다
-  document.getElementById('topic-count-label').textContent =
-    q ? `${shown} / ${items.length}개 표시` : topicCountText;
+  document.getElementById(view.countId).textContent =
+    q ? `${shown} / ${items.length}개 표시` : (view.countText || '');
 }
 
 // ── 초기 로드 ──

@@ -34,10 +34,13 @@ async function loadHome() {
   renderHomeCounts(sessions, folders);
   renderHomeRecent(sessions, folders);
 
-  // 시험지 합계만 뒤늦게 채운다. 세션 수만큼 요청이 나가는 유일한 항목이라
+  // 보관함 합계만 뒤늦게 채운다. 세션 수만큼 요청이 나가는 유일한 항목이라
   // 이것을 await로 묶으면 이미 알고 있는 세션 수·오답 수까지 같이 늦어진다.
-  countPapers(sessions).then(papers => {
-    if (seq === homeLoadSeq) renderArchiveCount(papers);
+  Promise.all([
+    countPapers(sessions),
+    fetchJson('/topic-analyses').then(d => (d.analyses || []).length).catch(() => null),
+  ]).then(([papers, analyses]) => {
+    if (seq === homeLoadSeq) renderArchiveCount(papers, analyses);
   });
 }
 
@@ -153,23 +156,30 @@ function renderHomeCounts(sessions, folders) {
     : '틀린 문제<br>모아 보기';
 }
 
-// 시험지 합계 — countPapers가 끝난 뒤에 호출된다.
+// 보관함 합계 — countPapers와 분석 건수가 도착한 뒤에 호출된다.
+// 시험지·분석을 한 줄씩 보여준다 (보관함이 두 갈래이므로).
 // 전부 실패한 경우를 '0장'과 반드시 구분한다. 일부만 실패하면 합계가
 // 실제보다 적으므로 '이상'을 붙여 확정 수치인 척하지 않게 한다.
-function renderArchiveCount(papers) {
+//   analyses: 분석 건수. null이면 조회 실패 (0건과 구분).
+function renderArchiveCount(papers, analyses) {
   const el = document.getElementById('home-archive-desc');
-  if (papers.failed && papers.failed === papers.total) {
-    el.innerHTML = '개수를 불러오지<br>못했습니다';
-    return;
-  }
-  if (!papers.count) {
-    el.innerHTML = papers.failed
-      ? '개수를 불러오지<br>못했습니다'      // 성공한 세션엔 회차가 없고, 나머지는 실패 → 0이라 단정할 수 없다
-      : '만든 문제<br>다시 보기';
-    return;
-  }
+  const papersDead = papers.failed && papers.failed === papers.total;
+
+  // 시험지 줄 — 셀 수 없으면 아예 빼고 분석 줄만 남긴다
   const more = papers.failed ? ' 이상' : '';
-  el.innerHTML = `시험지 ${papers.count}장${more}<br>문제 ${papers.questions}개${more}`;
+  let paperLine = null;
+  if (!papersDead && papers.count) paperLine = `시험지 ${papers.count}장${more}`;
+  else if (!papersDead && !papers.failed) paperLine = null;   // 확실히 0장
+
+  const topicLine = analyses ? `분석한 주제 ${analyses}건` : null;
+
+  const lines = [paperLine, topicLine].filter(Boolean);
+  if (lines.length) { el.innerHTML = lines.join('<br>'); return; }
+
+  // 양쪽 다 0건이거나 둘 다 못 셌을 때
+  el.innerHTML = (papersDead || papers.failed || analyses === null)
+    ? '개수를 불러오지<br>못했습니다'
+    : '만든 문제와<br>분석한 주제';
 }
 
 function renderHomeRecent(sessions, folders) {

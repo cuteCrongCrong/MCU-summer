@@ -937,6 +937,7 @@ def build_topic_analysis_prompt(lecture_block: str, exam_block: str) -> str:
 ## [4] 출력 형식 — 아래 JSON만 (코드블록·설명 문장 금지)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {{
+  "제목": "이 분석 전체를 대표하는 키워드 조합 (아래 제목 규칙 준수)",
   "주제목록": [
     {{
       "주제": "강의록에 적힌 표현 그대로",
@@ -948,7 +949,14 @@ def build_topic_analysis_prompt(lecture_block: str, exam_block: str) -> str:
 }}
 - "자료"에는 위에 표시된 **라벨**(강의록1, 기출1 …)만 쓰세요. 파일명을 쓰지 마세요.
 - "페이지"는 숫자만, "문항"은 기출에 적힌 번호 문자열만 담으세요.
-- 출제가 확인된 주제는 **빠짐없이** 넣으세요. (개수 제한 없음)"""
+- 출제가 확인된 주제는 **빠짐없이** 넣으세요. (개수 제한 없음)
+
+## 제목 규칙 (보관함 목록에 표시되는 이름)
+- 찾아낸 주제들을 **가장 잘 나타내는 키워드 몇 개를 조합**해 만드세요.
+  (많이 출제된 주제, 여러 주제에 공통으로 나오는 낱말을 우선)
+- **구(句) 형태**로 쓰세요. 문장이 아니고, 마침표·"~이다"로 끝내지 마세요.
+- 키워드도 **강의록에 있는 낱말**만 쓰세요. 파일명·날짜·"분석 결과" 같은 말은 넣지 마세요.
+- 30자 이내. 예시 형태: "위팔뼈·대퇴골 부착부 기출 주제" / "머리뼈 구멍과 지나가는 신경\""""
 
 
 def _resolve_doc_name(value: str, docs: list) -> str:
@@ -1070,7 +1078,52 @@ def parse_topic_analysis(raw: str, lecture_docs: list, exam_docs: list) -> dict:
         "topics": topics,
         "dropped": dropped,          # 근거가 없어 버린 항목 수 (조용히 삭제하지 않고 표시)
         "total_questions": sum(t["문항수"] for t in topics),
+        "title": clean_topic_title(data.get("제목") if isinstance(data, dict) else "")
+                 or build_topic_title(topics),
     }
+
+
+# 보관함 목록에 쓰는 제목 길이 상한 (프롬프트의 '30자 이내'와 맞춤)
+TOPIC_TITLE_MAX = 30
+
+
+def clean_topic_title(raw_title) -> str:
+    """
+    LLM이 준 제목을 보관함에 쓸 수 있게 다듬는다.
+    구(句) 형태를 요구했지만 문장·따옴표·마침표로 오는 경우가 있어 여기서 정리한다.
+    """
+    title = str(raw_title or "").strip()
+    if not title:
+        return ""
+    title = title.split("\n")[0].strip()                 # 여러 줄로 오면 첫 줄만
+    title = title.strip("\"'“”‘’「」《》 ")                # 감싸는 따옴표 제거
+    title = re.sub(r"\s+", " ", title)
+    title = re.sub(r"[.。]+$", "", title).strip()         # 끝 마침표 (구 형태로)
+    if len(title) > TOPIC_TITLE_MAX:
+        title = title[:TOPIC_TITLE_MAX].rstrip() + "…"
+    return title
+
+
+def build_topic_title(topics: list) -> str:
+    """
+    LLM이 제목을 안 줬을 때의 폴백 — 많이 출제된 주제 이름을 이어 구(句)로 만든다.
+    (파일명·날짜를 쓰지 않는 이유: 같은 자료로 여러 번 분석하면 서로 구분되지 않는다)
+    """
+    if not topics:
+        return "기출 주제 분석"
+    parts, used = [], 0
+    for t in topics:
+        name = (t.get("주제") or "").strip()
+        # '…' 과 ' 기출 주제' 꼬리가 붙을 자리를 남겨둔다
+        if not name or used + len(name) > TOPIC_TITLE_MAX - 6:
+            break
+        parts.append(name)
+        used += len(name) + 3        # ' · ' 구분자
+        if len(parts) == 3:
+            break
+    if not parts:                    # 첫 주제 이름부터 상한을 넘는 경우
+        parts = [topics[0]["주제"][:TOPIC_TITLE_MAX - 6]]
+    return " · ".join(parts) + " 기출 주제"
 
 
 def run_topic_analysis(lecture_docs: list, exam_docs: list, api_key: str,

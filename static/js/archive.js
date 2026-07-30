@@ -1,5 +1,7 @@
 // ══════════════════════════════════════════════
-// 생성 문제 관리 (보관함) — 만든 문제를 세션 선택 없이 한 화면에 모아 본다.
+// 보관함 — 「생성한 문제」와 「분석한 주제」로 갈라지는 탭.
+//   이 파일은 갈림길(허브) + '생성한 문제' 쪽을 담당한다.
+//   '분석한 주제' 쪽은 topic_archive.js.
 //   common.js 이후 로드. renderQuestions/escHtml/formatTypeCounts 는 common.js 것을 재사용.
 //   서버에 새 API를 추가하지 않고 기존 /sessions, /session/<id>/generations,
 //   /generation/<gid> 만 조합한다.
@@ -7,6 +9,62 @@
 
 let archiveRows = [];        // 전체 회차 (세션 정보를 붙여 평탄화)
 let archiveLoaded = false;   // 탭을 오갈 때 재요청하지 않기 위한 캐시 플래그
+
+// ── 갈림길(허브) ──
+// 보관함 탭에 들어오면 항상 여기부터 보여준다. 안쪽 화면 4개를 한 번에 정리하므로
+// 어느 화면에서 '← 보관함'을 눌러도 상태가 어긋나지 않는다.
+const ARCHIVE_SUBVIEWS = [
+  'archive-hub-view', 'archive-list-view', 'archive-view',
+  'saved-topics-list-view', 'saved-topics-view',
+];
+
+function showArchiveSubview(id) {
+  ARCHIVE_SUBVIEWS.forEach(v =>
+    document.getElementById(v).classList.toggle('hidden', v !== id));
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function showArchiveHub() {
+  showArchiveSubview('archive-hub-view');
+  updateArchiveHubCounts();
+}
+
+function openArchivePapers() {
+  showArchiveSubview('archive-list-view');
+  loadArchive();
+}
+
+function openArchiveTopics() {
+  showArchiveSubview('saved-topics-list-view');
+  loadSavedTopics();
+}
+
+// 허브 카드 두 장의 설명을 실제 개수로 채운다.
+// 실패하면 마크업의 기본 문구를 그대로 두고 넘어간다 — 카드는 눌러서 들어갈 수 있으므로
+// 개수를 못 세는 것 때문에 진입을 막을 이유가 없다.
+async function updateArchiveHubCounts() {
+  const papersEl = document.getElementById('hub-papers-desc');
+  const topicsEl = document.getElementById('hub-topics-desc');
+
+  fetchJson('/sessions')
+    .then(d => countPapers(d.sessions || []))     // home.js의 합산 함수 재사용
+    .then(p => {
+      if (p.failed && p.failed === p.total) return;
+      if (!p.count) return;
+      const more = p.failed ? ' 이상' : '';
+      papersEl.innerHTML = `시험지 ${p.count}장${more}<br>문제 ${p.questions}개${more}`;
+    })
+    .catch(() => {});
+
+  fetchJson('/topic-analyses')
+    .then(d => {
+      const rows = d.analyses || [];
+      if (!rows.length) return;
+      const topics = rows.reduce((n, r) => n + (r.num_topics || 0), 0);
+      topicsEl.innerHTML = `분석 ${rows.length}건<br>주제 ${topics}개`;
+    })
+    .catch(() => {});
+}
 
 async function loadArchive(force) {
   if (archiveLoaded && !force) return renderArchive();
@@ -141,18 +199,14 @@ async function openPaper(gid) {
       titleId: null,
       ns: 'arc-',
     });
-    document.getElementById('archive-list-view').classList.add('hidden');
-    document.getElementById('archive-view').classList.remove('hidden');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    showArchiveSubview('archive-view');
   } catch (err) {
     alert('시험지를 불러오지 못했습니다.');
   }
 }
 
 function closeArchiveView() {
-  document.getElementById('archive-view').classList.add('hidden');
-  document.getElementById('archive-list-view').classList.remove('hidden');
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  showArchiveSubview('archive-list-view');
 }
 
 // 이름 변경 — 빈 값으로 두면 이름을 지워 '제N회' 표시로 되돌린다.

@@ -28,7 +28,7 @@ function setStep(stepId, state) {
 // 'home'은 시작 화면 — 탭 바를 숨기고, 다른 탭으로 들어가면 다시 보인다.
 const TAB_TITLES = {
   generator: '📝 문제 생성기',
-  archive:   '🗂️ 생성한 문제',
+  archive:   '🗂️ 보관함',
   wrong:     '❌ 오답 노트',
   bones:     '🦴 골학 문제은행',
   topics:    '🔍 기출 주제 분석',
@@ -43,7 +43,8 @@ function switchTab(name) {
   document.getElementById('tab-bar-title').textContent = TAB_TITLES[name] || '';
 
   if (name === 'home')    loadHome();
-  if (name === 'archive') loadArchive();
+  // 보관함은 목록이 아니라 갈림길(생성한 문제 / 분석한 주제)부터 보여준다
+  if (name === 'archive') showArchiveHub();
   if (name === 'wrong')   loadWrongFolders();
   if (name === 'bones')   loadBoneBank();
   window.scrollTo({ top: 0, behavior: 'smooth' });
