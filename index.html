@@ -182,6 +182,20 @@
         <span>(최대 30개)</span>
       </div>
 
+      <!-- 자동 배분에서만 의미가 있다 → 수동 모드에서는 auto-count-row와 함께 숨긴다 -->
+      <div id="preserve-types-row" style="margin-top:10px;">
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin-bottom:0;">
+          <input type="checkbox" id="preserve-types" style="width:16px;height:16px;margin-top:2px;accent-color:#2563eb;flex-shrink:0;" />
+          <span style="font-weight:400;color:#475569;">
+            기출에 있는 유형은 최소 1개씩 넣기
+            <span style="display:block;font-size:0.75rem;color:#64748b;margin-top:2px;">
+              비중이 작은 유형(예: 서술형)이 비율 계산에서 0개로 빠지는 것을 막습니다.
+              대신 기출 비율과 조금 달라집니다.
+            </span>
+          </span>
+        </label>
+      </div>
+
       <!-- 수동 모드: 유형별 개수를 각각 지정 -->
       <div id="manual-count-row" class="hidden" style="margin-top:8px;display:flex;flex-direction:column;gap:8px;">
         <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px 12px;">

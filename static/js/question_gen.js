@@ -46,6 +46,8 @@ const MANUAL_COUNT_TYPES = ['객관식', '빈칸채우기', '단답형', '서술
 function toggleManualCount() {
   const manual = document.getElementById('manual-count-toggle').checked;
   document.getElementById('auto-count-row').classList.toggle('hidden', manual);
+  // 희소 유형 보존은 자동 배분에만 적용된다 — 수동 모드에서는 같이 숨긴다
+  document.getElementById('preserve-types-row').classList.toggle('hidden', manual);
   document.getElementById('manual-count-row').classList.toggle('hidden', !manual);
   if (manual) updateManualTotal();
 }
@@ -141,6 +143,8 @@ async function generate() {
   form.append('api_key', apiKey);
   form.append('count', count);
   if (manualTargets) form.append('type_targets', JSON.stringify(manualTargets));
+  // 수동 모드면 서버가 무시하지만, 상태를 그대로 보내 화면과 요청을 일치시킨다
+  if (document.getElementById('preserve-types').checked) form.append('preserve_types', '1');
   form.append('weight', weight);
   form.append('model', model);
   form.append('provider', currentProvider || '');

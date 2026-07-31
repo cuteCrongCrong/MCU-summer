@@ -484,6 +484,9 @@ def read_generate_params() -> dict:
         "count":          count,
         "weight":         weight,
         "manual_targets": manual_targets,
+        # 기출에 있는 유형이 비율 반올림으로 0개가 되는 것을 막는다(자동 배분에서만 의미).
+        # 비율을 일부러 왜곡하므로 기본은 꺼짐이고 사용자가 켤 때만 적용한다.
+        "preserve_types": request.form.get("preserve_types") == "1",
         "gen_title":      gen_title,
         "session_id":     session_id,
         # 소유자는 요청 컨텍스트가 살아 있을 때 확정해둔다 (스트리밍 제너레이터에서는 못 읽음)
@@ -595,7 +598,8 @@ def run_generation_events(p: dict):
 
         type_stats = analysis.get("type_stats", {})
         type_targets = (p["manual_targets"] if p["manual_targets"] is not None
-                        else compute_type_targets(type_stats, count))
+                        else compute_type_targets(type_stats, count,
+                                                  p["preserve_types"]))
 
         yield {"type": "analysis", "payload": {
             "session_id":       session_id,
@@ -639,6 +643,9 @@ def run_generation_events(p: dict):
                 analysis.get("exam_concepts", {}),
                 analysis.get("priority_topics", []),
                 weight, _batch_targets(type_slots, offset, batch_count),
+                # 앞 배치들이 만든 문제를 넘겨 같은 문제가 다시 나오지 않게 한다.
+                # questions 는 배치를 가로질러 누적되므로 여기서 그대로 쓸 수 있다.
+                avoid_questions=[q.get("문제", "") for q in questions],
             )
             # 조각을 받는 즉시 파싱해, 완성된 문제부터 화면에 내보낸다
             parser = StreamingQuestionParser()

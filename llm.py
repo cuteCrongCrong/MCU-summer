@@ -228,11 +228,16 @@ def resolve_type_stats(exam_concepts: dict, exam_text: str) -> dict:
     return count_question_types(exam_text)
 
 
-def compute_type_targets(type_stats: dict, count: int) -> dict:
+def compute_type_targets(type_stats: dict, count: int,
+                         preserve_present: bool = False) -> dict:
     """
     기출 유형 통계 비율을 생성 문제 수(count)에 그대로 투영 (4분류).
     최대잉여법(largest remainder)으로 합이 정확히 count가 되게 배분.
     통계가 없으면 빈 dict(→ 기존 예시 비율 유지).
+
+    preserve_present=True 면 기출에 1문항 이상 존재하는 유형이 비율 반올림 때문에
+    0개로 사라지지 않게 최소 1개를 보장한다(모자란 몫은 가장 많이 배분된 유형에서 뺀다).
+    비율을 일부러 왜곡하는 동작이라 기본값은 꺼짐이고, 화면에서 켤 때만 쓴다.
     """
     counts = {t: max(0, int((type_stats or {}).get(t, 0) or 0)) for t in QUESTION_TYPES}
     total = sum(counts.values())
@@ -246,12 +251,40 @@ def compute_type_targets(type_stats: dict, count: int) -> dict:
     order = sorted(QUESTION_TYPES, key=lambda t: raw[t] - targets[t], reverse=True)
     for i in range(remainder):
         targets[order[i % len(order)]] += 1
+
+    if preserve_present:
+        present = [t for t in QUESTION_TYPES if counts[t]]
+        # count가 존재 유형 수보다 적으면 애초에 전부 담을 수 없다 → 비율 배분을 그대로 둔다
+        if len(present) <= count:
+            for t in (x for x in present if targets[x] == 0):
+                donor = max(QUESTION_TYPES, key=lambda x: targets[x])
+                if targets[donor] <= 1:
+                    break          # 더 뺄 여유가 없으면 중단 (합계는 항상 count 유지)
+                targets[donor] -= 1
+                targets[t] = 1
     return targets
 
 
 # ──────────────────────────────────────────────
 # 기출문제 예시 추출 (Few-shot용)
 # ──────────────────────────────────────────────
+
+def _strip_sample_preamble(text: str) -> str:
+    """
+    추출 응답 맨 앞에 붙은 모델의 머리말을 잘라낸다.
+
+    "문제 외 다른 설명 텍스트는 추가하지 말 것"이라고 지시해도 모델이
+    "제공해주신 기출문제 텍스트에서 … 추출하였습니다." 같은 문장을 앞에 붙이는 일이 있다.
+    이 결과물은 sessions.sample_questions 에 그대로 저장되고, 생성 프롬프트의
+    "[1] 기출문제 예시"로 다시 들어가므로, 머리말이 기출 문투의 일부처럼 학습된다.
+
+    첫 "[유형:" 마커 앞을 버린다. 단 **마커가 없으면 원문을 그대로 둔다** —
+    형식을 이탈한 응답(마커 없이 산문으로 답한 경우)에서 자르면 내용이 통째로 사라진다.
+    """
+    marker = "[유형:"
+    i = (text or "").find(marker)
+    return text[i:] if i > 0 else (text or "")
+
 
 def extract_sample_questions(exam_text: str, api_key: str, model: str,
                              type_stats: dict = None, provider=None) -> str:
@@ -300,7 +333,7 @@ def extract_sample_questions(exam_text: str, api_key: str, model: str,
 ## 기출문제 텍스트
 {exam_text}"""
 
-    return call_llm(prompt, api_key, model, provider)
+    return _strip_sample_preamble(call_llm(prompt, api_key, model, provider))
 
 
 def analyze_format(sample_questions: str, api_key: str, model: str, provider=None) -> str:
@@ -422,6 +455,12 @@ def build_concept_extraction_prompt(lecture_text: str) -> str:
 }}"""
 
 
+# 회피 목록 상한. 프로바이더 기본 max_tokens(4096)를 회피 목록이 갉아먹으면
+# 정작 문제 생성 여유가 줄어 응답이 잘린다 → 최근 것만 짧게 싣는다.
+AVOID_LIST_MAX = 24
+AVOID_SNIPPET_LEN = 80
+
+
 def build_question_generation_prompt(
     concepts: dict,
     sample_questions: str,
@@ -431,6 +470,7 @@ def build_question_generation_prompt(
     priority_topics: list = None,
     weight: int = 5,
     type_targets: dict = None,
+    avoid_questions: list = None,
 ) -> str:
     """
     핵심 변경: 기출 패턴 요약 대신
@@ -491,6 +531,45 @@ def build_question_generation_prompt(
 - 빈출 포인트: {', '.join(exam_concepts.get('빈출포인트', []))}
 """
 
+    # ── 이미 출제된 문제 회피 (배치 간 중복 방지) ──
+    # count가 크면 GEN_BATCH_SIZE 문제씩 나눠 호출하는데, 배치마다 이 함수가 같은 인자로
+    # 다시 불려 프롬프트가 사실상 동일하다. 그래서 각 배치가 개념 목록에서 '가장 눈에 띄는 것'을
+    # 독립적으로 다시 골라, 표현만 다른 같은 문제가 배치 경계에서 나온다.
+    # → 앞 배치들이 만든 문제문을 넘겨받아 명시적으로 배제한다.
+    avoid_block = avoid_rule = ""
+    recent = [" ".join((q or "").split()) for q in (avoid_questions or [])]
+    recent = [q for q in recent if q][-AVOID_LIST_MAX:]
+    if recent:
+        avoid_block = f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## [5] 이미 출제된 문제 (이번 회차에서 앞서 만든 것 — 재출제 금지)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{chr(10).join('- ' + q[:AVOID_SNIPPET_LEN] for q in recent)}
+"""
+        # '개념 금지'로 읽히면 모델이 [3] 개념 목록 밖으로 나가 억지 문제를 만든다.
+        # 금지 범위를 '같은 문제'로 좁히고, 같은 개념의 다른 축은 허용임을 명시한다.
+        avoid_rule = (
+            "\n- **아래 [5]에 있는 문제와 같은 것을 묻는 문제는 만들지 마세요.**"
+            " 표현만 바꾼 재출제도 금지입니다."
+            "\n  단 [3]의 개념 자체를 피하라는 뜻은 **아닙니다** — 같은 개념이라도"
+            " 다른 축(정의 / 기능 / 신경지배 / 경계·내용물 / 수치·레벨)을 물으면 됩니다."
+        )
+
+    # ── 증례 지시 모순 해소 ──
+    # [2] 형식 키워드가 '증례제시: 해당없음'이라고 판정했는데도 출력 템플릿이
+    # "문제: [증례 포함 문제 전체]"를 못박아, 같은 프롬프트가 서로 반대를 지시한다.
+    # 기출에 증례가 없으면 템플릿에서 증례 요구를 빼고 규칙으로도 못박는다.
+    no_vignette = any(
+        line.strip().startswith("증례제시") and "해당없음" in line
+        for line in (format_analysis or "").splitlines()
+    )
+    question_field = "[문제 전체]" if no_vignette else "[증례 포함 문제 전체]"
+    vignette_rule = (
+        "\n- 이 기출에는 증례(환자 사례) 제시가 없습니다."
+        " 증례 지문을 새로 만들지 말고 개념을 직접 묻는 형태로 출제하세요."
+        if no_vignette else ""
+    )
+
     priority_block = ""
     if priority_topics:
         priority_block = f"""
@@ -543,15 +622,15 @@ def build_question_generation_prompt(
   · 서술형 → 선택지 없이 여러 문장으로 서술하는 모범답안 제시
 - 문체·구조·선택지 형식은 위 [0] 기출 반영 강도({weight}/10)에 맞춰 반영
 - 기출문제와 내용이 동일한 문제는 출제 금지
-- 각 문제에 해설과 함정포인트 포함
-
+- 각 문제에 해설과 함정포인트 포함{vignette_rule}{avoid_rule}
+{avoid_block}
 ## 출력 형식 (마크다운 코드블록 사용 금지)
 
 [객관식 문제일 때]
 ---QUESTION---
 유형: 객관식
 번호: 1
-문제: [증례 포함 문제 전체]
+문제: {question_field}
 선택지:
 ① [선택지1]
 ② [선택지2]
