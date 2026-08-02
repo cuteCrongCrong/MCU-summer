@@ -112,6 +112,10 @@ function renderArchive() {
 
 // ── 시험지 한 장 열람 ──
 
+// 지금 상세 화면에 열려 있는 시험지. 인쇄 버튼이 쓴다.
+// (인쇄는 화면 DOM이 아니라 이 questions 배열을 재료로 쓴다 — print.js 머리말 참고)
+let currentPaper = null;
+
 // 상세 헤더(제목·메타)를 그린다. 이름 변경은 목록에서만 하므로 여기서
 // 다시 그릴 일은 없고, openPaper가 열 때 한 번 부른다.
 function applyPaperHeader(gid, g) {
@@ -132,6 +136,12 @@ async function openPaper(gid) {
     if (!resp.ok || g.error) return alert(g.error || '시험지를 불러오지 못했습니다.');
 
     applyPaperHeader(gid, g);
+    // 인쇄용. buildPaperMeta 는 print.js 것으로, 화면 헤더와 같은 재료를 쓴다.
+    currentPaper = {
+      gid,
+      meta: buildPaperMeta(gid, g, archiveRows.find(r => r.id === gid) || {}),
+      questions: g.questions || [],
+    };
 
     // ns를 주지 않으면 생성기·오답노트 카드와 DOM id가 겹친다
     renderQuestions(g.questions, g.raw, {
@@ -150,7 +160,16 @@ async function openPaper(gid) {
 function closeArchiveView() {
   document.getElementById('archive-view').classList.add('hidden');
   document.getElementById('archive-list-view').classList.remove('hidden');
+  currentPaper = null;
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ── 인쇄 (print.js) ──
+// 이미 메모리에 있는 questions 만 쓴다. fetch 를 끼우면 await 뒤의 print() 가
+// 사용자 제스처 컨텍스트를 잃어 iOS 에서 차단된다.
+function printPaper(kind) {
+  if (!currentPaper) return alert('시험지를 먼저 열어 주세요.');
+  openPrintPreview(kind, currentPaper.questions, currentPaper.meta);
 }
 
 // 이름 변경 — 빈 값으로 두면 이름을 지워 '제N회' 표시로 되돌린다.

@@ -118,6 +118,43 @@ function renderSourceInfo(sourceInfo) {
 const questionsByNs = {};              // ns → 그 컨테이너에 그려진 문제 배열
 function getQuestions(ns) { return questionsByNs[ns || ''] || []; }
 
+// ── 문제 dict 판정 (화면 카드와 인쇄 문서가 같은 규칙을 쓰게 하려고 분리) ──
+// print.js 의 buildPrintDoc 도 이 셋을 쓴다. 유형 판별 규칙이 갈리면
+// 화면과 종이의 문제 유형이 달라지므로 반드시 여기 한 곳만 고칠 것.
+
+// 빈칸 표시(____ · □□ · ( ))를 찾는 정규식. 인쇄에서는 이걸 손글씨용 밑줄로 바꾼다.
+const BLANK_MARK_RE = /_{2,}|□{2,}|\(\s*\)/g;
+
+function typeInfoOf(q) {
+  const choices = q['선택지'] || [];
+  const rawType = (q['유형'] || '').replace(/\s/g, '');
+  const isObjective = (rawType ? rawType.includes('객관') : choices.length > 0);
+  const isBlank = rawType.includes('빈칸');
+  // 빈칸 개수와 '정답'을 ' | '로 나눈 개수가 일치할 때만 빈칸별로 분리한다.
+  const blankCount = isBlank ? ((q['문제'] || '').match(BLANK_MARK_RE) || []).length : 0;
+  const blankAnswers = isBlank ? blankAnswersOf(q) : [];
+  return {
+    choices, rawType, isObjective, isBlank, blankCount, blankAnswers,
+    useBlankInputs: isBlank && blankCount >= 2 && blankAnswers.length === blankCount,
+  };
+}
+
+function blankAnswersOf(q) {
+  return (q['정답'] || '').split('|').map(s => s.trim()).filter(Boolean);
+}
+
+// 객관식 정답이 몇 번째 선택지인지 (0-based). 판별 실패하면 -1.
+// ⚠️ -1 이 나올 수 있다 — '정답'에 기호 외 문자가 섞이면(예: '④ 12번 갈비뼈') 실패한다.
+//   호출부는 반드시 -1 을 처리해야 한다. 화면 카드는 이 경우 정답 표시가 안 되고,
+//   인쇄 정답지는 선택지 본문 대신 원문을 그대로 싣는다.
+function answerIndexOf(q) {
+  const CIRCLED = ['①', '②', '③', '④', '⑤'];
+  const answerNum = (q['정답'] || '').replace(/[^①②③④⑤\d]/g, '');
+  const mark = (answerNum.length === 1 && isNaN(answerNum))
+    ? answerNum : CIRCLED[parseInt(answerNum) - 1];
+  return CIRCLED.indexOf(mark);
+}
+
 function renderQuestions(questions, raw, viewOpts) {
   viewOpts = viewOpts || {};
   const folder = viewOpts.folder || null;
@@ -164,16 +201,8 @@ function appendRawSection(container, raw) {
 // 문제 카드 1장을 만든다. ns는 이 카드가 속한 컨테이너의 id 접두사.
 function buildQuestionCard(q, idx, folder, ns) {
     ns = ns || '';
-    const choices = q['선택지'] || [];
-    // 유형 판별: 명시된 유형 우선, 없으면 선택지 유무로 추정
-    const rawType = (q['유형'] || '').replace(/\s/g, '');
-    const isObjective = (rawType ? rawType.includes('객관') : choices.length > 0);
-    const isBlank = rawType.includes('빈칸');
-    // 빈칸(____, □□, ( )) 개수와 '정답'을 ' | '로 나눈 개수가 일치할 때만
-    // 빈칸별 입력칸으로 분리. 안 맞으면(구형 데이터·형식 이탈) 기존 textarea로 대체.
-    const blankCount = isBlank ? ((q['문제'] || '').match(/_{2,}|□{2,}|\(\s*\)/g) || []).length : 0;
-    const blankAnswers = isBlank ? (q['정답'] || '').split('|').map(s => s.trim()).filter(Boolean) : [];
-    const useBlankInputs = isBlank && blankCount >= 2 && blankAnswers.length === blankCount;
+    // 유형 판별·빈칸 분리 규칙은 typeInfoOf 한 곳에 있다 (인쇄 문서와 공유)
+    const { choices, rawType, isObjective, blankAnswers, useBlankInputs } = typeInfoOf(q);
 
     const card = document.createElement('div');
     card.className = 'question-card';
@@ -211,8 +240,7 @@ function buildQuestionCard(q, idx, folder, ns) {
       </div>`;
 
     if (isObjective) {
-      const answerNum = (q['정답'] || '').replace(/[^①②③④⑤\d]/g, '');
-      const answerIdx = ['①','②','③','④','⑤'].indexOf(answerNum.length === 1 && isNaN(answerNum) ? answerNum : ['①','②','③','④','⑤'][parseInt(answerNum)-1]);
+      const answerIdx = answerIndexOf(q);   // 판별 실패 시 -1 (정답 표시가 안 된다)
       const choiceHtml = choices.map((c, i) =>
         `<li data-idx="${i}" onclick="selectChoice(this, '${ns}', ${idx}, ${answerIdx})">${escHtml(c)}</li>`
       ).join('');

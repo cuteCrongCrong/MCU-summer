@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>의대 예상문제 생성기</title>
   <link rel="stylesheet" href="/static/css/style.css" />
+  <!-- media 를 주지 않는다 — 화면용 미리보기 오버레이 규칙도 이 파일에 들어 있다 -->
+  <link rel="stylesheet" href="/static/css/print.css" />
 </head>
 <body>
 
@@ -324,6 +326,12 @@
     <div id="archive-view" class="hidden">
       <div class="result-nav">
         <button class="back-btn" onclick="closeArchiveView()">← 목록으로</button>
+        <!-- 두 벌을 한 번에 저장할 수 없다 — 연속 print()는 iOS가 제스처 단절로 막고,
+             파일명도 두 번 다르게 줄 수 없다. 그래서 버튼 2개다. -->
+        <span class="print-actions">
+          <button class="btn-ghost" onclick="printPaper('q')">🖨 문제지</button>
+          <button class="btn-ghost" onclick="printPaper('a')">🖨 정답·해설</button>
+        </span>
       </div>
       <div class="card" id="archive-paper-head">
         <div class="card-title" id="archive-paper-title">시험지</div>
@@ -488,6 +496,11 @@
   </div>
 </div>
 
+<!-- 인쇄 미리보기 오버레이 (print.js 가 채운다).
+     반드시 body 직속이어야 한다 — print.css 가 인쇄 시
+     'body.print-mode > *:not(#print-root)' 로 나머지를 통째로 숨긴다. -->
+<div id="print-root" class="hidden"></div>
+
 <!-- ── 스크립트 (로드 순서 중요: common → 각 기능) ── -->
 <script src="/static/js/common.js"></script>
 <script src="/static/js/question_gen.js"></script>
@@ -498,6 +511,8 @@
 <script src="/static/js/home.js"></script>
 <!-- archive.js 는 home.js의 relativeDay, question_gen.js의 providerLabel 을 쓴다 -->
 <script src="/static/js/archive.js"></script>
+<!-- print.js 는 common.js의 escHtml/typeInfoOf/answerIndexOf 를 쓴다 -->
+<script src="/static/js/print.js"></script>
 
 </body>
 </html>
