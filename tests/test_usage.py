@@ -243,7 +243,7 @@ def test_anthropic():
 # ──────────────────────────────────────────────
 def test_credits():
     print("[크레딧]")
-    from providers.usage import credits_result
+    from providers.usage import credits_for_history, credits_result
     from providers.jbnu_gateway import JbnuGatewayProvider
 
     # 문서상 응답 형태 (quota/used/remaining, 월별에는 renewal_date)
@@ -294,6 +294,14 @@ def test_credits():
 
     # 조회 후 값이 아예 없으면 표시할 게 없다
     check("after 없으면 None", credits_result(before, None) is None)
+
+    # 보관용 — 잔액은 시간이 지나면 틀린 값이라 '쓴 만큼'만 남긴다
+    keep = credits_for_history(credits_result(before, after))
+    check("보관용은 쓴 크레딧만", keep == {"spent": 15.5, "spent_known": True}, keep)
+    check("보관용에 잔액 없음", "remaining" not in keep and "sections" not in keep, keep)
+    check("사용분을 모르면 보관 안 함",
+          credits_for_history(credits_result(None, after)) is None)
+    check("크레딧 자체가 없으면 보관 안 함", credits_for_history(None) is None)
 
     # 크레딧을 지원하지 않는 제공사는 기본 구현이 막아준다
     check("미지원 제공사는 supports_credits=False",

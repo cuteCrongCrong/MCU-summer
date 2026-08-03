@@ -192,6 +192,12 @@ def init_db():
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_topic_analyses_user ON topic_analyses(user_id)"
         )
+        # 분석 한 번에 쓴 LLM 사용량. 위 CREATE TABLE이 아니라 여기서 붙이는 이유는
+        # 이미 만들어진 DB에는 CREATE TABLE이 다시 실행되지 않기 때문. (CONTRIBUTING 3번)
+        # 백필하지 않는다 — 추가 이전에 만든 분석은 사용량을 알 길이 없고,
+        # NULL(모름)과 0(안 씀)은 화면에서 다르게 보여줘야 한다.
+        _ensure_column(conn, "topic_analyses", "usage", "TEXT")     # JSON: usage.summary()
+        _ensure_column(conn, "topic_analyses", "credits", "TEXT")   # JSON: 쓴 크레딧만
         conn.commit()
     finally:
         conn.close()

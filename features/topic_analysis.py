@@ -25,7 +25,9 @@ from providers.base import (
     ProviderError, ProviderAuthError, ProviderRateLimitError,
 )
 from providers.factory import UnknownProviderError, get_provider
-from providers.usage import UsageCollector, credits_result, credits_snapshot
+from providers.usage import (
+    UsageCollector, credits_for_history, credits_result, credits_snapshot,
+)
 from llm import extract_labeled_docs, run_topic_analysis
 
 topic_bp = Blueprint("topic", __name__)
@@ -44,6 +46,19 @@ def _collect_pdfs(field: str):
     return files, None
 
 
+def _load_json_col(row, name):
+    """
+    나중에 붙인 JSON 컬럼을 읽는다. 컬럼이 없는 구버전 DB거나 값이 NULL이면 None.
+    (None = '모름'. 화면에서 0과 구분해 상자째 숨긴다)
+    """
+    if name not in row.keys() or not row[name]:
+        return None
+    try:
+        return json.loads(row[name])
+    except ValueError:
+        return None
+
+
 def _doc_meta(d: dict) -> dict:
     """문서에서 원문 텍스트를 뺀 메타만 (응답·저장 공용). 텍스트는 보관하지 않는다."""
     return {
@@ -59,10 +74,12 @@ def _doc_meta(d: dict) -> dict:
 # ──────────────────────────────────────────────
 
 def save_analysis(result: dict, lecture_docs: list, exam_docs: list,
-                  model: str, provider: str, owner, title: str = None) -> int:
+                  model: str, provider: str, owner, title: str = None,
+                  usage: dict = None, credits: dict = None) -> int:
     """
     분석 한 건을 보관하고 id 반환.
     title은 사용자가 입력 화면에서 붙인 이름 — 비우면 NULL로 두고 화면에서 '제N회'로 대체한다.
+    usage·credits는 이번 분석에 쓴 양 — 없으면 NULL로 두어 '모름'과 0을 구분한다.
     """
     user_id, guest_id = owner
     conn = get_conn()
@@ -70,8 +87,8 @@ def save_analysis(result: dict, lecture_docs: list, exam_docs: list,
         cur = conn.execute(
             """INSERT INTO topic_analyses
                (title, created_at, model, provider, lecture_docs, exam_docs,
-                topics, dropped, total_questions, user_id, guest_id)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                topics, dropped, total_questions, user_id, guest_id, usage, credits)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 (title or "").strip() or None,
                 datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -84,6 +101,8 @@ def save_analysis(result: dict, lecture_docs: list, exam_docs: list,
                 int(result.get("total_questions", 0) or 0),
                 user_id,
                 guest_id,
+                json.dumps(usage, ensure_ascii=False) if usage else None,
+                json.dumps(credits, ensure_ascii=False) if credits else None,
             ),
         )
         conn.commit()
@@ -146,6 +165,9 @@ def load_analysis(aid: int, owner):
         "topics": json.loads(r["topics"] or "[]"),
         "dropped": r["dropped"] or 0,
         "total_questions": r["total_questions"] or 0,
+        # 컬럼 추가 이전에 만든 분석은 값이 없다 → None. 화면은 상자를 숨긴다.
+        "usage": _load_json_col(r, "usage"),
+        "credits": _load_json_col(r, "credits"),
     }
 
 
@@ -277,27 +299,38 @@ def analyze_topics():
                                          describe_images=True, provider=provider,
                                          usage=usage)
 
+        # 아래 두 오류는 기출 이미지 설명(LLM)이 이미 돈 뒤에 나므로 사용량을 함께 보낸다
         if not any((d["text"] or "").strip() for d in lecture_docs):
             return jsonify({
                 "error": "강의록에서 텍스트를 추출하지 못했습니다. "
-                         "스캔 이미지로만 된 PDF는 주제를 읽을 수 없습니다."
+                         "스캔 이미지로만 된 PDF는 주제를 읽을 수 없습니다.",
+                **spend(),
             }), 400
         if not any((d["text"] or "").strip() for d in exam_docs):
             return jsonify({
                 "error": "기출문제에서 텍스트를 추출하지 못했습니다. "
-                         "문제 번호를 읽을 수 없어 출처를 만들 수 없습니다."
+                         "문제 번호를 읽을 수 없어 출처를 만들 수 없습니다.",
+                **spend(),
             }), 400
 
         usage.set_stage("topics")
         result = run_topic_analysis(lecture_docs, exam_docs, api_key, model, provider,
                                     usage)
 
+        # 응답과 보관에 같은 값을 쓴다 (한 번만 조회 — 잔액 조회가 왕복 요청이라서)
+        spent = spend()
+
         # 보관함('분석한 주제')에서 다시 볼 수 있도록 저장.
         # 주제를 하나도 못 찾은 결과는 보관하지 않는다 — 목록에 빈 항목만 쌓인다.
         analysis_id = None
         if result["topics"]:
-            analysis_id = save_analysis(result, lecture_docs, exam_docs,
-                                        model, provider.name, current_owner(), title)
+            analysis_id = save_analysis(
+                result, lecture_docs, exam_docs, model, provider.name,
+                current_owner(), title,
+                usage=spent["usage"],
+                # 잔액은 시간이 지나면 틀린 값이 되므로 쓴 만큼만 남긴다
+                credits=credits_for_history(spent["credits"]),
+            )
 
         return jsonify({
             "success": True,
@@ -311,7 +344,7 @@ def analyze_topics():
             "raw": result["raw"],
             "model": model,
             "provider": provider.name,
-            **spend(),                        # usage(토큰) + credits(크레딧)
+            **spent,                          # usage(토큰) + credits(크레딧)
         })
 
     except ProviderAuthError as e:

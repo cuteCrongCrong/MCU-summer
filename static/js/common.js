@@ -369,34 +369,50 @@ function renderCredits(credits, opts) {
   box.hidden = false;
   box.open = false;
 
+  // 보관된 기록에는 '쓴 크레딧'만 있고 잔액이 없다 — 잔액은 조회한 그 순간의 값이라
+  // 나중에 보면 틀린 숫자가 되기 때문(providers/usage.py의 credits_for_history).
+  // 그래서 잔액이 없으면 잔액 관련 표시를 통째로 뺀다.
+  const hasBalance = credits.remaining != null || (credits.sections || []).length > 0;
+
   const spent = credits.spent_known
     ? `이번 ${o.noun}에 쓴 크레딧 ${fmtCredit(credits.spent)}`
     : '이번 사용분은 계산하지 못했습니다';
-  const summaryText = `💳 ${spent} <span class="usage-note">· 남은 크레딧 ${fmtCredit(credits.remaining)}</span>`;
+  const summaryText = `💳 ${spent}`
+    + (hasBalance ? ` <span class="usage-note">· 남은 크레딧 ${fmtCredit(credits.remaining)}</span>` : '');
 
-  const rows = (credits.sections || []).map(s => `<tr>
-      <td>${escHtml(s.label)}</td>
-      <td>${fmtCredit(s.quota)}</td>
-      <td>${fmtCredit(s.used)}</td>
-      <td><b>${fmtCredit(s.remaining)}</b></td>
-    </tr>`).join('');
+  let body = '';
+  if (hasBalance) {
+    const rows = (credits.sections || []).map(s => `<tr>
+        <td>${escHtml(s.label)}</td>
+        <td>${fmtCredit(s.quota)}</td>
+        <td>${fmtCredit(s.used)}</td>
+        <td><b>${fmtCredit(s.remaining)}</b></td>
+      </tr>`).join('');
 
-  let body = `<table class="usage-table">
-      <thead><tr><th>구분</th><th>할당</th><th>누적 사용</th><th>남음</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
+    body = `<table class="usage-table">
+        <thead><tr><th>구분</th><th>할당</th><th>누적 사용</th><th>남음</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
 
-  if (credits.renewal_date) {
-    body += `<div class="usage-models">월별 할당 갱신: ${escHtml(credits.renewal_date)}</div>`;
+    if (credits.renewal_date) {
+      body += `<div class="usage-models">월별 할당 갱신: ${escHtml(credits.renewal_date)}</div>`;
+    }
+    if (!credits.spent_known) {
+      body += `<div class="usage-warn">${o.noun} 전 잔액을 읽지 못해 이번 사용분을 계산할 수 없었습니다.
+               위 표의 누적 사용량은 정상입니다.</div>`;
+    }
+  } else {
+    body = `<div class="usage-models">${o.noun}할 때 쓴 크레딧입니다.
+            지금 잔액은 설정 화면의 키 입력란 아래에서 확인하세요.</div>`;
   }
-  if (!credits.spent_known) {
-    body += `<div class="usage-warn">${o.noun} 전 잔액을 읽지 못해 이번 사용분을 계산할 수 없었습니다.
-             위 표의 누적 사용량은 정상입니다.</div>`;
-  }
+
+  const foot = hasBalance
+    ? '플랫폼이 알려준 잔액입니다. 정산이 늦게 반영되면 이번 사용분이 실제보다 적게 보일 수 있습니다.'
+    : '그때 기록해둔 값입니다.';
 
   box.innerHTML = `<summary>${summaryText}</summary>`
                 + `<div class="usage-body">${body}`
-                + `<div class="usage-foot">플랫폼이 알려준 잔액입니다. 정산이 늦게 반영되면 이번 사용분이 실제보다 적게 보일 수 있습니다.</div>`
+                + `<div class="usage-foot">${foot}</div>`
                 + `</div>`;
 }
 

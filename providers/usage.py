@@ -176,3 +176,17 @@ def credits_result(before, after):
         # 작업 전 잔액을 못 읽었으면 이번 사용분을 계산할 수 없다 (화면에서 구분)
         "spent_known":  spent is not None,
     }
+
+
+def credits_for_history(credits):
+    """
+    보관용으로 남길 크레딧 정보만 추린다.
+
+    잔액·할당·누적 사용은 '조회한 그 순간'의 값이라, 나중에 꺼내 보면 이미 틀린
+    숫자다. 그대로 저장하면 지난 기록을 열 때마다 옛날 잔액을 지금 잔액처럼
+    보여주게 된다. 반면 '이번에 쓴 크레딧'은 시간이 지나도 사실이라 남길 수 있다.
+    남길 게 없으면(사용분을 계산 못 했으면) None — 저장하지 않는다.
+    """
+    if not credits or not credits.get("spent_known"):
+        return None
+    return {"spent": credits.get("spent"), "spent_known": True}
