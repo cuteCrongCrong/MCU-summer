@@ -22,7 +22,7 @@
 </svg>
 
 <header style="position:relative;">
-  <div id="auth-widget" style="position:absolute;top:14px;right:18px;color:#fff;"></div>
+  <div id="auth-widget" style="position:absolute;top:10px;right:14px;color:#fff;"></div>
   <h1>🩺 의대 예상문제 생성기</h1>
   <p>강의자료 + 기출문제를 업로드하면 AI가 새로운 예상문제를 만들어줍니다 </p>
 </header>
@@ -140,7 +140,7 @@
   <div class="card" id="session-card">
     <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
       <span>💾 저장된 세션 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 분석 없이 바로 생성 (토큰 절약)</span></span>
-      <button onclick="loadSessions()" style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
+      <button type="button" class="icon-btn" onclick="loadSessions()" title="새로고침" aria-label="저장된 세션 새로고침">↻</button>
     </div>
     <div id="session-list" style="margin-top:6px;font-size:0.88rem;color:#64748b;">불러오는 중…</div>
   </div>
@@ -149,10 +149,16 @@
   <div class="card">
     <div class="card-title">파일 업로드 및 설정</div>
 
+    <div style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:0.84rem;color:#92400e;line-height:1.65;">
+      💡 생성을 시작한 뒤 <b>다른 기능(골학 문제은행·기출 주제 분석 등)을 사용해도</b> 문제는 그대로 만들어집니다.<br />
+      다만 <b>브라우저 탭을 닫거나 새로고침하면</b> 생성이 중단되니 그것만 주의하세요.
+    </div>
+
     <!-- 현재 활성 세션 표시 -->
     <div id="active-session-bar" style="display:none;background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:0.88rem;color:#065f46;align-items:center;justify-content:space-between;">
       <span id="active-session-text"></span>
-      <button onclick="clearSession()" style="font-size:0.78rem;padding:4px 10px;border:1px solid #6ee7b7;border-radius:8px;background:#fff;cursor:pointer;color:#047857;">✕ 세션 해제 (새 파일로 분석)</button>
+      <button type="button" class="mini-btn" onclick="clearSession()"
+              style="--mini-line:#6ee7b7;--mini-ink:#047857;">✕ 세션 해제 (새 파일로 분석)</button>
     </div>
 
     <div class="form-grid">
@@ -206,7 +212,7 @@
     <div style="margin-top:20px;">
       <label style="display:flex;align-items:center;gap:8px;">
         🤖 사용할 모델 <span id="model-load-msg" style="font-weight:400;font-size:0.8rem;color:#0ea5e9;"></span>
-        <button type="button" onclick="loadModels()" title="모델 목록 새로고침" style="margin-left:auto;font-size:0.76rem;padding:4px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
+        <button type="button" class="icon-btn" onclick="loadModels()" title="모델 목록 새로고침" aria-label="모델 목록 새로고침" style="margin-left:auto;">↻</button>
       </label>
       <select id="model-select" class="select-field"></select>
     </div>
@@ -375,8 +381,8 @@
         <div class="card-title">
           🗂️ 생성한 문제
           <span id="archive-summary" style="font-weight:400;font-size:0.8rem;color:#64748b;"></span>
-          <button type="button" onclick="loadArchive(true)" title="새로고침"
-                  style="margin-left:auto;font-size:0.76rem;padding:4px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
+          <button type="button" class="icon-btn" onclick="loadArchive(true)"
+                  title="새로고침" aria-label="생성한 문제 목록 새로고침" style="margin-left:auto;">↻</button>
         </div>
         <div id="archive-filter-row" class="hidden" style="margin-bottom:14px;">
           <select id="archive-session-filter" class="select-field" onchange="renderArchive()"></select>
@@ -416,8 +422,8 @@
         <div class="card-title">
           🔍 분석한 주제
           <span id="saved-topics-summary" style="font-weight:400;font-size:0.8rem;color:#64748b;"></span>
-          <button type="button" onclick="loadSavedTopics(true)" title="새로고침"
-                  style="margin-left:auto;font-size:0.76rem;padding:4px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
+          <button type="button" class="icon-btn" onclick="loadSavedTopics(true)"
+                  title="새로고침" aria-label="분석한 주제 목록 새로고침" style="margin-left:auto;">↻</button>
         </div>
         <div id="saved-topics-grid"></div>
       </div>
@@ -463,7 +469,7 @@
     <div class="card" id="wrong-card">
       <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
         <span>❌ 오답 노트 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 틀린/헷갈린 문제를 폴더로 모아두기</span></span>
-        <button onclick="loadWrongFolders()" style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
+        <button type="button" class="icon-btn" onclick="loadWrongFolders()" title="새로고침" aria-label="오답 노트 폴더 새로고침">↻</button>
       </div>
       <div id="wrong-folder-list" style="margin-top:6px;font-size:0.88rem;color:#64748b;">불러오는 중…</div>
     </div>
@@ -498,8 +504,7 @@
       <!-- ② 범위 선택: 카테고리 안의 세부 범위 -->
       <div id="bone-subcategory-view" style="display:none;">
         <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-          <button type="button" onclick="boneBackToCategories()"
-                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">← 카테고리로</button>
+          <button type="button" class="mini-btn" onclick="boneBackToCategories()">← 카테고리로</button>
           <span id="bone-subcategory-title" style="font-weight:700;"></span>
         </div>
         <div class="bone-cat-grid" id="bone-subcategory-grid"></div>
@@ -508,8 +513,7 @@
       <!-- ③ 퀴즈 화면 -->
       <div id="bone-quiz" style="display:none;">
         <div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-          <button type="button" onclick="boneBackToSubcategories()"
-                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">← 범위 다시 선택</button>
+          <button type="button" class="mini-btn" onclick="boneBackToSubcategories()">← 범위 다시 선택</button>
           <span id="bone-scope-label" style="font-size:0.82rem;color:#2563eb;font-weight:700;"></span>
         </div>
 
@@ -519,8 +523,7 @@
         </div>
 
         <div style="margin-bottom:8px;">
-          <button type="button" id="bone-original-btn" onclick="boneShowOriginal()"
-                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">🖼️ 원본 보기</button>
+          <button type="button" class="mini-btn" id="bone-original-btn" onclick="boneShowOriginal()">🖼️ 원본 보기</button>
         </div>
 
         <label for="bone-input" id="bone-question-label" style="margin-bottom:6px;">번호의 이름은?</label>
@@ -559,6 +562,11 @@
 
     <div class="card">
       <div class="card-title">파일 업로드 및 설정</div>
+
+      <div style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:0.84rem;color:#92400e;line-height:1.65;">
+        💡 분석을 시작한 뒤 <b>다른 기능(문제 생성기·골학 문제은행 등)을 사용해도</b> 주제 분석은 그대로 진행됩니다.<br />
+        다만 <b>브라우저 탭을 닫거나 새로고침하면</b> 분석이 중단되니 그것만 주의하세요.
+      </div>
 
       <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:0.84rem;color:#1e3a8a;line-height:1.65;">
         강의록에 있는 주제 중 <b>기출에 실제로 나온 것</b>만 골라
@@ -612,7 +620,7 @@
       <div style="margin-top:20px;">
         <label style="display:flex;align-items:center;gap:8px;">
           🤖 사용할 모델 <span id="topic-model-load-msg" style="font-weight:400;font-size:0.8rem;color:#0ea5e9;"></span>
-          <button type="button" onclick="topicLoadModels()" title="모델 목록 새로고침" style="margin-left:auto;font-size:0.76rem;padding:4px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
+          <button type="button" class="icon-btn" onclick="topicLoadModels()" title="모델 목록 새로고침" aria-label="모델 목록 새로고침" style="margin-left:auto;">↻</button>
         </label>
         <select id="topic-model-select" class="select-field"></select>
       </div>

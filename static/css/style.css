@@ -44,8 +44,24 @@ header {
   text-align: center;
   box-shadow: 0 2px 12px rgba(30,64,175,0.3);
 }
-header h1 { font-size: 1.7rem; font-weight: 700; letter-spacing: -0.5px; }
+/* 제목은 위젯(#auth-widget) 아래로 내려 앉힌다 — 위젯이 position:absolute 라
+   문서 흐름에서 빠져 있어, 제목이 스스로 비켜 갈 방법이 이것뿐이다.
+   margin-top 24px = 위젯 높이(top 10 + 약 34) + 여유 8px.
+   폭이 좁을수록 가운데 정렬된 제목이 양옆으로 자라 위젯 밑으로 파고들므로
+   글자 크기도 함께 줄였다 (1.7rem → 1.45rem: 320px에서도 한 줄에 들어간다). */
+header h1 { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.5px; margin-top: 24px; }
 header p  { margin-top: 6px; font-size: 0.95rem; opacity: 0.85; }
+
+/* 헤더 위젯의 사용자 이름 — 구글 계정에 이름이 없으면 auth.js 가 이메일을 그대로 넣는다.
+   위젯은 position:absolute + right 고정이라 내용이 길어지면 왼쪽으로 자라고,
+   320px 기기에서는 헤더 밖으로 밀려 나간다. 그래서 폭을 화면에 비례해 묶는다.
+   (38vw = 320px에서 121px — 아바타·로그아웃 버튼까지 합쳐도 화면 안에 들어온다)
+   잘린 전체 이름은 title 속성으로 남겨 둔다. */
+.auth-name {
+  display: inline-block; max-width: 38vw;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  margin: 0 8px; font-weight: 600; vertical-align: middle;
+}
 
 main {
   max-width: 860px;
@@ -120,12 +136,17 @@ label {
 }
 
 /* ── 드롭다운 (LLM 제공사 / 모델 공용) ── */
+/* ── 입력 글자 크기는 16px 아래로 내리지 않는다 ──
+   iOS Safari 는 16px 미만인 입력 요소에 포커스가 가면 화면을 자동으로 확대하고,
+   포커스가 빠져도 배율을 되돌리지 않는다. 그때부터 화면이 잘린 채로 남는다.
+   기존 0.95rem(15.2px)/0.92rem(14.72px)이 전부 이 선에 걸려 있었다.
+   rem 으로 두는 이유: 사용자가 브라우저 기본 글꼴을 키웠다면 그만큼 같이 커져야 한다. */
 .select-field {
   width: 100%;
   padding: 10px 14px;
   border: 1.5px solid var(--border);
   border-radius: 8px;
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-family: inherit;
   color: var(--text);
   background: var(--surface);
@@ -141,7 +162,7 @@ input[type="text"], input[type="password"], input[type="number"] {
   padding: 10px 14px;
   border: 1.5px solid var(--border);
   border-radius: 8px;
-  font-size: 0.95rem;
+  font-size: 1rem;   /* 16px 미만 금지 — 위 .select-field 주석 참고 */
   font-family: inherit;
   color: var(--text);
   transition: border-color 0.2s;
@@ -310,7 +331,7 @@ input:focus { outline: none; border-color: var(--primary); }
   width: 100%; margin-top: 14px;
   padding: 12px 14px;
   border: 1.5px solid var(--border); border-radius: 8px;
-  font-size: 0.92rem; font-family: inherit; color: var(--text);
+  font-size: 1rem; font-family: inherit; color: var(--text);   /* 16px 미만 금지 */
   line-height: 1.6; resize: vertical;
 }
 .subj-input:focus { outline: none; border-color: var(--primary); }
@@ -323,7 +344,7 @@ input:focus { outline: none; border-color: var(--primary); }
 .blank-input {
   flex: 1; padding: 9px 12px;
   border: 1.5px solid var(--border); border-radius: 8px;
-  font-size: 0.92rem; font-family: inherit; color: var(--text);
+  font-size: 1rem; font-family: inherit; color: var(--text);   /* 16px 미만 금지 */
 }
 .blank-input:focus { outline: none; border-color: var(--primary); }
 .blank-input.correct { background: #dcfce7; border-color: var(--success); color: var(--success); font-weight: 700; }
@@ -633,6 +654,66 @@ main { margin-top: 20px; }
 .title-edit-btn:hover { opacity: 1; border-color: var(--border); background: var(--surface); }
 .title-edit-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; opacity: 1; }
 
+/* ── 아이콘 새로고침 버튼 ──
+   '↻ 새로고침' 이던 라벨에서 글자를 뺐다. .card-title 은 space-between flex 라
+   왼쪽 설명이 길면 버튼이 짓눌리는데, 글자가 있으면 그때 2~3줄로 쪼개졌다
+   (390px에서 이미 2줄, 320px에서 3줄). 글자가 없으면 쪼개질 것도 없다.
+   대신 버튼에 이름이 사라지므로 접근성 이름은 aria-label 이 맡는다. */
+.icon-btn {
+  position: relative; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 38px; height: 34px; padding: 0;
+  border: 1px solid #cbd5e1; border-radius: 8px;
+  background: var(--surface); color: #475569;
+  font-size: 1.05rem; font-family: inherit; line-height: 1;
+  cursor: pointer; transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.icon-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+.icon-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* 38×34 는 눈에 보이는 크기고, 실제로 눌리는 영역은 48×44 로 넓혀 둔다.
+   (.title-edit-btn 과 같은 수법 — 레이아웃은 그대로 두고 터치 영역만 키운다) */
+.icon-btn::after { content: ''; position: absolute; inset: -5px; }
+
+/* ── 작은 보조 버튼 (골학 뒤로가기 · 원본 보기 · 세션 해제) ──
+   같은 인라인 스타일이 네 군데 복붙돼 있던 것을 한 곳으로 모았다.
+   색만 다른 변형은 --mini-line / --mini-ink 로 덮어쓴다. */
+.mini-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 5px 12px;
+  border: 1px solid var(--mini-line, #cbd5e1); border-radius: 8px;
+  background: var(--surface); color: var(--mini-ink, #475569);
+  font-size: 0.8rem; font-family: inherit; cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.mini-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+.mini-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* ── 터치 기기에서의 최소 탭 영역 ──
+   손가락 접촉면은 대략 9mm 라 44px 미만 버튼에서는 헛누름이 난다(Apple HIG).
+   pointer:coarse 로 묶었으므로 마우스를 쓰는 데스크톱은 한 픽셀도 바뀌지 않는다.
+
+   높이를 실제로 키우는 쪽을 기본으로 삼았다. ::after 로 보이지 않는 영역만
+   넓히는 방법은 버튼이 나란히 붙어 있을 때 서로의 영역을 잡아먹는다 —
+   특히 '풀기' 옆에 '삭제'가 있는 곳에서는 오폭이 곧 데이터 삭제라 쓰면 안 된다.
+   ::after 는 옆에 눌릴 것이 없고 높이를 키우면 모양이 뭉개지는 두 곳에만 남긴다. */
+@media (pointer: coarse) {
+  .check-btn, .back-btn, .home-back-btn, .btn-ghost,
+  .paper-open, .paper-del, .modal-close, .folder-pick,
+  .session-more-btn, .mini-btn, .icon-btn {
+    min-height: 44px;
+  }
+  /* 아이콘 버튼은 정사각에 가깝게 — 높이만 늘리면 세로로 길쭉해진다 */
+  .icon-btn { min-width: 44px; }
+  .icon-btn::after { content: none; }   /* 실제 크기가 44px 이면 확장이 불필요 */
+
+  /* 옆에 눌릴 것이 없는 둘만 ::after 로 넓힌다 (모양 유지) */
+  .wrong-add-btn, .wrong-remove-btn { position: relative; }
+  .wrong-add-btn::after, .wrong-remove-btn::after {
+    content: ''; position: absolute; inset: -9px;
+  }
+  .paper-title .title-edit-btn::after { inset: -13px; }
+}
+
 /* 세션 목록 더 보기 / 접기 */
 .session-more-btn {
   width: 100%; margin-top: 8px; padding: 9px 12px;
@@ -645,9 +726,13 @@ main { margin-top: 20px; }
 .session-more-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
 /* ── 생성 문제 관리(보관함) — 시험지 카드 ── */
+/* minmax 의 최솟값은 컨테이너보다 클 수 있다 — 그러면 트랙이 컨테이너를 뚫고 나간다.
+   .card 안쪽 폭은 '화면폭 - 32(main) - 56(.card padding)' 이라
+   360px 기기에서 270px, 320px 기기에서 230px 밖에 안 되는데 최솟값이 280px 이었다.
+   min(280px, 100%) 로 두면 좁을 때는 컨테이너 폭을 따라간다. */
 .paper-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
   gap: 14px;
 }
 .paper-card {
