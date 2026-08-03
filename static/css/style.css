@@ -699,7 +699,7 @@ main { margin-top: 20px; }
 @media (pointer: coarse) {
   .check-btn, .back-btn, .home-back-btn, .btn-ghost,
   .paper-open, .paper-del, .modal-close, .folder-pick,
-  .session-more-btn, .mini-btn, .icon-btn {
+  .session-more-btn, .mini-btn, .icon-btn, .paper-print-btn {
     min-height: 44px;
   }
   /* 아이콘 버튼은 정사각에 가깝게 — 높이만 늘리면 세로로 길쭉해진다 */
@@ -711,7 +711,12 @@ main { margin-top: 20px; }
   .wrong-add-btn::after, .wrong-remove-btn::after {
     content: ''; position: absolute; inset: -9px;
   }
-  .paper-title .title-edit-btn::after { inset: -13px; }
+
+  /* 시험지 카드의 연필은 ::after 로 넓히던 것을 실제 크기로 되돌렸다.
+     오른쪽에 인쇄 버튼이 붙으면서 '옆에 눌릴 것이 없다'는 전제가 깨졌다 —
+     보이지 않던 영역이 [🖨 문제지] 왼쪽을 덮어, 저장하려다 이름 변경 창이 뜬다.
+     인쇄 버튼이 이미 44px 이라 줄 높이는 어차피 44px 이고, 연필을 키워도 늘지 않는다. */
+  .paper-title .title-edit-btn { min-height: 44px; min-width: 40px; }
 }
 
 /* 세션 목록 더 보기 / 접기 */
@@ -781,16 +786,32 @@ main { margin-top: 20px; }
       목록에서는 이름 변경의 유일한 입구라 처음부터 또렷해야 한다. */
 .paper-title .title-edit-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  position: relative;
   padding: 2px 4px;
   font-size: 0.85rem;
   opacity: 1;
 }
-/* 글리프를 작게 만들면 누를 곳도 같이 작아진다. 레이아웃을 밀지 않도록
-   보이지 않는 영역만 넓혀 모바일 터치 타깃을 확보한다. */
-.paper-title .title-edit-btn::after {
-  content: ''; position: absolute; inset: -9px;
+
+/* ── 목록에서 바로 저장 (제목 옆 인쇄 버튼 2개) ──
+   전에는 '풀기'로 들어간 상세 화면에만 인쇄 버튼이 있었다. 저장만 하고 싶은데
+   문제를 한 번 열어야 했으므로 목록에서 끝나게 옮겨 왔다(상세 쪽도 그대로 둔다).
+   두 개인 이유는 상세 화면과 같다 — 한 번의 print() 로 두 벌을 낼 수 없다.
+   묶음(.paper-print-row)으로 싸는 이유: 좁은 카드에서 줄바꿈될 때 둘이 갈라지지 않게. */
+.paper-print-row { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.paper-print-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 3px 8px;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: var(--surface); color: var(--text-muted);
+  /* 제목(1.02rem)·연필(0.85rem) 다음에 오는 세 번째 층이라 더 작다.
+     굵기를 600으로 올려 작아도 라벨이 뭉개지지 않게 한다. */
+  font-size: 0.72rem; font-weight: 600; font-family: inherit;
+  line-height: 1.6; white-space: nowrap; cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
+.paper-print-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+.paper-print-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* 문항을 받아 오는 동안 — 연타로 미리보기가 두 번 열리지 않게 잠근다 */
+.paper-print-btn:disabled { opacity: 0.5; cursor: progress; }
 .paper-del {
   padding: 8px 11px; border-radius: 8px;
   background: var(--surface);
@@ -806,26 +827,9 @@ main { margin-top: 20px; }
   .paper-card:hover { transform: none; }
 }
 
-/* 최근 활동 */
-.recent-row {
-  display: flex; align-items: center; gap: 12px; width: 100%;
-  padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
-  background: var(--surface); font-family: inherit; text-align: left;
-  cursor: pointer; margin-top: 8px; transition: border-color 0.15s;
-}
-.recent-row:first-child { margin-top: 0; }
-.recent-row:hover { border-color: var(--primary); }
-.recent-row:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-.recent-icon { font-size: 1.1rem; flex-shrink: 0; }
-.recent-body { flex: 1; min-width: 0; }
-.recent-name {
-  display: block; font-size: 0.9rem; font-weight: 600; color: var(--text);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-/* #94a3b8 은 이 크기에서 대비 2.57:1 로 WCAG AA 미달이었다.
-   세션과 오답 폴더를 구분하는 유일한 텍스트라 장식이 아니라 정보다. */
-.recent-meta { display: block; margin-top: 2px; font-size: 0.75rem; color: var(--text-muted); }
-.recent-arrow { font-size: 1.3rem; color: var(--text-faint); flex-shrink: 0; }
+/* 홈 로드 실패 알림 — 평소에는 hidden 이고 실패했을 때만 나타난다 (home.js) */
+#home-error { font-size: 0.88rem; color: var(--danger); }
+
 /* 탭 패널 / 서브뷰 안의 카드들도 세로 간격 유지 */
 .tab-panel, #gen-input-view, #gen-result-view, #wrong-view,
 #topic-input-view, #topic-result-view {

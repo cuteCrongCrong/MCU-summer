@@ -152,12 +152,21 @@ function renderArchive() {
     // 이름을 붙였으면 그 이름이 제목, 회차 번호는 메타로 내린다.
     const nth = `제${ordinal[r.id]}회`;
     const title = (r.title || '').trim();
+    // 인쇄 버튼의 이름표. 카드마다 같은 '문제지'가 여러 개 놓이므로
+    // 화면 낭독기에는 어느 시험지의 것인지까지 읽어 준다.
+    const who = escHtml(title || nth);
     return `
       <div class="paper-card">
         <div class="paper-source">📄 ${escHtml(r.session_name || '이름 없는 강의자료')}</div>
         <div class="paper-title"><span>${escHtml(title || nth)}</span
           ><button class="title-edit-btn" onclick="renamePaper(${r.id})"
-                   title="이름 변경" aria-label="이름 변경">✏️</button>${short}</div>
+                   title="이름 변경" aria-label="이름 변경">✏️</button
+          ><span class="paper-print-row"
+            ><button class="paper-print-btn" onclick="printPaperFromList(${r.id},'q',this)"
+                     title="문제지 인쇄 / PDF 저장" aria-label="${who} 문제지 저장">🖨 문제지</button
+            ><button class="paper-print-btn" onclick="printPaperFromList(${r.id},'a',this)"
+                     title="정답·해설 인쇄 / PDF 저장" aria-label="${who} 정답·해설 저장">🖨 정답·해설</button
+          ></span>${short}</div>
         <div class="paper-meta">${title ? escHtml(nth) + ' · ' : ''}${escHtml(relativeDay(r.created_at))} ${escHtml((r.created_at || '').split(' ')[1] || '')} · ${r.num_questions}문항</div>
         ${badges ? `<div class="paper-badges">${badges}</div>` : ''}
         <div class="paper-actions">
@@ -229,6 +238,33 @@ function printPaper(kind) {
   openPrintPreview(kind, currentPaper.questions, currentPaper.meta);
 }
 
+// 목록 카드에서 바로 인쇄 — '풀기'로 한 번 들어가야만 저장할 수 있던 것을 없앤다.
+// 목록에는 문항이 없으므로 여기서만 fetch 한다. 위의 제스처 주의는 여기 해당하지 않는다:
+// openPrintPreview 는 오버레이를 열 뿐이고 실제 window.print() 는 그 안의 버튼
+// (= 진짜 사용자 제스처)이 부른다. 그래서 await 를 앞에 끼워도 iOS 가 막지 않는다.
+const paperCache = {};   // gid → /generation 응답. 문항은 한 번 만들어지면 바뀌지 않는다.
+
+async function printPaperFromList(gid, kind, btn) {
+  if (btn && btn.disabled) return;          // 응답 오기 전 연타 방지
+  if (btn) btn.disabled = true;
+  try {
+    let g = paperCache[gid];
+    if (!g) {
+      const resp = await fetch('/generation/' + gid);
+      g = await resp.json();
+      if (!resp.ok || g.error) return alert(g.error || '시험지를 불러오지 못했습니다.');
+      paperCache[gid] = g;
+    }
+    // meta 는 캐시하지 않고 매번 만든다 — 이름을 바꾸면 archiveRows 만 갱신되므로,
+    // 캐시해 두면 인쇄물 머리말에 옛 제목이 남는다.
+    openPrintPreview(kind, g.questions || [], buildPaperMeta(gid, g, archiveRows.find(r => r.id === gid) || {}));
+  } catch (err) {
+    alert('시험지를 불러오지 못했습니다.');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 // 이름 변경 — 빈 값으로 두면 이름을 지워 '제N회' 표시로 되돌린다.
 // 목록 카드의 제목 옆 연필에서만 호출된다(상세 화면에는 버튼이 없다).
 async function renamePaper(gid) {
@@ -253,5 +289,6 @@ async function deletePaper(gid) {
   if (!confirm('이 시험지를 삭제할까요? 담긴 문제도 함께 사라집니다.')) return;
   await fetch('/generation/' + gid, { method: 'DELETE' });
   archiveRows = archiveRows.filter(r => r.id !== gid);
+  delete paperCache[gid];                // 지운 시험지를 캐시로 다시 인쇄하는 일이 없게
   renderArchive();
 }
