@@ -163,8 +163,12 @@ async function generate() {
   } catch (err) {
     if (err.name === 'AbortError') {
       showError('생성을 중지했습니다.');
-    } else {
+    } else if (err instanceof TypeError) {
+      // fetch 자체가 실패(네트워크 끊김·서버 다운)했을 때만 TypeError가 난다.
+      // 응답은 왔지만 화면에 그리다 난 오류는 아래 else에서 실제 원인을 보여준다.
       showError('서버 연결에 실패했습니다. Flask 서버가 실행 중인지 확인하세요.\n' + err.message);
+    } else {
+      showError('결과를 표시하는 중 오류가 발생했습니다 (서버 응답은 정상적으로 받았습니다).\n' + err.message);
     }
   } finally {
     genAbort = null;

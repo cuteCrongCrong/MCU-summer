@@ -193,7 +193,7 @@ function getQuestions(ns) { return questionsByNs[ns || ''] || []; }
 const BLANK_MARK_RE = /_{2,}|□{2,}|\(\s*\)/g;
 
 function typeInfoOf(q) {
-  const choices = q['선택지'] || [];
+  const choices = Array.isArray(q['선택지']) ? q['선택지'] : [];
   const rawType = (q['유형'] || '').replace(/\s/g, '');
   const isObjective = (rawType ? rawType.includes('객관') : choices.length > 0);
   const isBlank = rawType.includes('빈칸');
