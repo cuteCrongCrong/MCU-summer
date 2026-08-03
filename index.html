@@ -624,7 +624,9 @@
     <div class="result-nav">
       <button class="back-btn" onclick="topicShowInput()">← 설정으로 돌아가기</button>
       <button class="btn-ghost" onclick="topicShowInput()">🔍 새로 분석</button>
+      <button class="btn-ghost" onclick="switchTab('archive'); openArchiveTopics();">🗂️ 보관함에서 보기</button>
     </div>
+    <div id="topic-save-status" style="font-size:0.78rem;color:#16a34a;margin:-8px 0 12px;"></div>
 
     <!-- 분석에 쓰인 파일 요약 -->
     <div class="card" id="topic-source-box">

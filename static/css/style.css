@@ -848,6 +848,32 @@ main { margin-top: 20px; }
   font-size: 0.82rem; color: var(--text-muted); line-height: 1.7;
 }
 
+/* 강의록 발췌 — 해당 페이지에 실제로 적힌 내용을 강의록 표현 그대로 정리 */
+.topic-excerpt {
+  margin-top: 8px;
+  background: #f8fafc; border-left: 4px solid var(--primary);
+  padding: 10px 12px; border-radius: 0 8px 8px 0;
+  font-size: 0.84rem; line-height: 1.7; color: var(--text);
+  white-space: pre-wrap;
+}
+.topic-excerpt-label {
+  font-size: 0.74rem; font-weight: 700; color: var(--primary); margin-bottom: 2px;
+}
+
+/* 기출 원문 인용 — 문항마다 지문을 그대로 보여준다 */
+.topic-exam-quote {
+  margin-top: 8px;
+  background: #f0fdf4; border-left: 4px solid #16a34a;
+  padding: 10px 12px; border-radius: 0 8px 8px 0;
+}
+.topic-exam-quote-head {
+  font-size: 0.74rem; font-weight: 700; color: #15803d; margin-bottom: 2px;
+}
+.topic-exam-quote-text {
+  font-size: 0.84rem; line-height: 1.7; color: var(--text);
+  white-space: pre-wrap;
+}
+
 /* 한 줄 요약 (복사용) — 위 "📌 기출에 나온 주제" 목록과 같은 형식(테두리 있는
    흰 카드 행)으로 보이게 한다. 굵게 강조하지 않은 평문 한 줄 = 주제 하나. */
 .topic-summary-list {
