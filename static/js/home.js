@@ -1,7 +1,8 @@
 // ══════════════════════════════════════════════
 // 홈(시작) 화면 — 이어서 하기 + 기능 목록 + 최근 활동
 //   common.js 이후 로드. escHtml/switchTab 은 common.js 것을 재사용.
-//   서버에 새 API를 추가하지 않고 기존 /sessions, /wrong-folders, /me 만 조합한다.
+//   서버에 새 API를 추가하지 않고 기존 /sessions, /wrong-folders, /me,
+//   /topic-analyses 만 조합한다.
 // ══════════════════════════════════════════════
 
 // 홈에서 "이 세션으로 바로 생성"을 누르면 생성기 탭에서 이 세션을 선택한 상태로 연다
@@ -13,12 +14,16 @@ let homeLoadSeq = 0;
 
 async function loadHome() {
   const seq = ++homeLoadSeq;
-  let sessions, folders, me;
+  let sessions, folders, me, analyses;
   try {
-    [sessions, folders, me] = await Promise.all([
+    [sessions, folders, me, analyses] = await Promise.all([
       fetchJson('/sessions').then(d => d.sessions || []),
       fetchJson('/wrong-folders').then(d => d.folders || []),
       fetchJson('/me').catch(() => ({})),   // 로그인 정보는 없어도 홈은 동작한다
+      // 최근 활동에 섞어야 하므로 첫 렌더 전에 받는다. 아래 countPapers와 달리
+      // 요청이 하나뿐이라 늦출 이유가 없다.
+      // 실패해도 홈 전체를 오류로 만들지 않는다 → null (0건과 구분되는 '조회 실패').
+      fetchJson('/topic-analyses').then(d => d.analyses || []).catch(() => null),
     ]);
   } catch (err) {
     // 이걸 잡지 않으면 아래 render 함수들이 하나도 실행되지 않는다.
@@ -32,15 +37,14 @@ async function loadHome() {
   renderHomeGreeting(me, sessions);
   renderResumeCard(sessions[0]);
   renderHomeCounts(sessions, folders);
-  renderHomeRecent(sessions, folders);
+  renderHomeRecent(sessions, folders, analyses || []);
 
-  // 보관함 합계만 뒤늦게 채운다. 세션 수만큼 요청이 나가는 유일한 항목이라
+  // 시험지 수만 뒤늦게 채운다. 세션 수만큼 요청이 나가는 유일한 항목이라
   // 이것을 await로 묶으면 이미 알고 있는 세션 수·오답 수까지 같이 늦어진다.
-  Promise.all([
-    countPapers(sessions),
-    fetchJson('/topic-analyses').then(d => (d.analyses || []).length).catch(() => null),
-  ]).then(([papers, analyses]) => {
-    if (seq === homeLoadSeq) renderArchiveCount(papers, analyses);
+  // (분석 건수는 위에서 이미 받아왔으므로 다시 조회하지 않는다)
+  countPapers(sessions).then(papers => {
+    if (seq !== homeLoadSeq) return;
+    renderArchiveCount(papers, analyses === null ? null : analyses.length);
   });
 }
 
@@ -143,6 +147,16 @@ function openSessionFromHome(sess) {
   loadSessions();
 }
 
+// 보관함의 '분석한 주제' 상세로 바로 들어간다.
+// 목록까지 함께 준비하는 이유 — 상세에서 '← 목록으로'를 누르면 목록 화면이 나오는데,
+// 한 번도 연 적이 없으면 비어 있다. (둘 다 비동기지만 목록 쪽은 화면을 바꾸지 않아
+//  나중에 끝나도 상세 화면을 덮지 않는다)
+function openSavedTopicFromHome(a) {
+  switchTab('archive');
+  openArchiveTopics();     // archive.js — 목록 화면으로 전환 + loadSavedTopics()
+  openSavedTopic(a.id);    // topic_archive.js — 다 불러오면 상세 화면으로 전환
+}
+
 // 카드 설명은 두 줄 구성이라 <br>로 줄을 맞춘다 (숫자만 들어가므로 안전)
 // 보관함 칸은 여기서 건드리지 않는다 — 도착이 늦어 renderArchiveCount가 따로 채운다.
 function renderHomeCounts(sessions, folders) {
@@ -182,8 +196,14 @@ function renderArchiveCount(papers, analyses) {
     : '만든 문제와<br>분석한 주제';
 }
 
-function renderHomeRecent(sessions, folders) {
-  // 세션과 오답 폴더를 시간순으로 섞어 최근 4건만
+function renderHomeRecent(sessions, folders, analyses) {
+  // 이름을 안 붙인 분석은 보관함과 **같은** '제N회'로 부른다 — 두 화면이 서로
+  // 다르게 부르면 같은 것인지 알 수 없다. (규칙도 topic_archive.js와 동일:
+  //  전체를 오래된 것부터 세어 제1회. 앞 회차를 지우면 번호가 밀리는 것도 같다)
+  const nth = {};
+  [...analyses].sort((a, b) => a.id - b.id).forEach((a, i) => { nth[a.id] = i + 1; });
+
+  // 세 종류를 시간순으로 섞어 최근 4건만
   const rows = [
     ...sessions.map(s => ({
       when: s.created_at, icon: '📄', name: s.name,
@@ -194,6 +214,12 @@ function renderHomeRecent(sessions, folders) {
       when: f.created_at, icon: '❌', name: f.name,
       meta: `오답 폴더 · 문제 ${f.item_count || 0}개`,
       onClick: () => { switchTab('wrong'); viewWrongFolder(f.id); },
+    })),
+    ...analyses.map(a => ({
+      when: a.created_at, icon: '🔍',
+      name: (a.title || '').trim() || `제${nth[a.id]}회`,
+      meta: `주제 분석 · 주제 ${a.num_topics || 0}개`,
+      onClick: () => openSavedTopicFromHome(a),
     })),
   ].sort((a, b) => String(b.when).localeCompare(String(a.when))).slice(0, 4);
 
