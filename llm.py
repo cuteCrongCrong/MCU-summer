@@ -916,12 +916,14 @@ def run_analysis(lecture_text: str, exam_text: str, api_key: str, model: str,
 # ══════════════════════════════════════════════
 
 # 한쪽(강의록 전체 / 기출 전체)에 배정하는 글자 예산.
-# 강의+기출을 한 프롬프트에 함께 넣으므로 문제 생성(문서당 MAX_TEXT_CHARS)보다 보수적으로 잡는다.
-TOPIC_SIDE_CHAR_BUDGET = 60000
+# 문제 생성은 문서 1개당 MAX_TEXT_CHARS(100000)를 쓰는데, 여기서도 그만큼 여유를 주되
+# 강의+기출을 한 프롬프트에 함께 넣는 점을 감안해 살짝 보수적으로 잡는다.
+TOPIC_SIDE_CHAR_BUDGET = 120000
 # 파일을 여러 개 올려도 문서당 이만큼은 보장 (예산 ÷ 파일수가 너무 작아지는 것 방지)
-TOPIC_DOC_MIN_CHARS = 12000
-# 주제 목록이 길어져도 JSON이 잘리지 않도록 (문제 생성과 같은 상한)
-TOPIC_MAX_TOKENS = 8000
+TOPIC_DOC_MIN_CHARS = 20000
+# 주제 목록이 길어져도 JSON이 잘리지 않도록.
+# 주제마다 강의록발췌·기출 원문이 붙어 항목당 분량이 늘었으므로 기존(8000)보다 넉넉히 잡는다.
+TOPIC_MAX_TOKENS = 16000
 
 
 def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
@@ -1025,6 +1027,14 @@ def build_topic_analysis_prompt(lecture_block: str, exam_block: str) -> str:
 ④ 같은 주제를 여러 기출·여러 문항에서 물었다면 **한 항목에 모아** 넣으세요. (주제 중복 금지)
 ⑤ 주제는 "골학 전체"처럼 넓게 잡지 말고, **한 문제로 물을 수 있는 단위**로 잡으세요.
 
+⑥ **강의록발췌** — 그 주제가 적힌 강의록 페이지의 내용을 강의록 문장·표현 그대로
+   1~3문장으로 옮기거나 간추리세요. 강의록에 없는 설명을 새로 지어내지 마세요.
+   페이지 내용을 확인할 수 없으면 빈 문자열로 두세요.
+⑦ **기출 문항 상세** — 각 문항마다 다음을 함께 적으세요.
+   - "페이지": 그 문항이 적힌 기출 자료의 [페이지 N] 번호. 확인 안 되면 빈 문자열.
+   - "원문": 기출 텍스트에 있는 그 문제의 지문·질문을 **요약·의역하지 말고 원문 그대로**
+     옮기세요(선택지는 생략 가능). 200자가 넘으면 핵심까지만 자르고 "…"으로 표시하세요.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## [4] 출력 형식 — 아래 JSON만 (코드블록·설명 문장 금지)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1033,13 +1043,17 @@ def build_topic_analysis_prompt(lecture_block: str, exam_block: str) -> str:
     {{
       "주제": "강의록에 적힌 표현 그대로",
       "강의록": [{{"자료": "강의록1", "페이지": [12, 13]}}],
-      "기출": [{{"자료": "기출1", "문항": ["4", "7"]}}],
+      "강의록발췌": "12페이지 내용을 강의록 표현 그대로 1~3문장으로",
+      "기출": [{{"자료": "기출1", "문항": [
+        {{"번호": "4", "페이지": "3", "원문": "문제 지문 원문 그대로(최대 200자)"}}
+      ]}}],
       "출제형태": "기출에서 이 주제를 무엇으로 물었는지 한 문장 (강의록 용어로만)"
     }}
   ]
 }}
 - "자료"에는 위에 표시된 **라벨**(강의록1, 기출1 …)만 쓰세요. 파일명을 쓰지 마세요.
-- "페이지"는 숫자만, "문항"은 기출에 적힌 번호 문자열만 담으세요.
+- "강의록.페이지"는 숫자만 담으세요.
+- "기출.문항"의 각 원소는 반드시 {{"번호","페이지","원문"}} 객체로 쓰세요 (문자열만 쓰지 마세요).
 - 출제가 확인된 주제는 **빠짐없이** 넣으세요. (개수 제한 없음)"""
 
 
@@ -1101,6 +1115,79 @@ def _normalize_refs(raw_refs, docs: list, item_key: str) -> list:
     return out
 
 
+def _clip_text(s: str, limit: int) -> str:
+    s = str(s or "").strip()
+    return s if len(s) <= limit else s[:limit].rstrip() + "…"
+
+
+def _normalize_exam_refs(raw_refs, exam_docs: list) -> list:
+    """
+    [{"자료": 라벨, "문항": [{"번호","페이지","원문"} …]}] 를 파일명 기준으로 정규화.
+    문항은 (자료, 번호) 기준으로 중복 제거하고(같은 문항이 여러 번 오면 원문이 더 긴 쪽을 채택),
+    페이지 → 번호 순으로 정렬한다.
+    """
+    merged = {}   # name -> {번호: {번호,페이지,원문}}
+    order = []
+    for ref in (raw_refs or []):
+        if not isinstance(ref, dict):
+            continue
+        name = _resolve_doc_name(ref.get("자료") or ref.get("파일") or "", exam_docs)
+        if not name:
+            continue
+        raw_items = ref.get("문항")
+        if isinstance(raw_items, (str, int, float)):
+            raw_items = [raw_items]
+        if not isinstance(raw_items, list):
+            continue
+        if name not in merged:
+            merged[name] = {}
+            order.append(name)
+        for it in raw_items:
+            # 모델이 규칙을 어기고 문자열/숫자만 줘도 최소한 번호는 살린다
+            if isinstance(it, dict):
+                num = str(it.get("번호") or it.get("문항") or "").strip()
+                page = str(it.get("페이지") or "").strip()
+                text = _clip_text(it.get("원문") or "", 200)
+            else:
+                num, page, text = str(it).strip(), "", ""
+            num = re.sub(r"^(문제|문항)\s*", "", num, flags=re.I)
+            num = re.sub(r"\s*(번|번째)$", "", num, flags=re.I).strip()
+            page = re.sub(r"^(p|page|페이지)\s*", "", page, flags=re.I)
+            page = re.sub(r"\s*(p|페이지|쪽)$", "", page, flags=re.I).strip()
+            if not num:
+                continue
+            existing = merged[name].get(num)
+            if existing is None or (text and len(text) > len(existing.get("원문", ""))):
+                merged[name][num] = {"번호": num, "페이지": page or (existing or {}).get("페이지", ""),
+                                     "원문": text or (existing or {}).get("원문", "")}
+
+    out = []
+    for name in order:
+        items = sorted(merged[name].values(), key=lambda it: (_page_sort_key(it["페이지"]), _page_sort_key(it["번호"])))
+        if items:
+            out.append({"자료": name, "문항": items})
+    return out
+
+
+def _topic_lecture_sort_key(t: dict, lec_order: dict):
+    """
+    주제 정렬 키 — 강의록 파일 순서(업로드 순) 먼저, 그 안에서는 그 파일에 표시된
+    페이지 중 가장 앞선 번호 순. 여러 강의록 파일에 걸친 주제는 순서가 가장
+    앞선 파일을 기준으로 삼는다. 강의록 근거가 아예 없으면 맨 뒤로 보낸다.
+    """
+    lec_refs = t.get("강의록") or []
+    if not lec_refs:
+        return (len(lec_order) + 1, (1, 0))
+    best_idx, best_page = None, (1, 0)
+    for r in lec_refs:
+        idx = lec_order.get(r["자료"], len(lec_order))
+        pages = [_page_sort_key(p) for p in (r.get("페이지") or [])]
+        first_page = min(pages) if pages else (1, 0)
+        if best_idx is None or idx < best_idx:
+            best_idx, best_page = idx, first_page
+    return (best_idx, best_page)
+
+
 def parse_topic_analysis(raw: str, lecture_docs: list, exam_docs: list) -> dict:
     """
     LLM JSON 응답 → 화면에 바로 그릴 수 있는 주제 목록으로 정규화.
@@ -1108,7 +1195,7 @@ def parse_topic_analysis(raw: str, lecture_docs: list, exam_docs: list) -> dict:
     - 자료 라벨을 실제 파일명으로 복원
     - 같은 주제(표기 흔들림 포함)는 근거를 합쳐 하나로
     - 기출 근거(문항 번호)가 없는 항목은 '기출에 나온 주제'가 아니므로 제외하고 개수만 남김
-    - 정렬: 기출 문항 수 많은 순 → 강의록 페이지 앞선 순 (페이지 미확인은 뒤로)
+    - 정렬: 강의록 파일 순서(업로드 순) → 그 파일 안에서 페이지 오름차순 (강의록 미확인은 맨 뒤)
     """
     data = safe_parse_json(raw)
     items = data.get("주제목록") if isinstance(data, dict) else None
@@ -1124,11 +1211,12 @@ def parse_topic_analysis(raw: str, lecture_docs: list, exam_docs: list) -> dict:
         name = str(item.get("주제") or "").strip()
         if not name:
             continue
-        exam_refs = _normalize_refs(item.get("기출"), exam_docs, "문항")
+        exam_refs = _normalize_exam_refs(item.get("기출"), exam_docs)
         if not exam_refs:          # 기출 근거 없음 → 이 기능의 대상이 아님
             dropped += 1
             continue
         lecture_refs = _normalize_refs(item.get("강의록"), lecture_docs, "페이지")
+        excerpt = _clip_text(item.get("강의록발췌") or "", 400)
 
         # 표기 흔들림을 흡수한 키로 중복 판정. 괄호로 시작하는 이름 등은 키가 비므로 원문을 쓴다.
         key = _norm_term(name) or name
@@ -1136,27 +1224,36 @@ def parse_topic_analysis(raw: str, lecture_docs: list, exam_docs: list) -> dict:
             merge_into = by_key[key]
             merge_into["강의록"] = _normalize_refs(
                 merge_into["강의록"] + lecture_refs, lecture_docs, "페이지")
-            merge_into["기출"] = _normalize_refs(
-                merge_into["기출"] + exam_refs, exam_docs, "문항")
+            merge_into["기출"] = _normalize_exam_refs(
+                merge_into["기출"] + exam_refs, exam_docs)
+            if excerpt and excerpt not in merge_into["강의록발췌"]:
+                merge_into["강의록발췌"] = (
+                    f"{merge_into['강의록발췌']} / {excerpt}" if merge_into["강의록발췌"] else excerpt
+                )
             continue
 
         topic = {
             "주제": name,
             "강의록": lecture_refs,
+            "강의록발췌": excerpt,
             "기출": exam_refs,
             "출제형태": str(item.get("출제형태") or "").strip(),
         }
         by_key[key] = topic
         topics.append(topic)
 
-    # 병합 후 문항 수 재계산 + 정렬
+    # 병합 후 문항 수 재계산
     for t in topics:
         t["문항수"] = sum(len(r["문항"]) for r in t["기출"])
-        first_pages = [_page_sort_key(p) for r in t["강의록"] for p in r["페이지"]]
-        t["_page"] = min(first_pages) if first_pages else (2, 0)
-    topics.sort(key=lambda t: (-t["문항수"], t["_page"], t["주제"]))
+
+    # 정렬: 강의록 파일 순서(업로드·라벨 순) → 그 파일 안에서 페이지 오름차순.
+    # 강의록 근거가 없는 주제는 맨 뒤로 보낸다.
+    lec_order = {d["name"]: i for i, d in enumerate(lecture_docs)}
     for t in topics:
-        t.pop("_page", None)
+        t["_sort"] = _topic_lecture_sort_key(t, lec_order)
+    topics.sort(key=lambda t: t["_sort"] + (t["주제"],))
+    for t in topics:
+        t.pop("_sort", None)
 
     return {
         "topics": topics,

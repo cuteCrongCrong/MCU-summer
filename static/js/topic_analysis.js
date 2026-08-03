@@ -239,6 +239,14 @@ function topicRenderResult(data, viewKey) {
     topicRenderDocs(data.exam_docs || [], '📝 기출문제');
   document.getElementById(view.searchId).value = '';
   topicRenderList(data.topics || [], viewKey);
+
+  // 방금 분석한 결과 화면에서만 저장 여부를 안내한다 (보관함에서 연 화면은 이미 저장된 것이므로 불필요)
+  const statusEl = document.getElementById('topic-save-status');
+  if (statusEl && viewKey !== 'saved') {
+    statusEl.textContent = data.analysis_id
+      ? '💾 이 결과는 보관함에 자동 저장되었습니다.'
+      : '';
+  }
 }
 
 // 분석에 쓰인 파일 목록 (파일명 · 페이지 수 · 반영 범위)
@@ -262,14 +270,19 @@ function topicRenderDocs(docs, label) {
   </div>`;
 }
 
-// 주제 이름 뒤에 붙는 출처 부분 — "강의록 12p, 13p - 기출 4번, 7번"
+// 기출 문항 하나를 "3쪽 4번"처럼 표시 (페이지를 못 찾았으면 번호만)
+function topicExamItemLabel(it) {
+  return (it['페이지'] ? `${it['페이지']}쪽 ` : '') + `${it['번호']}번`;
+}
+
+// 주제 이름 뒤에 붙는 출처 부분 — "강의록 12p, 13p - 기출 3쪽 4번, 5쪽 9번"
 // (앞에 "주제: "를 붙이면 "주제: 강의록 몇p - 기출 몇번" 한 줄 형식이 된다.
 //  파일명은 줄이지 않은 전체 이름을 쓴다 — 여러 개 있어도 헷갈리지 않게)
 function topicRefLine(t) {
   const lec = (t['강의록'] || []).map(r =>
     `${topicShortName(r['자료'])} ${r['페이지'].map(p => p + 'p').join(', ')}`).join(' / ');
   const exam = (t['기출'] || []).map(r =>
-    `${topicShortName(r['자료'])} ${r['문항'].map(n => n + '번').join(', ')}`).join(' / ');
+    `${topicShortName(r['자료'])} ${r['문항'].map(topicExamItemLabel).join(', ')}`).join(' / ');
   return `${lec || '페이지 미확인'} - ${exam}`;
 }
 
@@ -323,14 +336,30 @@ function topicRenderList(topics, viewKey) {
     const examRefs = (t['기출'] || []).map(r => `
       <span class="topic-src">
         <span class="topic-src-name" title="${escHtml(r['자료'])}">${escHtml(topicDisplayName(r['자료']))}</span>
-        ${r['문항'].map(n => `<span class="topic-chip topic-chip-exam">${escHtml(n)}번</span>`).join('')}
+        ${r['문항'].map(it => `<span class="topic-chip topic-chip-exam">${escHtml(topicExamItemLabel(it))}</span>`).join('')}
       </span>`).join('');
 
-    // 검색용 텍스트 (주제 + 파일명 + 출제형태)
+    // 강의록 발췌 — 해당 페이지에 실제로 적힌 내용을 강의록 표현 그대로 정리한 것
+    const excerptHtml = t['강의록발췌'] ? `
+      <div class="topic-excerpt">
+        <div class="topic-excerpt-label">📄 강의록 내용</div>
+        ${escHtml(t['강의록발췌'])}
+      </div>` : '';
+
+    // 기출 원문 — 문항마다 지문을 그대로 인용 (원문이 확인된 문항만)
+    const examQuotes = (t['기출'] || []).flatMap(r =>
+      (r['문항'] || []).filter(it => it['원문']).map(it => `
+        <div class="topic-exam-quote">
+          <div class="topic-exam-quote-head">${escHtml(topicDisplayName(r['자료']))} · ${escHtml(topicExamItemLabel(it))}</div>
+          <div class="topic-exam-quote-text">“${escHtml(it['원문'])}”</div>
+        </div>`)
+    ).join('');
+
+    // 검색용 텍스트 (주제 + 파일명 + 출제형태 + 발췌 + 기출 원문)
     const searchText = [
-      t['주제'], t['출제형태'],
+      t['주제'], t['출제형태'], t['강의록발췌'],
       ...(t['강의록'] || []).map(r => r['자료']),
-      ...(t['기출'] || []).map(r => r['자료']),
+      ...(t['기출'] || []).flatMap(r => [r['자료'], ...(r['문항'] || []).map(it => it['원문'] || '')]),
     ].join(' ').toLowerCase();
 
     return `
@@ -351,6 +380,8 @@ function topicRenderList(topics, viewKey) {
           ${examRefs}
         </span>
       </div>
+      ${excerptHtml}
+      ${examQuotes}
       ${t['출제형태'] ? `<div class="topic-note">${escHtml(t['출제형태'])}</div>` : ''}
     </div>`;
   }).join('');
