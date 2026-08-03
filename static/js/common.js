@@ -401,19 +401,15 @@ function renderCredits(credits, opts) {
       body += `<div class="usage-warn">${o.noun} 전 잔액을 읽지 못해 이번 사용분을 계산할 수 없었습니다.
                위 표의 누적 사용량은 정상입니다.</div>`;
     }
-  } else {
-    body = `<div class="usage-models">${o.noun}할 때 쓴 크레딧입니다.
-            지금 잔액은 설정 화면의 키 입력란 아래에서 확인하세요.</div>`;
+    body += `<div class="usage-foot">플랫폼이 알려준 잔액입니다.
+             정산이 늦게 반영되면 이번 사용분이 실제보다 적게 보일 수 있습니다.</div>`;
   }
 
-  const foot = hasBalance
-    ? '플랫폼이 알려준 잔액입니다. 정산이 늦게 반영되면 이번 사용분이 실제보다 적게 보일 수 있습니다.'
-    : '그때 기록해둔 값입니다.';
-
+  // 잔액 없는 보관 기록은 요약 한 줄이 전부다 — 펼칠 내용이 없으므로
+  // 본문도 펼침 화살표도 두지 않는다 (눌러도 아무것도 안 나오면 오히려 헷갈린다)
+  box.classList.toggle('no-body', !body);
   box.innerHTML = `<summary>${summaryText}</summary>`
-                + `<div class="usage-body">${body}`
-                + `<div class="usage-foot">${foot}</div>`
-                + `</div>`;
+                + (body ? `<div class="usage-body">${body}</div>` : '');
 }
 
 // ── 토큰 사용량 (이번 작업) ──
@@ -421,6 +417,7 @@ function renderUsage(usage, opts) {
   const o = Object.assign({ boxId: 'usage-box', noun: '생성' }, opts || {});
   const box = document.getElementById(o.boxId);
   if (!box) return;
+  box.classList.remove('no-body');   // 같은 상자에 크레딧을 그렸던 흔적을 지운다
   if (!usage || !usage.calls) {          // 호출 자체가 없었으면 숨긴다
     box.hidden = true;
     box.innerHTML = '';

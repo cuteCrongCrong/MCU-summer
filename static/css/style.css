@@ -428,6 +428,10 @@ input:focus { outline: none; border-color: var(--primary); }
 .usage-box[open] > summary::after { transform: rotate(180deg); }
 .usage-box > summary:hover { background: #eef2f7; }
 .usage-box > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* 펼칠 내용이 없는 경우(보관된 크레딧 기록) — 화살표를 빼고 눌러도 반응하지 않게 */
+.usage-box.no-body > summary { cursor: default; }
+.usage-box.no-body > summary::after { content: none; }
+.usage-box.no-body > summary:hover { background: #f8fafc; }
 .usage-note { color: var(--text-muted); font-weight: 400; }
 .usage-body {
   margin-top: 8px; padding: 14px 16px;
