@@ -213,11 +213,13 @@ const TOPIC_VIEWS = {
     sourceId: 'topic-source-content', listId: 'topic-list',
     emptyId: 'topic-list-empty', countId: 'topic-count-label',
     searchId: 'topic-search', usageId: 'topic-usage-box',
+    summaryId: 'topic-summary-box',
   },
   saved: {
     sourceId: 'saved-topic-source-content', listId: 'saved-topic-list',
     emptyId: 'saved-topic-list-empty', countId: 'saved-topic-count-label',
     searchId: 'saved-topic-search', usageId: 'saved-topic-usage-box',
+    summaryId: 'saved-topic-summary-box',
   },
 };
 
@@ -306,6 +308,7 @@ function topicRenderList(topics, viewKey) {
   const listEl = document.getElementById(view.listId);
   const emptyEl = document.getElementById(view.emptyId);
   const countEl = document.getElementById(view.countId);
+  const summaryEl = document.getElementById(view.summaryId);
   const data = view.data || {};
 
   const dropNote = data.dropped
@@ -318,6 +321,9 @@ function topicRenderList(topics, viewKey) {
 
   if (!topics.length) {
     listEl.innerHTML = '';
+    // 요약 폴드는 목록 밖(제목 바로 밑)에 있으므로 직접 지워야 이전 결과가 남지 않는다
+    summaryEl.innerHTML = '';
+    view.summaryLines = [];
     emptyEl.innerHTML = `강의록과 기출에서 함께 확인되는 주제를 찾지 못했습니다.
       <div style="font-size:0.8rem;color:#94a3b8;margin-top:6px;">
         같은 과목·같은 범위의 강의록과 기출인지 확인해 보세요.
@@ -387,20 +393,20 @@ function topicRenderList(topics, viewKey) {
   }).join('');
 
   // 한 줄 요약 (복사용) — "주제: 강의록 몇p - 기출 몇번" 평문 한 줄 = 카드 한 장.
-  // 위 "📌 기출에 나온 주제" 목록과 같은 형식(테두리 있는 흰 카드 행)으로 보이게 하되,
-  // 굵게 강조하지는 않는다. 복사 텍스트는 DOM을 다시 읽지 않고 이 배열을 그대로 쓴다.
+  // "📌 기출에 나온 주제" 제목 바로 밑에 접어둔다 — 전체를 훑거나 복사하려는 사람이
+  // 긴 주제 목록을 끝까지 스크롤하지 않아도 되게. 형식은 아래 주제 목록과 같은
+  // 테두리 있는 흰 카드 행이되 굵게 강조하지는 않는다.
+  // 복사 텍스트는 DOM을 다시 읽지 않고 이 배열을 그대로 쓴다.
   const lines = topics.map(t => `${t['주제']}: ${topicRefLine(t)}`);
   view.summaryLines = lines;
   const rowsHtml = lines.map(l => `<div class="topic-summary-row">${escHtml(l)}</div>`).join('');
   const key = viewKey || 'main';
-  const extra = document.createElement('div');
-  extra.innerHTML = `
+  summaryEl.innerHTML = `
     <details>
       <summary>📋 한 줄 요약 보기 (복사용)</summary>
       <button class="check-btn" style="margin:10px 0;" onclick="topicCopyLines('${key}')">📋 전체 복사</button>
       <div class="topic-summary-list">${rowsHtml}</div>
     </details>`;
-  listEl.appendChild(extra);
 }
 
 function topicCopyLines(viewKey) {

@@ -22,9 +22,9 @@
 </svg>
 
 <header style="position:relative;">
-  <div id="auth-widget" style="position:absolute;top:14px;right:18px;color:#fff;"></div>
-  <h1>🩺 의대 예상문제 생성기</h1>
-  <p>강의자료 + 기출문제를 업로드하면 AI가 새로운 예상문제를 만들어줍니다 </p>
+  <div id="auth-widget" style="position:absolute;top:10px;right:14px;color:#fff;"></div>
+  <h1>🩺 MCU 학습 플랫폼</h1>
+  <p>의대생을 위한 AI 학습 도우미</p>
 </header>
 
 <!-- ── 탭 안에서만 보이는 상단 바 (홈으로 돌아가기 + 현재 위치) ── -->
@@ -37,12 +37,6 @@
 
   <!-- ══════════ 탭: 홈 (시작 화면) ══════════ -->
   <div class="tab-panel" id="tab-home">
-
-    <!-- 인사 + 요약 -->
-    <div class="home-greeting">
-      <h2 id="home-hello">안녕하세요</h2>
-      <p id="home-subtitle">강의자료와 기출문제를 올리면 예상문제를 만들어 드려요</p>
-    </div>
 
     <!-- 기능 카드 (홈의 주 진입점) — 성격이 다른 셋으로 묶는다.
            만들기   : 내 자료(PDF)를 넣어 새로 만드는 것
@@ -122,11 +116,11 @@
       </div>
     </div>
 
-    <!-- 최근 활동 -->
-    <div class="card hidden" id="home-recent-card">
-      <div class="card-title">🕘 최근 활동</div>
-      <div id="home-recent-list"></div>
-    </div>
+    <!-- 홈을 불러오지 못했을 때만 나타나는 알림 자리.
+         빈 div 하나를 남겨 두는 이유: 실패를 알릴 자리가 아예 없으면 기능 카드만
+         덩그러니 남아, 저장된 게 없는 것처럼 보이면서 실패한 줄도 알 수 없다.
+         (예전에는 이 자리에 있던 '최근 활동' 카드를 빌려 썼다) -->
+    <div class="card hidden" id="home-error"></div>
 
   </div>
 
@@ -140,7 +134,7 @@
   <div class="card" id="session-card">
     <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
       <span>💾 저장된 세션 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 분석 없이 바로 생성 (토큰 절약)</span></span>
-      <button onclick="loadSessions()" style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
+      <button type="button" class="icon-btn" onclick="loadSessions()" title="새로고침" aria-label="저장된 세션 새로고침">↻</button>
     </div>
     <div id="session-list" style="margin-top:6px;font-size:0.88rem;color:#64748b;">불러오는 중…</div>
   </div>
@@ -149,10 +143,17 @@
   <div class="card">
     <div class="card-title">파일 업로드 및 설정</div>
 
+    <div style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:0.84rem;color:#92400e;line-height:1.65;">
+      💡 생성을 시작한 뒤 <b>다른 기능(골학 문제은행·기출 주제 분석 등)을 사용해도</b> 문제는 그대로 만들어집니다.<br />
+      다만 <b>브라우저 탭을 닫거나 새로고침하면</b> 생성이 중단되니 그것만 주의하세요.
+    </div>
+
     <!-- 현재 활성 세션 표시 -->
     <div id="active-session-bar" style="display:none;background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:0.88rem;color:#065f46;align-items:center;justify-content:space-between;">
       <span id="active-session-text"></span>
-      <button onclick="clearSession()" style="font-size:0.78rem;padding:4px 10px;border:1px solid #6ee7b7;border-radius:8px;background:#fff;cursor:pointer;color:#047857;">✕ 세션 해제 (새 파일로 분석)</button>
+      <button type="button" class="mini-btn" onclick="clearSession()"
+              title="세션 해제 (새 파일로 분석)" aria-label="세션 해제 (새 파일로 분석)"
+              style="--mini-line:#6ee7b7;--mini-ink:#047857;">✕</button>
     </div>
 
     <div class="form-grid">
@@ -206,7 +207,7 @@
     <div style="margin-top:20px;">
       <label style="display:flex;align-items:center;gap:8px;">
         🤖 사용할 모델 <span id="model-load-msg" style="font-weight:400;font-size:0.8rem;color:#0ea5e9;"></span>
-        <button type="button" onclick="loadModels()" title="모델 목록 새로고침" style="margin-left:auto;font-size:0.76rem;padding:4px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
+        <button type="button" class="icon-btn" onclick="loadModels()" title="모델 목록 새로고침" aria-label="모델 목록 새로고침" style="margin-left:auto;">↻</button>
       </label>
       <select id="model-select" class="select-field"></select>
     </div>
@@ -375,8 +376,8 @@
         <div class="card-title">
           🗂️ 생성한 문제
           <span id="archive-summary" style="font-weight:400;font-size:0.8rem;color:#64748b;"></span>
-          <button type="button" onclick="loadArchive(true)" title="새로고침"
-                  style="margin-left:auto;font-size:0.76rem;padding:4px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
+          <button type="button" class="icon-btn" onclick="loadArchive(true)"
+                  title="새로고침" aria-label="생성한 문제 목록 새로고침" style="margin-left:auto;">↻</button>
         </div>
         <div id="archive-filter-row" class="hidden" style="margin-bottom:14px;">
           <select id="archive-session-filter" class="select-field" onchange="renderArchive()"></select>
@@ -416,8 +417,8 @@
         <div class="card-title">
           🔍 분석한 주제
           <span id="saved-topics-summary" style="font-weight:400;font-size:0.8rem;color:#64748b;"></span>
-          <button type="button" onclick="loadSavedTopics(true)" title="새로고침"
-                  style="margin-left:auto;font-size:0.76rem;padding:4px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
+          <button type="button" class="icon-btn" onclick="loadSavedTopics(true)"
+                  title="새로고침" aria-label="분석한 주제 목록 새로고침" style="margin-left:auto;">↻</button>
         </div>
         <div id="saved-topics-grid"></div>
       </div>
@@ -444,6 +445,8 @@
           <span>📌 기출에 나온 주제</span>
           <span id="saved-topic-count-label" style="margin-left:auto;font-weight:400;font-size:0.82rem;color:#64748b;"></span>
         </div>
+        <!-- 한 줄 요약 폴드 — topic_analysis.js의 topicRenderList()가 채운다 -->
+        <div id="saved-topic-summary-box"></div>
         <input type="text" id="saved-topic-search" placeholder="🔎 주제 · 파일명으로 걸러보기" oninput="topicFilter('saved')" />
         <div id="saved-topic-list" style="margin-top:16px;"></div>
         <div id="saved-topic-list-empty" style="font-size:0.88rem;color:#64748b;"></div>
@@ -463,7 +466,7 @@
     <div class="card" id="wrong-card">
       <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
         <span>❌ 오답 노트 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 틀린/헷갈린 문제를 폴더로 모아두기</span></span>
-        <button onclick="loadWrongFolders()" style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
+        <button type="button" class="icon-btn" onclick="loadWrongFolders()" title="새로고침" aria-label="오답 노트 폴더 새로고침">↻</button>
       </div>
       <div id="wrong-folder-list" style="margin-top:6px;font-size:0.88rem;color:#64748b;">불러오는 중…</div>
     </div>
@@ -498,8 +501,7 @@
       <!-- ② 범위 선택: 카테고리 안의 세부 범위 -->
       <div id="bone-subcategory-view" style="display:none;">
         <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-          <button type="button" onclick="boneBackToCategories()"
-                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">← 카테고리로</button>
+          <button type="button" class="mini-btn" onclick="boneBackToCategories()">← 카테고리로</button>
           <span id="bone-subcategory-title" style="font-weight:700;"></span>
         </div>
         <div class="bone-cat-grid" id="bone-subcategory-grid"></div>
@@ -535,8 +537,7 @@
       <!-- ③ 퀴즈 화면: 한 문제씩 -->
       <div id="bone-quiz" style="display:none;">
         <div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-          <button type="button" onclick="boneBackToSubcategories()"
-                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">← 범위 다시 선택</button>
+          <button type="button" class="mini-btn" onclick="boneBackToSubcategories()">← 범위 다시 선택</button>
           <span id="bone-scope-label" style="font-size:0.82rem;color:#2563eb;font-weight:700;"></span>
         </div>
 
@@ -546,8 +547,7 @@
         </div>
 
         <div style="margin-bottom:8px;">
-          <button type="button" id="bone-original-btn" onclick="boneShowOriginal()"
-                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">🖼️ 원본 보기</button>
+          <button type="button" class="mini-btn" id="bone-original-btn" onclick="boneShowOriginal()">🖼️ 원본 보기</button>
         </div>
 
         <label for="bone-input" id="bone-question-label" style="margin-bottom:6px;">번호의 이름은?</label>
@@ -648,6 +648,11 @@
     <div class="card">
       <div class="card-title">파일 업로드 및 설정</div>
 
+      <div style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:0.84rem;color:#92400e;line-height:1.65;">
+        💡 분석을 시작한 뒤 <b>다른 기능(문제 생성기·골학 문제은행 등)을 사용해도</b> 주제 분석은 그대로 진행됩니다.<br />
+        다만 <b>브라우저 탭을 닫거나 새로고침하면</b> 분석이 중단되니 그것만 주의하세요.
+      </div>
+
       <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:0.84rem;color:#1e3a8a;line-height:1.65;">
         강의록에 있는 주제 중 <b>기출에 실제로 나온 것</b>만 골라
         <b>어떤 강의록 몇 페이지 → 어떤 기출 몇 번</b> 형태로 정리합니다.<br />
@@ -700,7 +705,7 @@
       <div style="margin-top:20px;">
         <label style="display:flex;align-items:center;gap:8px;">
           🤖 사용할 모델 <span id="topic-model-load-msg" style="font-weight:400;font-size:0.8rem;color:#0ea5e9;"></span>
-          <button type="button" onclick="topicLoadModels()" title="모델 목록 새로고침" style="margin-left:auto;font-size:0.76rem;padding:4px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
+          <button type="button" class="icon-btn" onclick="topicLoadModels()" title="모델 목록 새로고침" aria-label="모델 목록 새로고침" style="margin-left:auto;">↻</button>
         </label>
         <select id="topic-model-select" class="select-field"></select>
       </div>
@@ -767,6 +772,8 @@
         <span>📌 기출에 나온 주제</span>
         <span id="topic-count-label" style="margin-left:auto;font-weight:400;font-size:0.82rem;color:#64748b;"></span>
       </div>
+      <!-- 한 줄 요약 폴드 — topic_analysis.js의 topicRenderList()가 채운다 -->
+      <div id="topic-summary-box"></div>
       <input type="text" id="topic-search" placeholder="🔎 주제 · 파일명으로 걸러보기" oninput="topicFilter()" />
       <div id="topic-list" style="margin-top:16px;"></div>
       <div id="topic-list-empty" style="font-size:0.88rem;color:#64748b;"></div>
@@ -812,24 +819,10 @@
 <div class="modal-overlay" id="welcome-modal">
   <div class="modal" style="max-width:520px;">
     <h3>🔐 로그인하면 기록이 계정에 저장됩니다.</h3>
-    <div class="modal-sub">로그인 없이도 모든 기능을 사용할 수 있지만, 기록은 브라우저에만 임시로 저장됩니다.</div>
-
-    <div style="display:flex;flex-direction:column;gap:10px;">
-      <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:12px 14px;font-size:0.84rem;color:#166534;line-height:1.6;">
-        <b>✅ 로그인하고 쓰면</b>
-        <div style="margin-top:4px;">저장된 세션 · 문제 생성 이력 · 오답 노트가 <b>계정에 저장</b>됩니다.
-        다른 기기나 브라우저에서 로그인해도 그대로 이어서 볼 수 있어요.</div>
-      </div>
-      <div style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:12px 14px;font-size:0.84rem;color:#92400e;line-height:1.6;">
-        <b>⚠️ 로그인 없이 쓰면</b>
-        <div style="margin-top:4px;">기록이 <b>이 브라우저에만</b> 임시로 보관됩니다.
-        쿠키를 지우거나 시크릿 창을 닫으면 사라지고, 다른 기기에서는 보이지 않아요.</div>
-      </div>
-    </div>
+    <div class="modal-sub">로그인 없이도 모든 기능을 사용할 수 있지만, 기록은 브라우저에만 임시로 저장되어 다른 기기에서는 볼 수 없습니다.</div>
 
     <div style="font-size:0.78rem;color:#64748b;line-height:1.7;margin-top:12px;">
-      ※ 로그인 없이 만든 기록은 <b>나중에 로그인해도 계정으로 옮겨지지 않습니다.</b> 남겨두고 싶다면 시작 전에 로그인하세요.<br />
-      🔒 API 키는 로그인 여부와 관계없이 서버·브라우저에 저장되지 않습니다.
+      ※ 로그인 없이 만든 기록은 <b>나중에 로그인해도 계정으로 옮겨지지 않습니다.</b> 남겨두고 싶다면 시작 전에 로그인하세요.
     </div>
 
     <!-- flex-wrap + flex-basis: 좁은 화면(모바일)에서는 버튼이 세로로 쌓인다 -->
@@ -852,7 +845,7 @@
 <script src="/static/js/bone_bank.js"></script>
 <script src="/static/js/topic_analysis.js"></script>
 <script src="/static/js/auth.js"></script>
-<!-- home.js 는 다른 모듈의 함수(setActiveSession, viewWrongFolder 등)를 쓰므로 마지막에 -->
+<!-- home.js 는 다른 모듈의 함수(setActiveSession, showGenInput 등)를 쓰므로 마지막에 -->
 <script src="/static/js/home.js"></script>
 <!-- archive.js 는 home.js의 relativeDay, question_gen.js의 providerLabel 을 쓴다 -->
 <script src="/static/js/archive.js"></script>

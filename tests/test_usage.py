@@ -23,6 +23,13 @@ import threading
 # 저장소 루트를 import 경로에 넣는다 (python tests/test_usage.py 로 바로 실행되게)
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
+# 한글 윈도우의 기본 콘솔 코드페이지(cp949)로는 이 파일이 찍는 '—' 를 쓸 수 없어
+# UnicodeEncodeError 로 테스트가 통째로 죽는다 (검증 실패가 아니라 출력 문제다).
+# hasattr 로 감싸는 이유: pytest 처럼 sys.stdout 을 바꿔치기하는 환경에서는
+# reconfigure 가 없을 수 있다.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 import httpx
 from openai import APIStatusError
 

@@ -15,6 +15,71 @@ function escHtml(str) {
     .replace(/"/g,'&quot;');
 }
 
+// ── LaTeX 표기를 읽히는 평문으로 ──
+// 이 앱에는 수식 렌더러(KaTeX·MathJax)가 없다. 그런데 생화학·생리학처럼 수식이
+// 나오는 과목을 넣으면 LLM이 '$\Delta G^\circ < 0$' 같은 LaTeX를 그대로 내보내고,
+// escHtml 을 거쳐 글자 그대로 화면에 찍힌다. (한글 글꼴이 역슬래시를 ₩ 로 그려서
+// 더 이상하게 보인다 — 데이터는 U+005C 로 멀쩡하다.)
+//
+// 완전한 LaTeX 파서가 아니다. 의대 문항에 실제로 나오는 표기만 다룬다 —
+// 그리스 문자, 비교·연산 기호, 단위를 감싸는 \text{}, 간단한 위·아래 첨자.
+// 분수·적분처럼 못 바꾸는 것은 건드리지 않고 원문 그대로 남긴다.
+// 잘못 바꾸느니 원문이 낫다.
+//
+// 표시 전용이다. 저장된 데이터는 바꾸지 않으므로, 렌더링을 제대로 붙이게 되면
+// 이 함수만 걷어내면 된다.
+// 두 갈래로 나눠 둔다. LaTeX 는 명령어 뒤 공백 하나를 '구분자'로 먹는데,
+// 그걸 그대로 따르면 '\Delta G' 는 'ΔG'(맞음)가 되지만 '\approx 4.18' 은
+// '≈4.18'(붙어버림)이 된다. 글자처럼 붙는 것과 좌우에 공백이 있어야 읽히는
+// 연산·비교 기호를 달리 취급한다.
+const MATH_LETTERS = {          // 뒤 공백을 먹는다 → ΔG
+  Delta: 'Δ', delta: 'δ', alpha: 'α', beta: 'β', gamma: 'γ', lambda: 'λ',
+  mu: 'μ', pi: 'π', sigma: 'σ', omega: 'ω', Sigma: 'Σ', Omega: 'Ω',
+  circ: '°', degree: '°', percent: '%', infty: '∞',
+};
+const MATH_OPS = {              // 좌우에 공백을 준다 → 1 cal ≈ 4.184 J
+  approx: '≈', times: '×', cdot: '·', div: '÷', pm: '±', mp: '∓',
+  leq: '≤', le: '≤', geq: '≥', ge: '≥', neq: '≠', ne: '≠', equiv: '≡',
+  rightarrow: '→', to: '→', leftarrow: '←', leftrightarrow: '↔', Rightarrow: '⇒',
+};
+const SUP_MAP = { '0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','+':'⁺','-':'⁻' };
+const SUB_MAP = { '0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉','+':'₊','-':'₋' };
+
+function mathToText(s) {
+  if (!s) return '';
+  let t = String(s);
+  if (t.indexOf('\\') < 0 && t.indexOf('$') < 0) return t;   // 흔한 경우엔 그냥 통과
+
+  // \text{ cal} \mathrm{J} → 안쪽 내용만 (단위를 감싸는 용도로 가장 많이 쓴다)
+  t = t.replace(/\\(?:text|mathrm|mathit|mathbf|rm|bf|it)\s*\{([^{}]*)\}/g, '$1');
+  // ^\circ → ° (표준 상태 표기 ΔG°'. \circ 단독도 이 앱 맥락에서는 각도가 아니라 도(度)다)
+  t = t.replace(/\^\s*\\circ/g, '°');
+  // 위 첨자: ^{2} ^2 ^{+}
+  t = t.replace(/\^\{([^{}]+)\}|\^(\S)/g, (m, br, one) => {
+    const body = br != null ? br : one;
+    return [...body].every(c => SUP_MAP[c]) ? [...body].map(c => SUP_MAP[c]).join('') : m;
+  });
+  // 아래 첨자: 숫자면 유니코드(ΔG₁), 글자면 밑줄만 남긴다(K'_eq — 붙여 쓰면 읽기 어렵다)
+  t = t.replace(/_\{([^{}]+)\}/g, (m, body) =>
+    [...body].every(c => SUB_MAP[c]) ? [...body].map(c => SUB_MAP[c]).join('') : '_' + body);
+  t = t.replace(/_(\d)/g, (m, d) => SUB_MAP[d]);
+  // 기호 치환. 명령어 뒤 공백 하나까지 함께 집어 LaTeX 의 구분자 규칙을 따른다.
+  // 모르는 명령은 공백까지 원문 그대로 되돌린다.
+  t = t.replace(/\\([a-zA-Z]+) ?/g, (m, name) => {
+    if (Object.prototype.hasOwnProperty.call(MATH_LETTERS, name)) return MATH_LETTERS[name];
+    if (Object.prototype.hasOwnProperty.call(MATH_OPS, name)) return ' ' + MATH_OPS[name] + ' ';
+    return m;
+  });
+  // 간격 명령(\, \; \! \quad)은 공백으로
+  t = t.replace(/\\[,;:!]/g, ' ').replace(/\\q?quad/g, '  ');
+  // 남은 $ 구분자 제거 ($$ 먼저)
+  t = t.replace(/\$\$/g, '').replace(/\$/g, '');
+  return t.replace(/[ \t]{2,}/g, ' ');
+}
+
+// 문항 텍스트를 화면에 넣을 때 쓴다 (평문 변환 → HTML 이스케이프 순서).
+function escMath(s) { return escHtml(mathToText(s)); }
+
 // ── 진행 단계 아이콘 업데이트 ──
 function setStep(stepId, state) {
   const el = document.getElementById(stepId);
@@ -230,26 +295,25 @@ function buildQuestionCard(q, idx, folder, ns) {
       : '';
     // 원본(이름 표시) 그림이 있으면 정답 영역에 '원본 보기' 버튼
     const origBtn = q['원본이미지']
-      ? `<button class="check-btn" style="margin-top:10px;" data-src="${escHtml(q['원본이미지'])}" data-title="${escHtml(q['문제'] || '')}" onclick="viewOriginalImage(this.dataset.src, this.dataset.title)">🖼️ 원본 보기</button>`
+      ? `<button class="check-btn" style="margin-top:10px;" data-src="${escHtml(q['원본이미지'])}" data-title="${escMath(q['문제'] || '')}" onclick="viewOriginalImage(this.dataset.src, this.dataset.title)">🖼️ 원본 보기</button>`
       : '';
 
     const answerBlock = `
       <div class="answer-section" id="${ns}ans-${idx}">
-        <div class="answer-badge">✅ 정답: ${escHtml(q['정답'] || '-')}</div>
-        ${q['해설'] ? `<div class="explain-box"><strong>💡 해설</strong>\n${escHtml(q['해설'])}</div>` : ''}
-        ${q['함정포인트'] ? `<div class="trap-box"><strong>⚠️ 함정포인트</strong>\n${escHtml(q['함정포인트'])}</div>` : ''}
+        <div class="answer-badge">✅ 정답: ${escMath(q['정답'] || '-')}</div>
+        ${q['해설'] ? `<div class="explain-box"><strong>💡 해설</strong>\n${escMath(q['해설'])}</div>` : ''}
         ${origBtn}
       </div>`;
 
     if (isObjective) {
       const answerIdx = answerIndexOf(q);   // 판별 실패 시 -1 (정답 표시가 안 된다)
       const choiceHtml = choices.map((c, i) =>
-        `<li data-idx="${i}" onclick="selectChoice(this, '${ns}', ${idx}, ${answerIdx})">${escHtml(c)}</li>`
+        `<li data-idx="${i}" onclick="selectChoice(this, '${ns}', ${idx}, ${answerIdx})">${escMath(c)}</li>`
       ).join('');
       card.innerHTML = `
         ${headerHtml}
         ${imageHtml}
-        <div class="q-text">${escHtml(q['문제'] || '')}</div>
+        <div class="q-text">${escMath(q['문제'] || '')}</div>
         <ul class="choices" id="${ns}choices-${idx}">${choiceHtml}</ul>
         <button class="check-btn" onclick="checkAnswer('${ns}', ${idx}, ${answerIdx})">정답 확인</button>
         ${answerBlock}
@@ -263,7 +327,7 @@ function buildQuestionCard(q, idx, folder, ns) {
         </div>`).join('');
       card.innerHTML = `
         ${headerHtml}
-        <div class="q-text">${escHtml(q['문제'] || '')}</div>
+        <div class="q-text">${escMath(q['문제'] || '')}</div>
         <div class="blank-input-row">${blankInputsHtml}</div>
         <button class="check-btn" onclick="checkBlanks('${ns}', ${idx})">정답 확인</button>
         ${answerBlock}
@@ -273,7 +337,7 @@ function buildQuestionCard(q, idx, folder, ns) {
       card.innerHTML = `
         ${headerHtml}
         ${imageHtml}
-        <div class="q-text">${escHtml(q['문제'] || '')}</div>
+        <div class="q-text">${escMath(q['문제'] || '')}</div>
         <textarea class="subj-input" id="${ns}subj-${idx}" placeholder="답을 작성해 보세요..." rows="3"></textarea>
         <button class="check-btn" onclick="revealAnswer('${ns}', ${idx})">정답 확인</button>
         ${answerBlock}
@@ -298,7 +362,9 @@ function revealAnswer(ns, qIdx) {
 function checkBlanks(ns, qIdx) {
   const q = getQuestions(ns)[qIdx] || {};
   const answers = (q['정답'] || '').split('|').map(s => s.trim()).filter(Boolean);
-  const norm = s => (s || '').trim().replace(/\s+/g, '').toLowerCase();
+  // 화면에 보이는 것과 같은 기준으로 비교한다. 정답이 '$\Delta G$' 로 저장돼 있으면
+  // 화면에는 'ΔG' 로 보이는데, 사용자가 본 대로 'ΔG' 를 쳐도 원문과 달라 오답이 된다.
+  const norm = s => mathToText(s || '').trim().replace(/\s+/g, '').toLowerCase();
 
   answers.forEach((ans, i) => {
     const input = document.getElementById(`${ns}blank-${qIdx}-${i}`);

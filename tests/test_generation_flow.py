@@ -19,6 +19,12 @@ import sys
 # 저장소 루트를 import 경로에 넣는다 (python tests/test_generation_flow.py 로 바로 실행되게)
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
+# 한글 윈도우의 기본 콘솔 코드페이지(cp949)로는 이 파일에 있는 '—' 를 쓸 수 없다.
+# 지금은 그 문자가 출력 경로에 없어 우연히 지나가지만, 문구를 조금만 손대면
+# test_usage.py 처럼 UnicodeEncodeError 로 죽는다. 미리 맞춰둔다.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 import db
 from features.question_gen import (
     run_generation_events, save_session, delete_session, load_generation,

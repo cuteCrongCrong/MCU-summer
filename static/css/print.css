@@ -105,7 +105,6 @@
 .p-ex { font-size: 9pt; color: #444; }
 .p-ansline { margin-bottom: 1.5mm; }
 .p-exp { border-left: 2px solid #000; padding-left: 2.5mm; font-size: 9.5pt; }
-.p-trap { border-left: 2px dotted #666; padding-left: 2.5mm; font-size: 9.5pt; margin-top: 1.5mm; }
 
 /* ══════════════ 인쇄 ══════════════ */
 @media print {

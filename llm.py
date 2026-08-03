@@ -634,6 +634,11 @@ def build_question_generation_prompt(
   · 서술형 → 선택지 없이 여러 문장으로 서술하는 모범답안 제시
 - 문체·구조·선택지 형식은 위 [0] 기출 반영 강도({weight}/10)에 맞춰 반영
 - 기출문제와 내용이 동일한 문제는 출제 금지
+- **수식·기호는 LaTeX 문법을 쓰지 말고 그대로 읽히는 문자로 쓸 것.**
+  화면에 수식 렌더러가 없어 LaTeX를 쓰면 기호가 그대로 글자로 보인다.
+  $ ... $ / \\text{{}} / \\Delta / \\approx / ^{{}} / _{{}} 모두 금지.
+  이렇게 쓸 것 → ΔG°' < 0,  K'eq > 1,  1 cal ≈ 4.184 J,  ΔG₁ + ΔG₂,  25°C,  H₂O
+- 문항·선택지·해설은 모두 한국어로 쓸 것 (의학 용어의 영문 원어 병기는 허용)
 - 각 문제에 해설과 함정포인트 포함{vignette_rule}{avoid_rule}
 {avoid_block}
 ## 출력 형식 (마크다운 코드블록 사용 금지)
@@ -694,6 +699,11 @@ def parse_question_block(block: str) -> dict:
     current_key = None
     choice_lines = []
     buffer = []
+    # 정답:/해설:/함정포인트: 가 시작된 뒤인가.
+    # 모델이 해설을 '① …는 이래서 틀렸다' 식으로 선지별로 쓰는 일이 흔한데,
+    # 그 줄들까지 선택지로 집으면 선택지가 10개가 되고 해설은 그만큼 비어버린다.
+    # 이 구간에 들어서면 ①②③④⑤ 로 시작해도 선택지가 아니라 본문으로 본다.
+    in_answer = False
 
     def flush_buffer(key, buf):
         if key and buf:
@@ -715,18 +725,21 @@ def parse_question_block(block: str) -> dict:
         elif line == "선택지:":
             flush_buffer(current_key, buffer); buffer = []
             current_key = "선택지"
-        elif line.startswith(("①", "②", "③", "④", "⑤")):
+        elif not in_answer and line.startswith(("①", "②", "③", "④", "⑤")):
             choice_lines.append(line)
         elif line.startswith("정답:"):
             flush_buffer(current_key, buffer); buffer = []
+            in_answer = True
             q["정답"] = line.replace("정답:", "").strip(); current_key = None
         elif line.startswith("해설:"):
             flush_buffer(current_key, buffer); buffer = []
+            in_answer = True
             current_key = "해설"
             val = line.replace("해설:", "").strip()
             if val: buffer.append(val)
         elif line.startswith("함정포인트:"):
             flush_buffer(current_key, buffer); buffer = []
+            in_answer = True
             current_key = "함정포인트"
             val = line.replace("함정포인트:", "").strip()
             if val: buffer.append(val)
