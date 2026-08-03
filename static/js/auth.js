@@ -41,7 +41,9 @@ function renderAuth(d) {
       `<span style="margin:0 8px;font-weight:600;vertical-align:middle;">${escHtml(u.name || u.email || '사용자')}</span>` +
       `<button onclick="authLogout()" style="${btn}">로그아웃</button>`;
   } else if (d && d.login_enabled) {
-    el.innerHTML = `<button onclick="authLogin()" style="${btn}display:inline-flex;align-items:center;gap:7px;">${GOOGLE_G_HTML}Google로 로그인</button>`;
+    // 라벨은 '로그인'만 — 좁은 헤더에서 위젯 폭이 곧 제목을 밀어내는 요인이라
+    // 'Google로'는 뺐다. 어디로 로그인하는지는 왼쪽 G 로고가 이미 말해 준다.
+    el.innerHTML = `<button onclick="authLogin()" style="${btn}display:inline-flex;align-items:center;gap:7px;">${GOOGLE_G_HTML}로그인</button>`;
   } else {
     // 로그인 미설정(secret_config 비어있음) → 위젯 숨김
     el.innerHTML = '';
