@@ -157,7 +157,8 @@
     <!-- 현재 활성 세션 표시 -->
     <div id="active-session-bar" style="display:none;background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:0.88rem;color:#065f46;align-items:center;justify-content:space-between;">
       <span id="active-session-text"></span>
-      <button onclick="clearSession()" style="font-size:0.78rem;padding:4px 10px;border:1px solid #6ee7b7;border-radius:8px;background:#fff;cursor:pointer;color:#047857;">✕ 세션 해제 (새 파일로 분석)</button>
+      <button type="button" class="mini-btn" onclick="clearSession()"
+              style="--mini-line:#6ee7b7;--mini-ink:#047857;">✕ 세션 해제 (새 파일로 분석)</button>
     </div>
 
     <div class="form-grid">
@@ -503,8 +504,7 @@
       <!-- ② 범위 선택: 카테고리 안의 세부 범위 -->
       <div id="bone-subcategory-view" style="display:none;">
         <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-          <button type="button" onclick="boneBackToCategories()"
-                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">← 카테고리로</button>
+          <button type="button" class="mini-btn" onclick="boneBackToCategories()">← 카테고리로</button>
           <span id="bone-subcategory-title" style="font-weight:700;"></span>
         </div>
         <div class="bone-cat-grid" id="bone-subcategory-grid"></div>
@@ -513,8 +513,7 @@
       <!-- ③ 퀴즈 화면 -->
       <div id="bone-quiz" style="display:none;">
         <div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-          <button type="button" onclick="boneBackToSubcategories()"
-                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">← 범위 다시 선택</button>
+          <button type="button" class="mini-btn" onclick="boneBackToSubcategories()">← 범위 다시 선택</button>
           <span id="bone-scope-label" style="font-size:0.82rem;color:#2563eb;font-weight:700;"></span>
         </div>
 
@@ -524,8 +523,7 @@
         </div>
 
         <div style="margin-bottom:8px;">
-          <button type="button" id="bone-original-btn" onclick="boneShowOriginal()"
-                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">🖼️ 원본 보기</button>
+          <button type="button" class="mini-btn" id="bone-original-btn" onclick="boneShowOriginal()">🖼️ 원본 보기</button>
         </div>
 
         <label for="bone-input" id="bone-question-label" style="margin-bottom:6px;">번호의 이름은?</label>

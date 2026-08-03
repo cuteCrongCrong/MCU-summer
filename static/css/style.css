@@ -52,6 +52,17 @@ header {
 header h1 { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.5px; margin-top: 24px; }
 header p  { margin-top: 6px; font-size: 0.95rem; opacity: 0.85; }
 
+/* 헤더 위젯의 사용자 이름 — 구글 계정에 이름이 없으면 auth.js 가 이메일을 그대로 넣는다.
+   위젯은 position:absolute + right 고정이라 내용이 길어지면 왼쪽으로 자라고,
+   320px 기기에서는 헤더 밖으로 밀려 나간다. 그래서 폭을 화면에 비례해 묶는다.
+   (38vw = 320px에서 121px — 아바타·로그아웃 버튼까지 합쳐도 화면 안에 들어온다)
+   잘린 전체 이름은 title 속성으로 남겨 둔다. */
+.auth-name {
+  display: inline-block; max-width: 38vw;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  margin: 0 8px; font-weight: 600; vertical-align: middle;
+}
+
 main {
   max-width: 860px;
   margin: 32px auto;
@@ -662,6 +673,46 @@ main { margin-top: 20px; }
 /* 38×34 는 눈에 보이는 크기고, 실제로 눌리는 영역은 48×44 로 넓혀 둔다.
    (.title-edit-btn 과 같은 수법 — 레이아웃은 그대로 두고 터치 영역만 키운다) */
 .icon-btn::after { content: ''; position: absolute; inset: -5px; }
+
+/* ── 작은 보조 버튼 (골학 뒤로가기 · 원본 보기 · 세션 해제) ──
+   같은 인라인 스타일이 네 군데 복붙돼 있던 것을 한 곳으로 모았다.
+   색만 다른 변형은 --mini-line / --mini-ink 로 덮어쓴다. */
+.mini-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 5px 12px;
+  border: 1px solid var(--mini-line, #cbd5e1); border-radius: 8px;
+  background: var(--surface); color: var(--mini-ink, #475569);
+  font-size: 0.8rem; font-family: inherit; cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.mini-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+.mini-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* ── 터치 기기에서의 최소 탭 영역 ──
+   손가락 접촉면은 대략 9mm 라 44px 미만 버튼에서는 헛누름이 난다(Apple HIG).
+   pointer:coarse 로 묶었으므로 마우스를 쓰는 데스크톱은 한 픽셀도 바뀌지 않는다.
+
+   높이를 실제로 키우는 쪽을 기본으로 삼았다. ::after 로 보이지 않는 영역만
+   넓히는 방법은 버튼이 나란히 붙어 있을 때 서로의 영역을 잡아먹는다 —
+   특히 '풀기' 옆에 '삭제'가 있는 곳에서는 오폭이 곧 데이터 삭제라 쓰면 안 된다.
+   ::after 는 옆에 눌릴 것이 없고 높이를 키우면 모양이 뭉개지는 두 곳에만 남긴다. */
+@media (pointer: coarse) {
+  .check-btn, .back-btn, .home-back-btn, .btn-ghost,
+  .paper-open, .paper-del, .modal-close, .folder-pick,
+  .session-more-btn, .mini-btn, .icon-btn {
+    min-height: 44px;
+  }
+  /* 아이콘 버튼은 정사각에 가깝게 — 높이만 늘리면 세로로 길쭉해진다 */
+  .icon-btn { min-width: 44px; }
+  .icon-btn::after { content: none; }   /* 실제 크기가 44px 이면 확장이 불필요 */
+
+  /* 옆에 눌릴 것이 없는 둘만 ::after 로 넓힌다 (모양 유지) */
+  .wrong-add-btn, .wrong-remove-btn { position: relative; }
+  .wrong-add-btn::after, .wrong-remove-btn::after {
+    content: ''; position: absolute; inset: -9px;
+  }
+  .paper-title .title-edit-btn::after { inset: -13px; }
+}
 
 /* 세션 목록 더 보기 / 접기 */
 .session-more-btn {

@@ -36,9 +36,12 @@ function renderAuth(d) {
     const avatar = u.picture
       ? `<img src="${escHtml(u.picture)}" alt="" referrerpolicy="no-referrer" style="width:26px;height:26px;border-radius:50%;vertical-align:middle;" />`
       : '👤';
+    // 이름 폭은 .auth-name 이 묶는다 — 이름이 없어 이메일이 들어오면 좁은 화면에서
+    // 위젯이 헤더 밖으로 밀려 나가기 때문. 잘린 값은 title 로 남겨 둔다.
+    const label = u.name || u.email || '사용자';
     el.innerHTML =
       `${avatar}` +
-      `<span style="margin:0 8px;font-weight:600;vertical-align:middle;">${escHtml(u.name || u.email || '사용자')}</span>` +
+      `<span class="auth-name" title="${escHtml(label)}">${escHtml(label)}</span>` +
       `<button onclick="authLogout()" style="${btn}">로그아웃</button>`;
   } else if (d && d.login_enabled) {
     // 라벨은 '로그인'만 — 좁은 헤더에서 위젯 폭이 곧 제목을 밀어내는 요인이라
