@@ -15,7 +15,7 @@ if defined PYEXE (
   echo ============================================
   echo   최초 1회 설정 - 필요한 패키지를 설치합니다
   echo   사용 Python: %PYEXE%
-  echo   (requirements.txt 기준: flask, pymupdf, openai, authlib, requests^)
+  echo   (requirements.txt 기준: flask, pymupdf, openai, anthropic, authlib, requests^)
   echo ============================================
   "%PYEXE%" -m pip install --upgrade pip
   "%PYEXE%" -m pip install -r requirements.txt
