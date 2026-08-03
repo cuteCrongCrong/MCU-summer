@@ -297,3 +297,8 @@ python tests/test_usage.py
 4. `llm.py` 함수에 `usage=usage`를 끝까지 넘긴다. 중간 함수 하나만 빠뜨려도 그 아래 호출이 통째로 안 잡힌다.
 5. 성공·오류 응답 **양쪽**에 `usage`(토큰)와 `credits`(크레딧)를 실는다.
 6. 프런트에서는 `common.js`의 `renderSpend(data, { boxId, noun })`로 그리고, 오류 문구에는 `spendSuffix(data)`를 덧붙인다. 결과 화면에 `<details class="usage-box" id="...">` 빈 상자만 두면 된다.
+
+결과를 보관함에 저장하는 기능이라면 두 가지를 더 한다.
+
+7. DB에 `usage` · `credits` 컬럼을 `_ensure_column`으로 붙이고, 읽을 때는 `db.json_col(row, "usage")`를 쓴다. **백필하지 말 것** — 컬럼 추가 이전 행은 사용량을 알 길이 없고, `NULL`(모름)과 `0`(안 씀)은 화면에서 달라야 한다.
+8. 크레딧은 `credits_for_history()`로 걸러 저장한다. 잔액·할당은 조회한 그 순간의 값이라 나중에 꺼내 보면 틀린 숫자다. 이 함수가 시간이 지나도 사실인 '쓴 크레딧'만 남긴다.

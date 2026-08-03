@@ -207,6 +207,9 @@ async function openPaper(gid) {
       titleId: null,
       ns: 'arc-',
     });
+    // 그때 쓴 토큰·크레딧 (기록 이전 회차는 값이 없어 상자째 숨는다).
+    // 세션을 재사용한 회차는 분석을 건너뛰어 사용량이 작게 나오는데, 그게 사실이다.
+    renderSpend(g, { boxId: 'archive-usage-box', noun: '생성' });
     showArchiveSubview('archive-view');
   } catch (err) {
     alert('시험지를 불러오지 못했습니다.');

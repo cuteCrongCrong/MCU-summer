@@ -19,7 +19,7 @@ from datetime import datetime
 
 from flask import Blueprint, request, jsonify
 
-from db import get_conn, owner_clause, LEGACY_PROVIDER
+from db import get_conn, json_col, owner_clause, LEGACY_PROVIDER
 from features.auth import current_owner
 from providers.base import (
     ProviderError, ProviderAuthError, ProviderRateLimitError,
@@ -44,19 +44,6 @@ def _collect_pdfs(field: str):
         if not f.filename.lower().endswith(".pdf"):
             return None, f"PDF 파일만 올릴 수 있습니다: {f.filename}"
     return files, None
-
-
-def _load_json_col(row, name):
-    """
-    나중에 붙인 JSON 컬럼을 읽는다. 컬럼이 없는 구버전 DB거나 값이 NULL이면 None.
-    (None = '모름'. 화면에서 0과 구분해 상자째 숨긴다)
-    """
-    if name not in row.keys() or not row[name]:
-        return None
-    try:
-        return json.loads(row[name])
-    except ValueError:
-        return None
 
 
 def _doc_meta(d: dict) -> dict:
@@ -166,8 +153,8 @@ def load_analysis(aid: int, owner):
         "dropped": r["dropped"] or 0,
         "total_questions": r["total_questions"] or 0,
         # 컬럼 추가 이전에 만든 분석은 값이 없다 → None. 화면은 상자를 숨긴다.
-        "usage": _load_json_col(r, "usage"),
-        "credits": _load_json_col(r, "credits"),
+        "usage": json_col(r, "usage"),
+        "credits": json_col(r, "credits"),
     }
 
 
