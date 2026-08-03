@@ -63,9 +63,9 @@ function buildQuestionSheet(questions, meta) {
     const label = t.rawType || (t.isObjective ? '객관식' : '단답형');
     // 객관식은 답을 헤더 우측 박스에 쓰고, 나머지는 본문 아래 괘선/밑줄에 쓴다
     const box = t.isObjective ? '<span class="p-abox"></span>' : '';
-    const body = blanksToUnderline(escHtml(q['문제'] || ''), t.blankCount);
+    const body = blanksToUnderline(escMath(q['문제'] || ''), t.blankCount);
     const choices = t.choices.length
-      ? `<ul class="p-choices">${t.choices.map(c => `<li>${escHtml(c)}</li>`).join('')}</ul>`
+      ? `<ul class="p-choices">${t.choices.map(c => `<li>${escMath(c)}</li>`).join('')}</ul>`
       : '';
     let slot = '';
     if (label.includes('서술')) slot = '<div class="p-rule"></div>'.repeat(3);
@@ -86,23 +86,25 @@ function answerText(q) {
   if (t.isObjective) {
     const k = answerIndexOf(q);
     // -1 = 판별 실패(정답에 기호 외 문자가 섞인 경우). 원문을 그대로 싣는다.
-    if (k >= 0 && k < t.choices.length) return escHtml(t.choices[k]);
-    return escHtml(q['정답'] || '-');
+    if (k >= 0 && k < t.choices.length) return escMath(t.choices[k]);
+    return escMath(q['정답'] || '-');
   }
   if (t.isBlank) {
     const bl = blankAnswersOf(q);
     if (bl.length >= 2) {
-      return bl.map((v, j) => `<b>빈칸${j + 1}</b> ${escHtml(v)}`).join(' &nbsp;/&nbsp; ');
+      return bl.map((v, j) => `<b>빈칸${j + 1}</b> ${escMath(v)}`).join(' &nbsp;/&nbsp; ');
     }
   }
-  return escHtml(q['정답'] || '-');
+  return escMath(q['정답'] || '-');
 }
 
 function buildAnswerSheet(questions, meta) {
   // 빠른 정답표 — 채점할 때 이것만 훑으면 끝난다. grid 보다 인쇄 페이지 나눔이 안정적이라 table.
   const cells = questions.map((q, i) => {
     const t = typeInfoOf(q);
-    let s = t.isBlank ? blankAnswersOf(q).join(' / ') : (q['정답'] || '');
+    // 자르기 전에 평문으로 바꾼다 — LaTeX 원문을 22자에서 자르면
+    // '$\text{ ca' 처럼 명령어 중간이 잘려 더 읽기 어려워진다.
+    let s = mathToText(t.isBlank ? blankAnswersOf(q).join(' / ') : (q['정답'] || ''));
     s = s.trim();
     if (s.length > 22) s = s.slice(0, 22) + '…';
     return `<td><b>${i + 1}</b> ${escHtml(s)}</td>`;
@@ -118,7 +120,8 @@ function buildAnswerSheet(questions, meta) {
     const label = t.rawType || (t.isObjective ? '객관식' : '단답형');
     // 번호만으로는 무엇에 대한 답인지 알 수 없어 본문 앞부분을 함께 싣는다.
     // CSS 로 자르면 글자 높이 중간에서 잘리므로 문자열을 직접 자른다.
-    const flat = (q['문제'] || '').replace(/\s+/g, ' ').trim();
+    // 여기도 자르기 전에 평문으로 (40자에서 LaTeX 명령어 중간이 잘리지 않게)
+    const flat = mathToText(q['문제'] || '').replace(/\s+/g, ' ').trim();
     const ex = flat.length > PRINT_EXCERPT_LEN
       ? flat.slice(0, PRINT_EXCERPT_LEN) + '…' : flat;
     return `<div class="p-ans">
@@ -126,8 +129,8 @@ function buildAnswerSheet(questions, meta) {
           <span class="p-type">${escHtml(label)}</span>
           <span class="p-ex">${escHtml(ex)}</span></div>
         <div class="p-ansline"><b>정답</b> ${answerText(q)}</div>
-        ${q['해설'] ? `<div class="p-exp">${escHtml(q['해설'])}</div>` : ''}
-        ${q['함정포인트'] ? `<div class="p-trap">${escHtml(q['함정포인트'])}</div>` : ''}
+        ${q['해설'] ? `<div class="p-exp">${escMath(q['해설'])}</div>` : ''}
+        ${q['함정포인트'] ? `<div class="p-trap">${escMath(q['함정포인트'])}</div>` : ''}
       </div>`;
   }).join('');
 
