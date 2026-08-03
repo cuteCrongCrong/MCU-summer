@@ -266,3 +266,43 @@ git commit            # 병합 완료
 | `chore:` | 설정·빌드 등 잡무 |
 
 예) `feat: 로그인 세션 유지 기능 추가`
+
+---
+
+## 10. 테스트 (`tests/`) 🧪
+
+별도 설치 없이 그냥 실행한다. pytest 같은 프레임워크를 쓰지 않으므로 `requirements.txt`에 추가할 것도 없다.
+
+```bash
+python tests/test_usage.py
+python tests/test_generation_flow.py
+```
+
+통과하면 `전부 통과`, 실패하면 어느 항목이 왜 틀렸는지 출력하고 종료 코드 1을 낸다.
+
+| 파일 | 무엇을 지키는가 |
+|---|---|
+| `tests/test_usage.py` | LLM 토큰 사용량 수집 (`providers/usage.py`) |
+| `tests/test_generation_flow.py` | 문제 생성 파이프라인이 끝까지 도는지 (`run_generation_events`) |
+
+**`providers/` 나 `features/question_gen.py` 를 건드렸으면 push 전에 한 번 돌려보자.** API 키 없이도 돌아간다 — LLM SDK·프로바이더를 가짜로 바꿔서 확인하기 때문에 토큰도 0원도 안 든다.
+
+`test_generation_flow.py` 는 함수를 하나씩 부르지 않고 **파이프라인 전체를 흘려본다.** 생성 경로는 API 키가 있어야 지나가는 곳이라, 단위 테스트만으로는 "이름 하나 안 가져왔다"(`NameError`) 같은 오류가 사용자가 생성을 돌릴 때까지 발견되지 않는다. 실제로 그렇게 새어나간 적이 있어서 추가했다.
+
+프로바이더를 새로 추가할 때는 `complete` · `complete_stream` · `describe_image` 세 곳에서 `usage`에 기록하는지 확인할 것. 안 하면 화면의 토큰 사용량이 조용히 0으로 나온다.
+
+### LLM을 호출하는 기능을 새로 만들 때 (사용량 배선) 💸
+
+사용량은 **호출 경로를 따라 손으로 넘겨줘야** 잡힌다. 빠뜨려도 아무 오류가 안 나고 화면에 0으로 보이기 때문에, 새 기능이 LLM을 부른다면 아래를 확인하자. (`features/topic_analysis.py`가 그대로 이 모양이다)
+
+1. 라우트 맨 위에서 `usage = UsageCollector()` — `try` **바깥**에 둔다. 오류로 끝나도 그때까지 쓴 만큼은 알려줘야 하므로.
+2. 크레딧 과금 제공사용으로 첫 LLM 호출 **직전에** `credits_before = credits_snapshot(provider, api_key)`.
+3. 단계가 바뀔 때마다 `usage.set_stage("...")` — 키는 `providers/usage.py`의 `STAGE_LABELS`에 함께 추가한다.
+4. `llm.py` 함수에 `usage=usage`를 끝까지 넘긴다. 중간 함수 하나만 빠뜨려도 그 아래 호출이 통째로 안 잡힌다.
+5. 성공·오류 응답 **양쪽**에 `usage`(토큰)와 `credits`(크레딧)를 실는다.
+6. 프런트에서는 `common.js`의 `renderSpend(data, { boxId, noun })`로 그리고, 오류 문구에는 `spendSuffix(data)`를 덧붙인다. 결과 화면에 `<details class="usage-box" id="...">` 빈 상자만 두면 된다.
+
+결과를 보관함에 저장하는 기능이라면 두 가지를 더 한다.
+
+7. DB에 `usage` · `credits` 컬럼을 `_ensure_column`으로 붙이고, 읽을 때는 `db.json_col(row, "usage")`를 쓴다. **백필하지 말 것** — 컬럼 추가 이전 행은 사용량을 알 길이 없고, `NULL`(모름)과 `0`(안 씀)은 화면에서 달라야 한다.
+8. 크레딧은 `credits_for_history()`로 걸러 저장한다. 잔액·할당은 조회한 그 순간의 값이라 나중에 꺼내 보면 틀린 숫자다. 이 함수가 시간이 지나도 사실인 '쓴 크레딧'만 남긴다.

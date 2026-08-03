@@ -7,6 +7,7 @@
   - 각 기능의 실제 쿼리(CRUD)는 features/<기능>.py 에 둡니다.
 """
 
+import json
 import os
 import sqlite3
 
@@ -39,6 +40,21 @@ def _ensure_column(conn, table: str, col: str, decl: str) -> bool:
         return False
     conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
     return True
+
+
+def json_col(row, name):
+    """
+    나중에 붙인 JSON 컬럼을 읽는다. 컬럼이 없는 구버전 행이거나 값이 NULL이면 None.
+
+    None은 '모름'이라는 뜻이고, 화면은 이걸 0(안 씀)과 다르게 다뤄야 한다.
+    (사용량 컬럼은 백필하지 않으므로 추가 이전 행은 전부 여기로 떨어진다)
+    """
+    if name not in row.keys() or not row[name]:
+        return None
+    try:
+        return json.loads(row[name])
+    except ValueError:
+        return None
 
 
 def owner_clause(owner, prefix: str = ""):
@@ -166,6 +182,10 @@ def init_db():
         # 생성 회차에 사용자가 붙인 이름. 백필하지 않는다 —
         # NULL(이름 없음)과 사용자가 지은 이름을 구분해야 화면에서 '제N회'로 대체할 수 있다.
         _ensure_column(conn, "generations", "title", "TEXT")
+        # 회차 한 번에 쓴 LLM 사용량. 백필하지 않는 이유는 topic_analyses 쪽과 같다
+        # (아래 주석 참고) — 컬럼 추가 이전 회차는 사용량을 알 길이 없다.
+        _ensure_column(conn, "generations", "usage", "TEXT")     # JSON: usage.summary()
+        _ensure_column(conn, "generations", "credits", "TEXT")   # JSON: 쓴 크레딧만
 
         # ── 기출 주제 분석: 분석 결과 보관 (features/topic_analysis.py 담당) ──
         # 문제 생성의 sessions/generations와 무관한 독립 테이블이다. 분석 결과는
@@ -192,6 +212,12 @@ def init_db():
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_topic_analyses_user ON topic_analyses(user_id)"
         )
+        # 분석 한 번에 쓴 LLM 사용량. 위 CREATE TABLE이 아니라 여기서 붙이는 이유는
+        # 이미 만들어진 DB에는 CREATE TABLE이 다시 실행되지 않기 때문. (CONTRIBUTING 3번)
+        # 백필하지 않는다 — 추가 이전에 만든 분석은 사용량을 알 길이 없고,
+        # NULL(모름)과 0(안 씀)은 화면에서 다르게 보여줘야 한다.
+        _ensure_column(conn, "topic_analyses", "usage", "TEXT")     # JSON: usage.summary()
+        _ensure_column(conn, "topic_analyses", "credits", "TEXT")   # JSON: 쓴 크레딧만
         conn.commit()
     finally:
         conn.close()

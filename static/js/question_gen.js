@@ -136,6 +136,7 @@ async function generate() {
   clearErrors();
   document.getElementById('result-box').style.display   = 'none';
   document.getElementById('cancel-btn').style.display   = 'inline-block';
+  renderSpend(null);   // 지난 회차의 사용량 표가 남아 보이지 않게
   resetSteps(useSession);
 
   // FormData 구성
@@ -275,7 +276,7 @@ async function fallbackGenerate(form, signal) {
   }
   const data = await resp.json().catch(() => ({}));
   if (data.error) {
-    showError(data.error);
+    showError(data.error + spendSuffix(data));
     return;
   }
   if (!data.reused && data.session_id) {
@@ -300,7 +301,42 @@ function setResultTitle(title) {
 }
 
 // 생성 직후 결과를 화면에 반영 (제목 + 이름 변경 버튼 상태)
+// 키 입력란 아래 한 줄 — 생성 전에 잔액을 확인하는 용도
+async function loadCredits() {
+  const info = currentProviderInfo();
+  const bar  = document.getElementById('credits-bar');
+  if (!info || !info.supports_credits) {      // 지원하지 않는 제공사면 아예 숨긴다
+    bar.hidden = true;
+    return;
+  }
+  bar.hidden = false;
+
+  const text   = document.getElementById('credits-bar-text');
+  const apiKey = document.getElementById('api-key').value.trim();
+  if (!apiKey) {
+    text.textContent = 'API 키를 입력하면 잔액을 조회합니다.';
+    return;
+  }
+  text.textContent = '조회 중…';
+  try {
+    const resp = await fetch('/credits?provider=' + encodeURIComponent(currentProvider || ''),
+                             { headers: { 'X-Api-Key': apiKey } });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data.error) {
+      text.textContent = '잔액 조회 실패 — ' + (data.error || resp.status);
+      return;
+    }
+    const t = data.total || {};
+    text.textContent = `남은 크레딧 ${fmtCredit(t.remaining)}`
+      + (t.quota != null ? ` / 할당 ${fmtCredit(t.quota)}` : '')
+      + (t.used  != null ? ` (누적 사용 ${fmtCredit(t.used)})` : '');
+  } catch (err) {
+    text.textContent = '잔액을 조회하지 못했습니다.';
+  }
+}
+
 function applyGenerationResult(payload) {
+  renderSpend(payload);
   lastGeneration = { id: payload.generation_id, title: (payload.title || '').trim() };
   setResultTitle(lastGeneration.title);
   // 제목 옆 아이콘 버튼 — 문구 대신 툴팁으로 상태를 알린다
@@ -389,7 +425,7 @@ async function streamGenerate(form, signal) {
         finished = true;
       } else if (ev.type === 'error') {
         finished = true;
-        showError(ev.message || '생성 중 오류가 발생했습니다.');
+        showError((ev.message || '생성 중 오류가 발생했습니다.') + spendSuffix(ev));
         return;
       }
     }
@@ -569,6 +605,8 @@ function selectProvider(name) {
   document.getElementById('api-key-label').textContent = `🔑 ${info.label} API Key`;
   keyInput.placeholder = info.key_placeholder || 'API 키 입력';
   keyInput.value = apiKeyByProvider[name] || '';
+  renderKeyHelp(info, 'key-help');
+  loadCredits();
 
   // 제공사가 바뀌면 이전 모델 목록은 무효 → 기본 모델만 남기고 다시 조회
   populateModels([info.default_model]);
@@ -586,6 +624,7 @@ async function loadModels() {
   }
   msg.textContent = '불러오는 중…';
   msg.style.color = '#0ea5e9';
+  loadCredits();          // 키가 들어온 시점 — 잔액도 같이 갱신
   try {
     const url = '/models?provider=' + encodeURIComponent(currentProvider || '');
     const resp = await fetch(url, { headers: { 'X-Api-Key': apiKey } });

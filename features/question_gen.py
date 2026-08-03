@@ -15,7 +15,7 @@ from datetime import datetime
 
 from flask import Blueprint, request, jsonify, Response
 
-from db import get_conn, owner_clause, LEGACY_PROVIDER
+from db import get_conn, json_col, owner_clause, LEGACY_PROVIDER
 # current_owner: (user_id, guest_id) 튜플. 게스트도 브라우저별로 서로 격리된다.
 from features.auth import current_owner
 from providers.base import (
@@ -23,6 +23,9 @@ from providers.base import (
 )
 from providers.factory import (
     DEFAULT_PROVIDER, UnknownProviderError, get_provider, list_providers,
+)
+from providers.usage import (
+    UsageCollector, credits_for_history, credits_result, credits_snapshot,
 )
 from llm import (
     QUESTION_TYPES, StreamingQuestionParser,
@@ -185,18 +188,22 @@ def rename_session(sid: int, name: str, owner):
 
 def save_generation(session_id: int, count: int, weight: int, model: str,
                     type_targets: dict, questions: list, raw: str,
-                    provider: str = None, title: str = None) -> int:
+                    provider: str = None, title: str = None,
+                    usage: dict = None, credits: dict = None) -> int:
     """
     한 번의 문제 생성 결과를 세션에 연결해 이력으로 저장.
     title은 사용자가 붙인 이름 — 비우면 NULL로 두고 화면에서 '제N회'로 대체한다.
+    usage·credits는 이 회차에 쓴 양 — 없으면 NULL로 두어 '모름'과 0을 구분한다.
+    저장된 세션을 재사용한 회차는 분석을 건너뛰므로 사용량이 훨씬 작게 잡히는데,
+    그게 사실이라 그대로 둔다 (재사용이 얼마나 아꼈는지가 회차마다 드러난다).
     """
     conn = get_conn()
     try:
         cur = conn.execute(
             """INSERT INTO generations
                (session_id, created_at, count, weight, model, type_targets,
-                questions, raw, provider, title)
-               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                questions, raw, provider, title, usage, credits)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 session_id,
                 datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -208,6 +215,8 @@ def save_generation(session_id: int, count: int, weight: int, model: str,
                 raw or "",
                 provider or LEGACY_PROVIDER,
                 (title or "").strip() or None,
+                json.dumps(usage, ensure_ascii=False) if usage else None,
+                json.dumps(credits, ensure_ascii=False) if credits else None,
             ),
         )
         conn.commit()
@@ -290,6 +299,9 @@ def load_generation(gid: int, owner):
         "type_targets": json.loads(r["type_targets"] or "{}"),
         "questions": json.loads(r["questions"] or "[]"),
         "raw": r["raw"] or "",
+        # 컬럼 추가 이전 회차는 값이 없다 → None. 화면은 상자를 숨긴다.
+        "usage": json_col(r, "usage"),
+        "credits": json_col(r, "credits"),
     }
 
 
@@ -378,6 +390,28 @@ def generation_delete(gid):
 def get_providers():
     """선택 가능한 LLM 프로바이더 목록 (표시명·기본 모델·키 안내 문구)."""
     return jsonify({"providers": list_providers(), "default": DEFAULT_PROVIDER})
+
+
+@gen_bp.route("/credits", methods=["GET"])
+def get_credits():
+    """크레딧 잔액 조회 — 지원하는 제공사(전북대 게이트웨이)에서만 동작."""
+    api_key = request.headers.get("X-Api-Key", "")
+    if not api_key:
+        return jsonify({"error": "API 키가 필요합니다."}), 400
+    try:
+        provider = get_provider(request.args.get("provider"))
+    except UnknownProviderError as e:
+        return jsonify({"error": str(e)}), 400
+    if not provider.supports_credits:
+        return jsonify({"error": f"{provider.label}는 크레딧 조회를 지원하지 않습니다."}), 400
+    try:
+        return jsonify(provider.get_credits(api_key))
+    except ProviderAuthError as e:
+        return jsonify({"error": str(e)}), 401
+    except ProviderRateLimitError as e:
+        return jsonify({"error": str(e)}), 429
+    except ProviderError as e:
+        return jsonify({"error": str(e)}), 400
 
 
 @gen_bp.route("/models", methods=["GET"])
@@ -537,6 +571,14 @@ def run_generation_events(p: dict):
     model, count, weight = p["model"], p["count"], p["weight"]
     session_id, owner = p["session_id"], p["owner"]
 
+    # 이번 생성에서 쓴 토큰을 단계별로 모은다. 오류·취소로 끝나도 그 시점까지의
+    # 사용량은 알려줘야 하므로 try 바깥에 둔다 (except 절에서도 참조).
+    usage = UsageCollector()
+
+    # 크레딧으로 과금하는 제공사는 생성 전 잔액을 먼저 찍어둔다 (LLM 호출 이전이어야
+    # 이번 생성분만 차이로 잡힌다). 지원하지 않는 제공사는 None.
+    credits_before = credits_snapshot(provider, api_key)
+
     try:
         # ── 경로 A: 저장된 세션 재사용 (분석 LLM 호출 0회 → 토큰 절약) ──
         if session_id:
@@ -548,6 +590,7 @@ def run_generation_events(p: dict):
             reused = True
         # ── 경로 B: 새 파일 업로드 → 분석 후 세션 저장 ──
         else:
+            usage.set_stage("extract")
             yield {"type": "stage", "key": "extract", "status": "active"}
             # 강의자료: 텍스트만 추출 (이미지 설명 생략)
             lecture_pages, _ = read_pdf_pages(p["lecture_bytes"], api_key,
@@ -559,7 +602,8 @@ def run_generation_events(p: dict):
                                                   describe_images=True)
             total_imgs = len(img_jobs)
             yield {"type": "progress", "key": "extract", "done": 0, "total": total_imgs}
-            for done_imgs in describe_images_progressively(img_jobs, api_key, model, provider):
+            for done_imgs in describe_images_progressively(img_jobs, api_key, model,
+                                                          provider, usage):
                 yield {"type": "progress", "key": "extract",
                        "done": done_imgs, "total": total_imgs}
             exam_raw = assemble_pdf_text(exam_pages, total_imgs)
@@ -573,17 +617,19 @@ def run_generation_events(p: dict):
             yield {"type": "stage", "key": "extract", "status": "done",
                    "source_info": source_info}
 
+            usage.set_stage("concepts")
             yield {"type": "stage", "key": "concepts", "status": "active"}
             yield {"type": "progress", "key": "concepts", "done": 0, "total": 2}
             gen1 = analyze_concepts_progressively(lecture_text, exam_text,
-                                                  api_key, model, provider)
+                                                  api_key, model, provider, usage)
             part1 = yield from _forward_progress(gen1, "concepts", 2)
             yield {"type": "stage", "key": "concepts", "status": "done"}
 
+            usage.set_stage("format")
             yield {"type": "stage", "key": "format", "status": "active"}
             yield {"type": "progress", "key": "format", "done": 0, "total": 2}
             gen2 = analyze_exam_format_progressively(exam_text, part1["type_stats"],
-                                                     api_key, model, provider)
+                                                     api_key, model, provider, usage)
             part2 = yield from _forward_progress(gen2, "format", 2)
             yield {"type": "stage", "key": "format", "status": "done"}
 
@@ -629,6 +675,7 @@ def run_generation_events(p: dict):
             for t in QUESTION_TYPES:
                 type_slots.extend([t] * type_targets.get(t, 0))
 
+        usage.set_stage("generate")
         yield {"type": "stage", "key": "generate", "status": "active", "total": count}
 
         questions, raw_parts = [], []
@@ -651,7 +698,8 @@ def run_generation_events(p: dict):
             parser = StreamingQuestionParser()
             batch_raw = []
             for piece in call_llm_stream(batch_prompt, api_key, model,
-                                         provider=provider, max_tokens=GEN_MAX_TOKENS):
+                                         provider=provider, max_tokens=GEN_MAX_TOKENS,
+                                         usage=usage):
                 batch_raw.append(piece)
                 for q in parser.feed(piece):
                     questions.append(q)
@@ -666,9 +714,18 @@ def run_generation_events(p: dict):
                "generated": len(questions)}
 
         question_raw = "\n\n".join(raw_parts)
+
+        # 응답과 보관에 같은 값을 쓴다 (한 번만 조회 — 잔액 조회가 왕복 요청이라서)
+        gen_usage = usage.summary()
+        gen_credits = credits_result(credits_before,
+                                     credits_snapshot(provider, api_key))
+
         generation_id = save_generation(
             int(session_id), count, weight, model, type_targets, questions,
             question_raw, provider.name, p["gen_title"],
+            usage=gen_usage,
+            # 잔액은 시간이 지나면 틀린 값이 되므로 쓴 만큼만 남긴다
+            credits=credits_for_history(gen_credits),
         )
 
         yield {"type": "done", "payload": {
@@ -691,17 +748,31 @@ def run_generation_events(p: dict):
             "model":            model,
             "provider":         provider.name,
             "weight":           weight,
+            "usage":            gen_usage,           # 이번 생성에 쓴 토큰
+            # 크레딧 과금 제공사만 채워진다. 있으면 화면이 토큰 대신 이걸 보여준다.
+            "credits":          gen_credits,
         }}
 
     # 스트리밍은 HTTP 상태를 이미 보낸 뒤라 오류도 이벤트로 흘려보내야 한다
     except ProviderAuthError as e:
-        yield {"type": "error", "status": 401, "message": str(e)}
+        # 키가 틀린 경우엔 잔액 조회도 실패하므로 credits는 None이 된다
+        yield {"type": "error", "status": 401, "message": str(e),
+               "usage": usage.summary(), "credits": None}
     except ProviderRateLimitError as e:
-        yield {"type": "error", "status": 429, "message": str(e)}
+        yield {"type": "error", "status": 429, "message": str(e),
+               "usage": usage.summary(),
+               "credits": credits_result(credits_before,
+                                          credits_snapshot(provider, api_key))}
     except ProviderError as e:
-        yield {"type": "error", "status": 400, "message": str(e)}
+        yield {"type": "error", "status": 400, "message": str(e),
+               "usage": usage.summary(),
+               "credits": credits_result(credits_before,
+                                          credits_snapshot(provider, api_key))}
     except Exception as e:
-        yield {"type": "error", "status": 500, "message": f"서버 오류: {str(e)}"}
+        yield {"type": "error", "status": 500, "message": f"서버 오류: {str(e)}",
+               "usage": usage.summary(),
+               "credits": credits_result(credits_before,
+                                          credits_snapshot(provider, api_key))}
 
 
 @gen_bp.route("/generate", methods=["POST"])
@@ -714,7 +785,9 @@ def generate():
 
     for ev in run_generation_events(params):
         if ev["type"] == "error":
-            return jsonify({"error": ev["message"]}), ev["status"]
+            return jsonify({"error": ev["message"],
+                            "usage": ev.get("usage"),
+                            "credits": ev.get("credits")}), ev["status"]
         if ev["type"] == "done":
             return jsonify(ev["payload"])
     return jsonify({"error": "생성 결과를 받지 못했습니다."}), 500

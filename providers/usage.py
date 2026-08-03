@@ -1,0 +1,192 @@
+"""
+한 번의 작업(문제 생성 / 주제 분석)에 무엇을 얼마나 썼는지 모으는 곳.
+
+과금 방식이 두 갈래라 수집 방법도 둘이다.
+  - 토큰 과금(대부분) → UsageCollector 가 호출마다 토큰을 누적한다
+  - 크레딧 과금(전북대 게이트웨이) → 토큰 수가 소모와 연결되지 않으므로
+    작업 전후 잔액을 찍어 그 차이를 쓴다 (credits_snapshot / credits_result)
+
+토큰 수집 쪽 배경:
+한 번의 "생성하기"에 LLM 호출이 10~20번 일어난다(이미지 설명 N회 + 개념 분석 2회
++ 형식 분석 2회 + 문제 생성 배치 N회). 그중 이미지 설명과 개념 분석은
+ThreadPoolExecutor에서 병렬로 돌기 때문에, 누적은 Lock으로 보호한다.
+
+프로바이더마다 usage 필드 이름이 달라서 여기서 input/output으로 정규화한다.
+  - OpenAI 호환: prompt_tokens / completion_tokens
+  - Anthropic  : input_tokens  / output_tokens
+
+중요 — "0 토큰"과 "제공사가 안 알려줬음"은 다르다. 중계 서버가 usage를 떼고
+보내는 경우가 있어서, 못 읽은 호출은 따로 세어 화면에서 구분해 보여준다.
+(0으로 합쳐버리면 실제로 쓴 토큰을 안 쓴 것처럼 보여주게 된다)
+"""
+
+import threading
+
+# 화면에 보여줄 단계 이름 — 키는 SSE stage 키와 같은 값을 쓴다.
+# 표시 순서도 이 순서를 따른다. 문제 생성과 주제 분석이 한 표를 공유하는데,
+# 두 기능이 겹쳐 도는 일이 없어서(각자 자기 요청 안에서만 산다) 섞이지 않는다.
+STAGE_LABELS = {
+    "extract":  "이미지 설명",
+    "concepts": "개념 분석",
+    "format":   "형식 분석",
+    "generate": "문제 생성",
+    "topics":   "주제 분석",      # 기출 주제 분석 (features/topic_analysis.py)
+}
+
+
+def _read_int(obj, *names):
+    """여러 표기 중 먼저 발견되는 정수 필드를 읽는다."""
+    for n in names:
+        v = getattr(obj, n, None)
+        if isinstance(v, int):
+            return v
+    return None
+
+
+def _normalize(raw):
+    """SDK usage 객체에서 (input, output)을 꺼낸다. 못 꺼내면 None."""
+    if raw is None:
+        return None
+    inp = _read_int(raw, "prompt_tokens", "input_tokens")
+    out = _read_int(raw, "completion_tokens", "output_tokens")
+    if inp is None and out is None:
+        return None
+    return (inp or 0, out or 0)
+
+
+class UsageCollector:
+    """생성 한 번 동안의 토큰 사용량을 모은다. 프로바이더가 add()로 기록한다."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._stage = ""
+        self._rows = []          # 제공사가 usage를 알려준 호출
+        self._unreported = []    # 알려주지 않은 호출 (호출 수만 셈)
+
+    def set_stage(self, stage: str):
+        """
+        이후 기록될 호출이 어느 단계인지 지정한다.
+
+        run_generation_events()의 단계는 순차적으로만 진행되므로(한 단계가 끝난 뒤
+        다음 단계 시작) 값 하나를 공유해도 단계가 섞이지 않는다. 한 단계 안에서
+        병렬로 나가는 호출들은 모두 같은 단계라 문제되지 않는다.
+        """
+        with self._lock:
+            self._stage = stage
+
+    def add(self, model: str, raw):
+        """프로바이더가 호출 직후 부른다. raw는 SDK usage 객체(없으면 None)."""
+        pair = _normalize(raw)
+        with self._lock:
+            stage = self._stage
+            if pair is None:
+                self._unreported.append({"stage": stage, "model": model or ""})
+            else:
+                self._rows.append({"stage": stage, "model": model or "",
+                                   "input": pair[0], "output": pair[1]})
+
+    def _group(self, rows, unreported, key):
+        """key(stage 또는 model)별로 합친다. 미보고 호출은 호출 수에만 더한다."""
+        out = {}
+        for r in rows:
+            d = out.setdefault(r[key], {"calls": 0, "input": 0, "output": 0,
+                                        "unreported_calls": 0})
+            d["calls"] += 1
+            d["input"] += r["input"]
+            d["output"] += r["output"]
+        for u in unreported:
+            d = out.setdefault(u[key], {"calls": 0, "input": 0, "output": 0,
+                                        "unreported_calls": 0})
+            d["calls"] += 1
+            d["unreported_calls"] += 1
+        for d in out.values():
+            d["total"] = d["input"] + d["output"]
+        return out
+
+    def summary(self) -> dict:
+        """화면에 뿌릴 형태로 집계. 호출이 없으면 calls=0."""
+        with self._lock:
+            rows = list(self._rows)
+            unreported = list(self._unreported)
+
+        by_stage_map = self._group(rows, unreported, "stage")
+        by_model_map = self._group(rows, unreported, "model")
+
+        # 알려진 단계를 정의 순서대로 먼저, 모르는 키는 뒤에 붙인다
+        ordered = [k for k in STAGE_LABELS if k in by_stage_map]
+        ordered += [k for k in by_stage_map if k not in STAGE_LABELS]
+        by_stage = [
+            {"key": k, "label": STAGE_LABELS.get(k, k or "기타"), **by_stage_map[k]}
+            for k in ordered
+        ]
+        by_model = [
+            {"model": m, **by_model_map[m]}
+            for m in sorted(by_model_map, key=lambda x: -by_model_map[x]["total"])
+        ]
+
+        return {
+            "calls":            len(rows) + len(unreported),
+            "unreported_calls": len(unreported),
+            "input":            sum(r["input"] for r in rows),
+            "output":           sum(r["output"] for r in rows),
+            "total":            sum(r["input"] + r["output"] for r in rows),
+            "by_stage":         by_stage,
+            "by_model":         by_model,
+        }
+
+
+# ──────────────────────────────────────────────
+# 크레딧 과금 제공사 (전북대 게이트웨이)
+#   토큰이 아니라 크레딧으로 과금하므로 토큰 수를 보여줘도 실제 소모와 연결되지
+#   않는다. 대신 작업 전후 잔액을 찍어 그 차이를 이번 사용분으로 쓴다.
+#   문제 생성·주제 분석이 같은 방식으로 쓰므로 여기(공용)에 둔다.
+# ──────────────────────────────────────────────
+
+def credits_snapshot(provider, api_key):
+    """잔액 조회. 실패해도 작업을 막아선 안 되므로 예외를 삼키고 None을 준다."""
+    if not getattr(provider, "supports_credits", False):
+        return None
+    try:
+        return provider.get_credits(api_key)
+    except Exception:
+        return None
+
+
+def credits_result(before, after):
+    """이번 작업에 쓴 크레딧 = (작업 후 누적 사용) - (작업 전 누적 사용)."""
+    if not after:
+        return None
+    a_total = after.get("total") or {}
+    spent = None
+    if before:
+        b_used = (before.get("total") or {}).get("used")
+        a_used = a_total.get("used")
+        if b_used is not None and a_used is not None:
+            spent = round(a_used - b_used, 6)      # float 오차 정리
+            # 월 갱신으로 카운터가 초기화되면 음수가 나온다 → 모르는 것으로 처리
+            if spent < 0:
+                spent = None
+    return {
+        "spent":        spent,
+        "remaining":    a_total.get("remaining"),
+        "quota":        a_total.get("quota"),
+        "used":         a_total.get("used"),
+        "sections":     after.get("sections", []),
+        "renewal_date": (after.get("monthly_allocated") or {}).get("renewal_date"),
+        # 작업 전 잔액을 못 읽었으면 이번 사용분을 계산할 수 없다 (화면에서 구분)
+        "spent_known":  spent is not None,
+    }
+
+
+def credits_for_history(credits):
+    """
+    보관용으로 남길 크레딧 정보만 추린다.
+
+    잔액·할당·누적 사용은 '조회한 그 순간'의 값이라, 나중에 꺼내 보면 이미 틀린
+    숫자다. 그대로 저장하면 지난 기록을 열 때마다 옛날 잔액을 지금 잔액처럼
+    보여주게 된다. 반면 '이번에 쓴 크레딧'은 시간이 지나도 사실이라 남길 수 있다.
+    남길 게 없으면(사용분을 계산 못 했으면) None — 저장하지 않는다.
+    """
+    if not credits or not credits.get("spent_known"):
+        return None
+    return {"spent": credits.get("spent"), "spent_known": True}

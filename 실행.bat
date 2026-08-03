@@ -2,6 +2,12 @@
 chcp 949 >nul
 cd /d "%~dp0"
 
+rem --- stop leftover app.py servers (ASCII only in this section) ---
+rem A server started earlier keeps the old .py code in memory, so python edits
+rem look ignored. On Windows two processes can also share port 5000 via
+rem SO_REUSEADDR, and the older one answers. Clearing them first avoids both.
+powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'python.exe' -and $_.CommandLine -like '*app.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>nul
+
 rem --- find a Python 3.8+ interpreter (ASCII only in this section) ---
 set "PYCHK=import sys;sys.exit(0 if sys.version_info>=(3,8) else 1)"
 set "PYEXE="

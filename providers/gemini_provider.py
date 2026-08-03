@@ -19,6 +19,15 @@ class GeminiProvider(OpenAICompatibleProvider):
     default_model   = DEFAULT_MODEL
     key_placeholder = "AIza... (aistudio.google.com에서 발급)"
 
+    key_help_url    = "https://aistudio.google.com/apikey"
+    key_help_steps  = [
+        "aistudio.google.com에 Google 계정으로 로그인합니다.",
+        "API 키 만들기(Get API key) 버튼을 누릅니다.",
+        "프로젝트를 고르라고 하면 아무거나 골라도 되고, 새로 만들어도 됩니다.",
+        "만들어진 키를 복사해서 위 칸에 붙여넣으세요. (여기서는 나중에 다시 볼 수 있습니다)",
+    ]
+    key_help_note   = "무료 등급이 있어서 결제 수단 없이도 바로 써볼 수 있습니다. 다만 분당·일당 요청 수에 제한이 있습니다."
+
     # 제미나이도 사고(thinking) 토큰이 출력 한도에 포함되므로 넉넉히 잡는다.
     max_tokens = 16000
 

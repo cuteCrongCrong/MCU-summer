@@ -75,7 +75,8 @@ def read_pdf_pages(pdf, api_key: str = None, describe_images: bool = True):
     return pages, img_jobs
 
 
-def describe_images_progressively(img_jobs, api_key: str, model: str, provider=None):
+def describe_images_progressively(img_jobs, api_key: str, model: str, provider=None,
+                                  usage=None):
     """
     이미지 설명을 병렬로 만들되, 하나 끝날 때마다 완료 개수를 yield한다.
     (진행률 표시용 — 호출부가 제너레이터를 돌리면서 이벤트를 낼 수 있게)
@@ -85,7 +86,8 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
         return
     prov = provider or _default_provider
     with ThreadPoolExecutor(max_workers=4) as ex:
-        futs = {ex.submit(prov.describe_image, e["png"], api_key, model): e for e in img_jobs}
+        futs = {ex.submit(prov.describe_image, e["png"], api_key, model,
+                          usage=usage): e for e in img_jobs}
         done = 0
         for fut in as_completed(futs):
             entry = futs[fut]
@@ -116,7 +118,8 @@ def assemble_pdf_text(pages, img_job_count: int = 0) -> str:
 
 
 def extract_text_from_pdf(pdf, api_key: str = None, model: str = None,
-                          describe_images: bool = True, provider=None) -> str:
+                          describe_images: bool = True, provider=None,
+                          usage=None) -> str:
     """
     PDF에서 텍스트 레이어를 추출하고, 이미지/스캔 페이지는 Vision LLM으로
     '무슨 이미지인지' 설명을 생성해 텍스트로 함께 남긴다.
@@ -126,7 +129,7 @@ def extract_text_from_pdf(pdf, api_key: str = None, model: str = None,
     진행률이 필요한 곳(스트리밍)은 위 세 함수를 직접 조합한다. 결과는 동일하다.
     """
     pages, img_jobs = read_pdf_pages(pdf, api_key, describe_images)
-    for _ in describe_images_progressively(img_jobs, api_key, model, provider):
+    for _ in describe_images_progressively(img_jobs, api_key, model, provider, usage):
         pass
     return assemble_pdf_text(pages, len(img_jobs))
 
@@ -162,19 +165,20 @@ def build_source_info(raw_text: str, limit: int = MAX_TEXT_CHARS) -> dict:
 
 
 def call_llm(prompt: str, api_key: str, model: str, provider=None,
-             max_tokens: int = None) -> str:
+             max_tokens: int = None, usage=None) -> str:
     # provider 계층으로 위임 — max_tokens를 주면 프로바이더 기본값 대신 그 값을 쓴다
     # (문제 생성처럼 응답이 길어 잘림을 막아야 할 때 호출부가 넉넉히 지정).
+    # usage를 주면 프로바이더가 토큰 사용량을 거기에 기록한다.
     return (provider or _default_provider).complete(
-        prompt, api_key, model, max_tokens=max_tokens
+        prompt, api_key, model, max_tokens=max_tokens, usage=usage
     )
 
 
 def call_llm_stream(prompt: str, api_key: str, model: str, provider=None,
-                    max_tokens: int = None):
+                    max_tokens: int = None, usage=None):
     """응답을 조각으로 흘려받는다 (호출부에서 StreamingQuestionParser와 함께 사용)."""
     return (provider or _default_provider).complete_stream(
-        prompt, api_key, model, max_tokens=max_tokens
+        prompt, api_key, model, max_tokens=max_tokens, usage=usage
     )
 
 
@@ -292,7 +296,8 @@ def _strip_sample_preamble(text: str) -> str:
 
 
 def extract_sample_questions(exam_text: str, api_key: str, model: str,
-                             type_stats: dict = None, provider=None) -> str:
+                             type_stats: dict = None, provider=None,
+                             usage=None) -> str:
     """
     기출 PDF에서 **대표성 있는** 문제를 최대 5개까지 원문 그대로 추출 (4분류).
     선택 기준:
@@ -341,7 +346,8 @@ def extract_sample_questions(exam_text: str, api_key: str, model: str,
     return _strip_sample_preamble(call_llm(prompt, api_key, model, provider))
 
 
-def analyze_format(sample_questions: str, api_key: str, model: str, provider=None) -> str:
+def analyze_format(sample_questions: str, api_key: str, model: str, provider=None,
+                   usage=None) -> str:
     """
     추출된 기출 예시를 분석해서 형식 규칙을 **키워드 위주**로 정리.
     프론트엔드에서 태그 형태로 렌더링하기 좋게 "라벨: 키워드1, 키워드2" 라인 형식.
@@ -364,7 +370,8 @@ def analyze_format(sample_questions: str, api_key: str, model: str, provider=Non
     return call_llm(prompt, api_key, model, provider)
 
 
-def extract_exam_concepts(exam_text: str, api_key: str, model: str, provider=None) -> str:
+def extract_exam_concepts(exam_text: str, api_key: str, model: str, provider=None,
+                          usage=None) -> str:
     """
     기출 전문에서 '무엇을 물었는가(출제 개념·경향)'를 추출.
     형식(how)이 아니라 내용(what)에 집중 → 강의개념 가중치 계산에 사용.
@@ -816,7 +823,7 @@ def safe_parse_json(text: str) -> dict:
 # ──────────────────────────────────────────────
 
 def analyze_concepts_progressively(lecture_text: str, exam_text: str, api_key: str,
-                                   model: str, provider=None):
+                                   model: str, provider=None, usage=None):
     """
     분석 1단계 — 의존성 없는 두 LLM 호출을 병렬 실행 (결과·동작은 순차와 동일):
       [동시] ① 강의 핵심개념  ┐
@@ -827,9 +834,11 @@ def analyze_concepts_progressively(lecture_text: str, exam_text: str, api_key: s
     """
     with ThreadPoolExecutor(max_workers=2) as ex:
         f_concepts = ex.submit(
-            call_llm, build_concept_extraction_prompt(lecture_text), api_key, model, provider
+            call_llm, build_concept_extraction_prompt(lecture_text), api_key, model,
+            provider, None, usage
         )
-        f_exam = ex.submit(extract_exam_concepts, exam_text, api_key, model, provider)
+        f_exam = ex.submit(extract_exam_concepts, exam_text, api_key, model, provider,
+                           usage)
         done = 0
         for fut in as_completed([f_concepts, f_exam]):
             fut.result()          # 예외가 있으면 여기서 터뜨려 호출부가 잡게 한다
@@ -848,14 +857,15 @@ def analyze_concepts_progressively(lecture_text: str, exam_text: str, api_key: s
 
 
 def analyze_exam_format_progressively(exam_text: str, type_stats: dict, api_key: str,
-                                      model: str, provider=None):
+                                      model: str, provider=None, usage=None):
     """
     분석 2단계 — ③ 예시추출 → ④ 형식분석.
     ④는 ③의 결과를 입력으로 받으므로 병렬 불가. 각 단계가 끝날 때마다 yield.
     """
-    sample_questions = extract_sample_questions(exam_text, api_key, model, type_stats, provider)
+    sample_questions = extract_sample_questions(exam_text, api_key, model, type_stats,
+                                                provider, usage)
     yield 1
-    format_analysis = analyze_format(sample_questions, api_key, model, provider)
+    format_analysis = analyze_format(sample_questions, api_key, model, provider, usage)
     yield 2
     return {
         "sample_questions": sample_questions,
@@ -873,27 +883,28 @@ def _drain(gen):
 
 
 def analyze_concepts(lecture_text: str, exam_text: str, api_key: str, model: str,
-                     provider=None) -> dict:
+                     provider=None, usage=None) -> dict:
     return _drain(analyze_concepts_progressively(
-        lecture_text, exam_text, api_key, model, provider))
+        lecture_text, exam_text, api_key, model, provider, usage))
 
 
 def analyze_exam_format(exam_text: str, type_stats: dict, api_key: str, model: str,
-                        provider=None) -> dict:
+                        provider=None, usage=None) -> dict:
     return _drain(analyze_exam_format_progressively(
-        exam_text, type_stats, api_key, model, provider))
+        exam_text, type_stats, api_key, model, provider, usage))
 
 
 def run_analysis(lecture_text: str, exam_text: str, api_key: str, model: str,
-                 provider=None) -> dict:
+                 provider=None, usage=None) -> dict:
     """
     강의·기출을 분석해 재사용 자산을 생성 (두 단계를 순서대로 실행).
 
     단계 사이에 진행 상황을 알려야 하는 곳(스트리밍)은 analyze_concepts /
     analyze_exam_format 을 직접 호출한다. 어느 쪽이든 결과는 같다.
     """
-    part1 = analyze_concepts(lecture_text, exam_text, api_key, model, provider)
-    part2 = analyze_exam_format(exam_text, part1["type_stats"], api_key, model, provider)
+    part1 = analyze_concepts(lecture_text, exam_text, api_key, model, provider, usage)
+    part2 = analyze_exam_format(exam_text, part1["type_stats"], api_key, model, provider,
+                                usage)
     return {**part1, **part2}
 
 
@@ -915,7 +926,8 @@ TOPIC_MAX_TOKENS = 8000
 
 def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
                          describe_images: bool = False, provider=None,
-                         side_budget: int = TOPIC_SIDE_CHAR_BUDGET) -> list:
+                         side_budget: int = TOPIC_SIDE_CHAR_BUDGET,
+                         usage=None) -> list:
     """
     업로드된 PDF 여러 개를 '라벨 + 페이지 마커가 붙은 텍스트'로 추출한다.
 
@@ -936,7 +948,8 @@ def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
         name = f.filename or f"{label_prefix}{i}"
         try:
             raw = extract_text_from_pdf(f, api_key, model,
-                                        describe_images=describe_images, provider=provider)
+                                        describe_images=describe_images,
+                                        provider=provider, usage=usage)
         except ProviderError:
             raise                      # 키·한도 오류는 라우트가 상태코드로 구분하므로 그대로
         except Exception as e:
@@ -1153,14 +1166,14 @@ def parse_topic_analysis(raw: str, lecture_docs: list, exam_docs: list) -> dict:
 
 
 def run_topic_analysis(lecture_docs: list, exam_docs: list, api_key: str,
-                       model: str, provider=None) -> dict:
+                       model: str, provider=None, usage=None) -> dict:
     """추출된 강의록·기출 문서 목록 → 주제 대응표 (LLM 1회 호출)."""
     prompt = build_topic_analysis_prompt(
         build_topic_doc_block(lecture_docs),
         build_topic_doc_block(exam_docs),
     )
     raw = call_llm(prompt, api_key, model, provider=provider,
-                   max_tokens=TOPIC_MAX_TOKENS)
+                   max_tokens=TOPIC_MAX_TOKENS, usage=usage)
     result = parse_topic_analysis(raw, lecture_docs, exam_docs)
     result["raw"] = raw
     return result

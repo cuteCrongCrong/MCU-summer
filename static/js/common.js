@@ -336,3 +336,193 @@ function viewOriginalImage(src, title) {
   document.getElementById('bone-original-title').textContent = title || '';
   modal.classList.add('open');
 }
+
+// ══════════════════════════════════════════════
+// 사용량 표시 (토큰 / 크레딧) — 문제 생성기·기출 주제 분석 공용
+//   두 탭이 각자 자기 결과 화면에 같은 모양의 접힌 상자를 띄운다.
+//   그래서 대상 상자 id와 작업 이름('생성'/'분석')을 인자로 받는다.
+//   계산은 서버(providers/usage.py)에서 끝났고 여기서는 그리기만 한다.
+// ══════════════════════════════════════════════
+
+// 크레딧은 소수가 나올 수 있어 정수/소수를 나눠 표기한다.
+function fmtCredit(v) {
+  if (v == null) return '—';
+  if (Number.isInteger(v)) return v.toLocaleString('ko-KR');
+  const max = Math.abs(v) < 1 ? 4 : 2;
+  return v.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: max });
+}
+
+// 제공사에 따라 크레딧과 토큰 중 맞는 쪽을 보여준다.
+// 전북대 게이트웨이는 크레딧으로 과금하므로 토큰 수를 보여주지 않는다.
+// opts: { boxId: 상자 element id, noun: '생성' | '분석' }
+function renderSpend(payload, opts) {
+  const o = Object.assign({ boxId: 'usage-box', noun: '생성' }, opts || {});
+  if (payload && payload.credits) return renderCredits(payload.credits, o);
+  return renderUsage(payload && payload.usage, o);
+}
+
+// 결과 화면 — 이번 작업에 쓴 크레딧 + 남은 총 크레딧
+function renderCredits(credits, opts) {
+  const o = Object.assign({ boxId: 'usage-box', noun: '생성' }, opts || {});
+  const box = document.getElementById(o.boxId);
+  if (!box) return;
+  box.hidden = false;
+  box.open = false;
+
+  // 보관된 기록에는 '쓴 크레딧'만 있고 잔액이 없다 — 잔액은 조회한 그 순간의 값이라
+  // 나중에 보면 틀린 숫자가 되기 때문(providers/usage.py의 credits_for_history).
+  // 그래서 잔액이 없으면 잔액 관련 표시를 통째로 뺀다.
+  const hasBalance = credits.remaining != null || (credits.sections || []).length > 0;
+
+  const spent = credits.spent_known
+    ? `이번 ${o.noun}에 쓴 크레딧 ${fmtCredit(credits.spent)}`
+    : '이번 사용분은 계산하지 못했습니다';
+  const summaryText = `💳 ${spent}`
+    + (hasBalance ? ` <span class="usage-note">· 남은 크레딧 ${fmtCredit(credits.remaining)}</span>` : '');
+
+  let body = '';
+  if (hasBalance) {
+    const rows = (credits.sections || []).map(s => `<tr>
+        <td>${escHtml(s.label)}</td>
+        <td>${fmtCredit(s.quota)}</td>
+        <td>${fmtCredit(s.used)}</td>
+        <td><b>${fmtCredit(s.remaining)}</b></td>
+      </tr>`).join('');
+
+    body = `<table class="usage-table">
+        <thead><tr><th>구분</th><th>할당</th><th>누적 사용</th><th>남음</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+
+    if (credits.renewal_date) {
+      body += `<div class="usage-models">월별 할당 갱신: ${escHtml(credits.renewal_date)}</div>`;
+    }
+    if (!credits.spent_known) {
+      body += `<div class="usage-warn">${o.noun} 전 잔액을 읽지 못해 이번 사용분을 계산할 수 없었습니다.
+               위 표의 누적 사용량은 정상입니다.</div>`;
+    }
+    body += `<div class="usage-foot">플랫폼이 알려준 잔액입니다.
+             정산이 늦게 반영되면 이번 사용분이 실제보다 적게 보일 수 있습니다.</div>`;
+  }
+
+  // 잔액 없는 보관 기록은 요약 한 줄이 전부다 — 펼칠 내용이 없으므로
+  // 본문도 펼침 화살표도 두지 않는다 (눌러도 아무것도 안 나오면 오히려 헷갈린다)
+  box.classList.toggle('no-body', !body);
+  box.innerHTML = `<summary>${summaryText}</summary>`
+                + (body ? `<div class="usage-body">${body}</div>` : '');
+}
+
+// ── 토큰 사용량 (이번 작업) ──
+function renderUsage(usage, opts) {
+  const o = Object.assign({ boxId: 'usage-box', noun: '생성' }, opts || {});
+  const box = document.getElementById(o.boxId);
+  if (!box) return;
+  box.classList.remove('no-body');   // 같은 상자에 크레딧을 그렸던 흔적을 지운다
+  if (!usage || !usage.calls) {          // 호출 자체가 없었으면 숨긴다
+    box.hidden = true;
+    box.innerHTML = '';
+    box.open = false;
+    return;
+  }
+  box.hidden = false;
+
+  const num = n => (n || 0).toLocaleString('ko-KR');
+  // 제공사가 usage를 안 준 호출 — 0으로 합치면 안 쓴 것처럼 보이므로 따로 알린다
+  const allUnreported = usage.unreported_calls >= usage.calls;
+  const rowNote = r => (r.unreported_calls
+    ? ` <span class="usage-note">(${r.unreported_calls}회 미보고)</span>` : '');
+
+  const summaryText = allUnreported
+    ? `🔢 토큰 사용량 — 제공사가 알려주지 않음 (호출 ${num(usage.calls)}회)`
+    : `🔢 이번 ${o.noun}에 쓴 토큰 ${num(usage.total)}개 <span class="usage-note">· 호출 ${num(usage.calls)}회</span>`;
+
+  let body = '';
+  if (allUnreported) {
+    body = `<div class="usage-warn">이 제공사는 응답에 토큰 사용량을 담아 보내지 않습니다.
+            호출은 ${num(usage.calls)}회 있었지만 몇 토큰을 썼는지는 알 수 없습니다.</div>`;
+  } else {
+    const rows = usage.by_stage.map(r => `<tr>
+        <td>${escHtml(r.label)}${rowNote(r)}</td>
+        <td>${num(r.calls)}</td>
+        <td>${num(r.input)}</td>
+        <td>${num(r.output)}</td>
+        <td><b>${num(r.total)}</b></td>
+      </tr>`).join('');
+
+    body = `<table class="usage-table">
+        <thead><tr><th>단계</th><th>호출</th><th>입력</th><th>출력</th><th>합계</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr>
+          <td>전체</td><td>${num(usage.calls)}</td>
+          <td>${num(usage.input)}</td><td>${num(usage.output)}</td>
+          <td><b>${num(usage.total)}</b></td>
+        </tr></tfoot>
+      </table>`;
+
+    if (usage.by_model.length > 1) {
+      body += `<div class="usage-models">모델별: ` + usage.by_model.map(m =>
+        `${escHtml(m.model)} ${num(m.total)}`).join(' · ') + `</div>`;
+    }
+    if (usage.unreported_calls) {
+      body += `<div class="usage-warn">${num(usage.unreported_calls)}회는 제공사가 사용량을
+               알려주지 않아 위 합계에 빠져 있습니다. 실제 사용량은 더 많습니다.</div>`;
+    }
+  }
+
+  box.innerHTML = `<summary>${summaryText}</summary>`
+                + `<div class="usage-body">${body}`
+                + `<div class="usage-foot">제공사가 응답에 담아 보낸 값입니다. 청구 기준과 다를 수 있습니다.</div>`
+                + `</div>`;
+}
+
+// 오류·중단으로 끝나면 결과 화면이 안 보일 수 있어, 쓴 만큼을 오류 문구에 덧붙인다.
+// (중단해도 그 시점까지의 크레딧·토큰은 이미 소모됐으므로 알려주는 게 맞다)
+function spendSuffix(ev) {
+  const c = ev && ev.credits;
+  if (c) {
+    const left = `남은 크레딧 ${fmtCredit(c.remaining)}`;
+    return c.spent_known
+      ? `\n여기까지 쓴 크레딧: ${fmtCredit(c.spent)} (${left})`
+      : `\n${left}`;
+  }
+  return usageSuffix(ev && ev.usage);
+}
+
+function usageSuffix(usage) {
+  if (!usage || !usage.calls) return '';
+  const num = n => (n || 0).toLocaleString('ko-KR');
+  if (usage.unreported_calls >= usage.calls) {
+    return `\nLLM 호출 ${num(usage.calls)}회 — 토큰 사용량은 제공사가 알려주지 않았습니다.`;
+  }
+  return `\n여기까지 쓴 토큰: ${num(usage.total)}개 (호출 ${num(usage.calls)}회)`;
+}
+
+// ── API 키 발급 도움말 (키 입력란 아래 접힌 안내) — 문제 생성기·기출 주제 분석 공용 ──
+// 내용은 제공사가 /providers로 알려준다 (providers/base.py의 key_help_* 필드).
+// 발급 절차를 아직 모르는 제공사(전북대 게이트웨이)는 steps가 비어 있다 → 도움말째로 숨긴다.
+function renderKeyHelp(info, boxId) {
+  const box = document.getElementById(boxId || 'key-help');
+  if (!box) return;
+  const steps = (info && info.key_help_steps) || [];
+
+  box.open = false;            // 제공사를 바꾸면 접힌 상태로 되돌린다
+  if (!steps.length) {
+    box.hidden = true;
+    box.innerHTML = '';
+    return;
+  }
+  box.hidden = false;
+
+  const note = info.key_help_note
+    ? `<div class="key-help-note">💡 ${escHtml(info.key_help_note)}</div>` : '';
+  // 발급 페이지는 외부 사이트 → 새 탭으로 열고, opener를 넘기지 않는다
+  const link = info.key_help_url
+    ? `<a class="key-help-link" href="${escHtml(info.key_help_url)}" target="_blank" rel="noopener noreferrer">🔗 키 발급 페이지 열기</a>` : '';
+
+  box.innerHTML =
+    `<summary>❓ ${escHtml(info.label)} API 키 발급 방법</summary>` +
+    `<div class="key-help-body">` +
+      `<ol>${steps.map(s => `<li>${escHtml(s)}</li>`).join('')}</ol>` +
+      note + link +
+    `</div>`;
+}

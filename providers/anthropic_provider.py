@@ -68,11 +68,21 @@ class AnthropicProvider(Provider):
     default_model   = DEFAULT_MODEL
     key_placeholder = "sk-ant-... (console.anthropic.com에서 발급)"
 
+    key_help_url    = "https://console.anthropic.com/settings/keys"
+    key_help_steps  = [
+        "console.anthropic.com에 로그인합니다. (Claude.ai 계정과 같은 계정으로 로그인됩니다)",
+        "Settings → API keys로 들어갑니다.",
+        "Create Key 버튼을 누르고, 이름은 아무거나 적어도 됩니다.",
+        "키는 이때 딱 한 번만 보입니다. 창을 닫으면 다시 볼 수 없으니 바로 복사해서 위 칸에 붙여넣으세요.",
+        "Billing 메뉴에서 크레딧을 구매해야 실제 호출이 됩니다.",
+    ]
+    key_help_note   = "Claude Pro 구독료와 API 요금은 별개입니다. Pro를 쓰고 있어도 API 크레딧은 따로 구매해야 합니다."
+
     def _client(self, api_key: str) -> anthropic.Anthropic:
         return anthropic.Anthropic(api_key=api_key)
 
     def complete(self, prompt: str, api_key: str, model: str,
-                 max_tokens: int = None) -> str:
+                 max_tokens: int = None, usage=None) -> str:
         # thinking·effort를 지정하지 않는 이유: 사용자가 드롭다운에서 아무 모델이나
         # 고를 수 있는데, 이 옵션들은 모델마다 지원 여부가 달라 400을 낸다.
         # 생략하면 모든 모델에서 안전하게 동작한다.
@@ -82,10 +92,13 @@ class AnthropicProvider(Provider):
                 max_tokens=max_tokens or MAX_TOKENS,
                 messages=[{"role": "user", "content": prompt}],
             )
+        # 거절(refusal)로 터지기 전에 기록한다 — 거절도 토큰은 쓴다
+        if usage is not None:
+            usage.add(model, getattr(response, "usage", None))
         return _extract_text(response)
 
     def complete_stream(self, prompt: str, api_key: str, model: str,
-                        max_tokens: int = None):
+                        max_tokens: int = None, usage=None):
         """
         Messages API의 스트리밍 헬퍼(messages.stream)를 쓴다.
         OpenAI 호환 계층과 달리 델타를 직접 뒤질 필요 없이 text_stream이 텍스트만 준다.
@@ -101,10 +114,15 @@ class AnthropicProvider(Provider):
             ) as stream:
                 for text in stream.text_stream:
                     yield text
-                # 거절은 텍스트 없이 끝나므로 최종 메시지에서 확인해야 알 수 있다
-                _check_refusal(stream.get_final_message())
+                # 거절은 텍스트 없이 끝나므로 최종 메시지에서 확인해야 알 수 있다.
+                # 최종 메시지에 usage가 실려오므로 거절 검사 전에 먼저 기록한다.
+                final = stream.get_final_message()
+                if usage is not None:
+                    usage.add(model, getattr(final, "usage", None))
+                _check_refusal(final)
 
-    def describe_image(self, png_bytes: bytes, api_key: str, model: str) -> str:
+    def describe_image(self, png_bytes: bytes, api_key: str, model: str,
+                       usage=None) -> str:
         b64 = base64.b64encode(png_bytes).decode()
         with _translate_errors():
             response = self._client(api_key).messages.create(
@@ -122,6 +140,8 @@ class AnthropicProvider(Provider):
                     ],
                 }],
             )
+        if usage is not None:
+            usage.add(model, getattr(response, "usage", None))
         return _extract_text(response)
 
     def list_models(self, api_key: str) -> list:

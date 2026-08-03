@@ -45,6 +45,10 @@ def list_providers() -> list:
             "label":           cls.label,
             "default_model":   cls.default_model,
             "key_placeholder": cls.key_placeholder,
+            "key_help_url":    cls.key_help_url,
+            "key_help_steps":  cls.key_help_steps,
+            "key_help_note":   cls.key_help_note,
+            "supports_credits": cls.supports_credits,
         }
         for cls in _REGISTRY.values()
     ]

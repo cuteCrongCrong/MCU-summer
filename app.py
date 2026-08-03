@@ -17,6 +17,7 @@
 필요 패키지: pip install -r requirements.txt
 """
 
+import os
 import threading
 import webbrowser
 from datetime import timedelta
@@ -82,26 +83,37 @@ init_db()  # 앱 로드 시 DB 테이블 보장 (serve.py / flask run / gunicorn
 
 if __name__ == "__main__":
     # ── 로컬 개발 전용 실행 경로 (배포는 serve.py를 쓴다) ──
-    print("=" * 55)
-    print("  의대 예상문제 생성기 서버 시작")
-    print(f"  접속 주소: http://localhost:{config.PORT}")
-    print(f"  LLM 게이트웨이: {GATEWAY_BASE_URL}")
-    print(f"  기본 모델: {DEFAULT_MODEL}")
-    print(f"  DB 파일: {DB_PATH}")
-    if config.FLASK_SECRET_KEY_IS_DEFAULT:
-        print("  [경고] FLASK_SECRET_KEY가 기본값입니다. 로컬 사용은 괜찮지만,")
-        print("         외부에 배포할 때는 반드시 고유한 값을 지정하세요.")
-        print("         (지정 안 하면 게스트/로그인 데이터 분리가 무의미해집니다)")
-    print("  브라우저가 자동으로 열립니다. (창을 닫으면 서버 종료)")
-    print("=" * 55)
-    # 브라우저 자동 열기 (리로더를 끄므로 단일 프로세스 → 중복/좀비 없음)
-    threading.Timer(
-        1.5, lambda: webbrowser.open(f"http://localhost:{config.PORT}")
-    ).start()
+    # 리로더를 켜면 이 파일이 두 프로세스에서 실행된다: 부모(파일 변경 감시)와
+    # 자식(실제 서버). 자식에만 WERKZEUG_RUN_MAIN이 붙으므로 그걸로 구분한다.
+    # 안내문·브라우저 열기를 자식에서 하면 파일을 저장할 때마다(=리로드할 때마다)
+    # 배너가 다시 찍히고 탭이 새로 열리므로, 한 번만 하도록 부모로 제한한다.
+    is_reload_child = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+
+    if not is_reload_child:
+        print("=" * 55)
+        print("  의대 예상문제 생성기 서버 시작")
+        print(f"  접속 주소: http://localhost:{config.PORT}")
+        print(f"  LLM 게이트웨이: {GATEWAY_BASE_URL}")
+        print(f"  기본 모델: {DEFAULT_MODEL}")
+        print(f"  DB 파일: {DB_PATH}")
+        if config.FLASK_SECRET_KEY_IS_DEFAULT:
+            print("  [경고] FLASK_SECRET_KEY가 기본값입니다. 로컬 사용은 괜찮지만,")
+            print("         외부에 배포할 때는 반드시 고유한 값을 지정하세요.")
+            print("         (지정 안 하면 게스트/로그인 데이터 분리가 무의미해집니다)")
+        if config.DEBUG:
+            print("  코드를 수정하고 저장하면 서버가 자동으로 다시 읽습니다.")
+        print("  브라우저가 자동으로 열립니다. (창을 닫으면 서버 종료)")
+        print("=" * 55)
+        threading.Timer(
+            1.5, lambda: webbrowser.open(f"http://localhost:{config.PORT}")
+        ).start()
     try:
-        # use_reloader=False: 프로세스 2중 실행·좀비 프로세스로 포트가 붙잡히는 문제 방지
+        # 개발 중에는 리로더를 켠다 — 끄면 .py를 고쳐도 서버가 옛 코드를 메모리에
+        # 들고 있어서 "저장했는데 반영이 안 된다"로 보인다. (HTML·CSS·JS는 요청마다
+        # 디스크에서 읽으므로 영향 없음 → 파이썬만 이 문제가 생긴다)
+        # 배포 모드에서는 config.DEBUG가 False라 리로더도 함께 꺼진다.
         app.run(host=config.HOST, port=config.PORT,
-                debug=config.DEBUG, use_reloader=False)
+                debug=config.DEBUG, use_reloader=config.DEBUG)
     except OSError as e:
         print("\n" + "=" * 55)
         print(f"  [오류] 포트 {config.PORT}을(를) 사용할 수 없습니다.")
