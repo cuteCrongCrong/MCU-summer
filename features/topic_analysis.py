@@ -19,12 +19,15 @@ from datetime import datetime
 
 from flask import Blueprint, request, jsonify
 
-from db import get_conn, owner_clause, LEGACY_PROVIDER
+from db import get_conn, json_col, owner_clause, LEGACY_PROVIDER
 from features.auth import current_owner
 from providers.base import (
     ProviderError, ProviderAuthError, ProviderRateLimitError,
 )
 from providers.factory import UnknownProviderError, get_provider
+from providers.usage import (
+    UsageCollector, credits_for_history, credits_result, credits_snapshot,
+)
 from llm import extract_labeled_docs, run_topic_analysis
 
 topic_bp = Blueprint("topic", __name__)
@@ -58,10 +61,12 @@ def _doc_meta(d: dict) -> dict:
 # ──────────────────────────────────────────────
 
 def save_analysis(result: dict, lecture_docs: list, exam_docs: list,
-                  model: str, provider: str, owner, title: str = None) -> int:
+                  model: str, provider: str, owner, title: str = None,
+                  usage: dict = None, credits: dict = None) -> int:
     """
     분석 한 건을 보관하고 id 반환.
     title은 사용자가 입력 화면에서 붙인 이름 — 비우면 NULL로 두고 화면에서 '제N회'로 대체한다.
+    usage·credits는 이번 분석에 쓴 양 — 없으면 NULL로 두어 '모름'과 0을 구분한다.
     """
     user_id, guest_id = owner
     conn = get_conn()
@@ -69,8 +74,8 @@ def save_analysis(result: dict, lecture_docs: list, exam_docs: list,
         cur = conn.execute(
             """INSERT INTO topic_analyses
                (title, created_at, model, provider, lecture_docs, exam_docs,
-                topics, dropped, total_questions, user_id, guest_id)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                topics, dropped, total_questions, user_id, guest_id, usage, credits)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 (title or "").strip() or None,
                 datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -83,6 +88,8 @@ def save_analysis(result: dict, lecture_docs: list, exam_docs: list,
                 int(result.get("total_questions", 0) or 0),
                 user_id,
                 guest_id,
+                json.dumps(usage, ensure_ascii=False) if usage else None,
+                json.dumps(credits, ensure_ascii=False) if credits else None,
             ),
         )
         conn.commit()
@@ -145,6 +152,9 @@ def load_analysis(aid: int, owner):
         "topics": json.loads(r["topics"] or "[]"),
         "dropped": r["dropped"] or 0,
         "total_questions": r["total_questions"] or 0,
+        # 컬럼 추가 이전에 만든 분석은 값이 없다 → None. 화면은 상자를 숨긴다.
+        "usage": json_col(r, "usage"),
+        "credits": json_col(r, "credits"),
     }
 
 
@@ -210,6 +220,24 @@ def topic_analysis_delete(aid):
 
 @topic_bp.route("/analyze-topics", methods=["POST"])
 def analyze_topics():
+    # 이번 분석에 쓴 토큰을 단계별로 모은다. 오류로 끝나도 그 시점까지의 사용량은
+    # 알려줘야 하므로 try 바깥에 둔다 (except 절에서도 참조).
+    usage = UsageCollector()
+    # 크레딧 과금 제공사(전북대 게이트웨이)의 분석 전 잔액. LLM 호출 이전에 찍어야
+    # 이번 분석분만 차이로 잡힌다. 아래에서 제공사가 정해진 뒤 채운다.
+    provider = None
+    api_key = ""
+    credits_before = None
+
+    def spend() -> dict:
+        """응답에 실을 사용량. 성공·오류 응답이 함께 쓴다."""
+        return {
+            "usage":   usage.summary(),
+            # 지원하지 않는 제공사·키 오류면 조회가 실패해 None이 된다
+            "credits": credits_result(credits_before,
+                                      credits_snapshot(provider, api_key)),
+        }
+
     try:
         api_key = request.form.get("api_key", "").strip()
         if not api_key:
@@ -242,34 +270,54 @@ def analyze_topics():
                 "error": f"강의록·기출은 각각 최대 {MAX_FILES_PER_SIDE}개까지 올릴 수 있습니다."
             }), 400
 
+        # 첫 LLM 호출 직전 — 여기서 찍어야 이번 분석분만 잔액 차이로 잡힌다
+        credits_before = credits_snapshot(provider, api_key)
+
+        usage.set_stage("extract")
         # 강의록: 이미지 설명 생략.
         #   주제 이름은 '강의록에 있는 단어'만 써야 하는데, 이미지 설명은 LLM이 새로 쓴
         #   문장이라 강의록에 없는 용어를 끌어들인다. (토큰도 아낀다)
+        #   → 이미지 설명을 끄므로 이 호출은 LLM을 쓰지 않는다 (사용량 0).
         lecture_docs = extract_labeled_docs(lectures, "강의록", api_key, model,
-                                            describe_images=False, provider=provider)
+                                            describe_images=False, provider=provider,
+                                            usage=usage)
         # 기출: 그림 문제(부위 이름 쓰기 등)를 놓치지 않도록 이미지 설명 포함 (문제 생성기와 동일)
         exam_docs = extract_labeled_docs(exams, "기출", api_key, model,
-                                         describe_images=True, provider=provider)
+                                         describe_images=True, provider=provider,
+                                         usage=usage)
 
+        # 아래 두 오류는 기출 이미지 설명(LLM)이 이미 돈 뒤에 나므로 사용량을 함께 보낸다
         if not any((d["text"] or "").strip() for d in lecture_docs):
             return jsonify({
                 "error": "강의록에서 텍스트를 추출하지 못했습니다. "
-                         "스캔 이미지로만 된 PDF는 주제를 읽을 수 없습니다."
+                         "스캔 이미지로만 된 PDF는 주제를 읽을 수 없습니다.",
+                **spend(),
             }), 400
         if not any((d["text"] or "").strip() for d in exam_docs):
             return jsonify({
                 "error": "기출문제에서 텍스트를 추출하지 못했습니다. "
-                         "문제 번호를 읽을 수 없어 출처를 만들 수 없습니다."
+                         "문제 번호를 읽을 수 없어 출처를 만들 수 없습니다.",
+                **spend(),
             }), 400
 
-        result = run_topic_analysis(lecture_docs, exam_docs, api_key, model, provider)
+        usage.set_stage("topics")
+        result = run_topic_analysis(lecture_docs, exam_docs, api_key, model, provider,
+                                    usage)
+
+        # 응답과 보관에 같은 값을 쓴다 (한 번만 조회 — 잔액 조회가 왕복 요청이라서)
+        spent = spend()
 
         # 보관함('분석한 주제')에서 다시 볼 수 있도록 저장.
         # 주제를 하나도 못 찾은 결과는 보관하지 않는다 — 목록에 빈 항목만 쌓인다.
         analysis_id = None
         if result["topics"]:
-            analysis_id = save_analysis(result, lecture_docs, exam_docs,
-                                        model, provider.name, current_owner(), title)
+            analysis_id = save_analysis(
+                result, lecture_docs, exam_docs, model, provider.name,
+                current_owner(), title,
+                usage=spent["usage"],
+                # 잔액은 시간이 지나면 틀린 값이 되므로 쓴 만큼만 남긴다
+                credits=credits_for_history(spent["credits"]),
+            )
 
         return jsonify({
             "success": True,
@@ -283,16 +331,18 @@ def analyze_topics():
             "raw": result["raw"],
             "model": model,
             "provider": provider.name,
+            **spent,                          # usage(토큰) + credits(크레딧)
         })
 
     except ProviderAuthError as e:
-        return jsonify({"error": str(e)}), 401
+        # 키가 틀린 경우엔 잔액 조회도 실패하므로 credits는 None이 된다
+        return jsonify({"error": str(e), **spend()}), 401
     except ProviderRateLimitError as e:
-        return jsonify({"error": str(e)}), 429
+        return jsonify({"error": str(e), **spend()}), 429
     except ProviderError as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": str(e), **spend()}), 400
     except ValueError as e:
         # PDF를 열 수 없음 등 사용자가 고칠 수 있는 입력 문제 (llm.extract_labeled_docs)
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": str(e), **spend()}), 400
     except Exception as e:
-        return jsonify({"error": f"서버 오류: {str(e)}"}), 500
+        return jsonify({"error": f"서버 오류: {str(e)}", **spend()}), 500

@@ -59,6 +59,7 @@ function topicShowError(msg) {
   box.style.display = 'block';
 }
 
+
 // ── LLM 제공사 (/providers) ──
 let topicProviders = [];
 let topicCurrentProvider = null;
@@ -91,6 +92,7 @@ function topicSelectProvider(name) {
   document.getElementById('topic-api-key-label').textContent = `🔑 ${info.label} API Key`;
   keyInput.placeholder = info.key_placeholder || 'API 키 입력';
   keyInput.value = topicApiKeyByProvider[name] || '';
+  renderKeyHelp(info, 'topic-key-help');
 
   topicPopulateModels([info.default_model]);
   topicLoadModels();
@@ -156,6 +158,7 @@ async function topicAnalyze() {
   document.getElementById('topic-analyze-btn').disabled = true;
   document.getElementById('topic-status-box').classList.remove('hidden');
   document.getElementById('topic-error-box').style.display = 'none';
+  topicRenderSpend(null, 'main');   // 지난 회차의 사용량 표가 남아 보이지 않게
   ['topic-step1','topic-step2','topic-step3','topic-step4'].forEach(s => setStep(s, 'wait'));
 
   // 단계 표시는 UI 피드백용 (서버는 한 번에 처리한다)
@@ -182,11 +185,12 @@ async function topicAnalyze() {
     setStep('topic-step4', 'done');
 
     if (!resp.ok || data.error) {
-      topicShowError(data.error || '알 수 없는 오류가 발생했습니다.');
+      // 오류로 끝나도 그때까지 쓴 토큰·크레딧은 이미 소모됐으므로 문구에 덧붙인다
+      topicShowError((data.error || '알 수 없는 오류가 발생했습니다.') + spendSuffix(data));
       return;
     }
 
-    topicRenderResult(data, 'main');
+    topicRenderResult(data, 'main');   // 사용량 상자도 여기서 함께 그려진다
     topicShowResult();
     // 방금 분석한 것이 보관함에 저장됐으므로 목록 캐시를 버린다
     // (안 버리면 보관함에 들어가도 직전에 받아둔 옛 목록이 그대로 보인다)
@@ -208,20 +212,28 @@ const TOPIC_VIEWS = {
   main: {
     sourceId: 'topic-source-content', listId: 'topic-list',
     emptyId: 'topic-list-empty', countId: 'topic-count-label',
-    searchId: 'topic-search',
+    searchId: 'topic-search', usageId: 'topic-usage-box',
   },
   saved: {
     sourceId: 'saved-topic-source-content', listId: 'saved-topic-list',
     emptyId: 'saved-topic-list-empty', countId: 'saved-topic-count-label',
-    searchId: 'saved-topic-search',
+    searchId: 'saved-topic-search', usageId: 'saved-topic-usage-box',
   },
 };
 
 function topicView(key) { return TOPIC_VIEWS[key || 'main'] || TOPIC_VIEWS.main; }
 
+// 분석에 쓴 토큰·크레딧 (common.js의 공용 렌더러를 해당 뷰의 상자에 그린다).
+// 보관된 분석에는 서버가 저장해둔 값이 실려 온다 — 기록을 남기기 전에 만든
+// 분석은 값이 없어(null) 상자째 숨겨진다.
+function topicRenderSpend(data, viewKey) {
+  renderSpend(data, { boxId: topicView(viewKey).usageId, noun: '분석' });
+}
+
 function topicRenderResult(data, viewKey) {
   const view = topicView(viewKey);
   view.data = data;
+  topicRenderSpend(data, viewKey);
   document.getElementById(view.sourceId).innerHTML =
     topicRenderDocs(data.lecture_docs || [], '📄 강의록') +
     topicRenderDocs(data.exam_docs || [], '📝 기출문제');

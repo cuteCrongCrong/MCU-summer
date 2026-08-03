@@ -243,7 +243,7 @@ def test_anthropic():
 # ──────────────────────────────────────────────
 def test_credits():
     print("[크레딧]")
-    from features.question_gen import _credits_result
+    from providers.usage import credits_for_history, credits_result
     from providers.jbnu_gateway import JbnuGatewayProvider
 
     # 문서상 응답 형태 (quota/used/remaining, 월별에는 renewal_date)
@@ -275,25 +275,33 @@ def test_credits():
                                        "remaining": 13250.0})
     after = JbnuGatewayProvider._shape_credits(after_resp)
 
-    r = _credits_result(before, after)
+    r = credits_result(before, after)
     check("사용분 = 전후 차이", r["spent"] == 15.5, r["spent"])
     check("남은 크레딧은 조회 후 값", r["remaining"] == 13250.0, r["remaining"])
     check("사용분 계산됨 표시", r["spent_known"] is True)
 
     # 생성 전 잔액을 못 읽은 경우 → 사용분은 모르지만 잔액은 보여준다
-    r = _credits_result(None, after)
+    r = credits_result(None, after)
     check("before 없으면 spent 미상", r["spent"] is None and r["spent_known"] is False, r)
     check("before 없어도 remaining 제공", r["remaining"] == 13250.0)
 
     # 월 갱신으로 카운터가 초기화되면 음수가 나온다 → 음수를 보여주지 않는다
     reset = JbnuGatewayProvider._shape_credits(
         dict(api_resp, total={"quota": 15000.0, "used": 0.0, "remaining": 15000.0}))
-    r = _credits_result(before, reset)
+    r = credits_result(before, reset)
     check("카운터 초기화 시 음수 안 보여줌",
           r["spent"] is None and r["spent_known"] is False, r)
 
     # 조회 후 값이 아예 없으면 표시할 게 없다
-    check("after 없으면 None", _credits_result(before, None) is None)
+    check("after 없으면 None", credits_result(before, None) is None)
+
+    # 보관용 — 잔액은 시간이 지나면 틀린 값이라 '쓴 만큼'만 남긴다
+    keep = credits_for_history(credits_result(before, after))
+    check("보관용은 쓴 크레딧만", keep == {"spent": 15.5, "spent_known": True}, keep)
+    check("보관용에 잔액 없음", "remaining" not in keep and "sections" not in keep, keep)
+    check("사용분을 모르면 보관 안 함",
+          credits_for_history(credits_result(None, after)) is None)
+    check("크레딧 자체가 없으면 보관 안 함", credits_for_history(None) is None)
 
     # 크레딧을 지원하지 않는 제공사는 기본 구현이 막아준다
     check("미지원 제공사는 supports_credits=False",

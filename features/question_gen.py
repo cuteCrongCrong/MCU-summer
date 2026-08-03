@@ -15,7 +15,7 @@ from datetime import datetime
 
 from flask import Blueprint, request, jsonify, Response
 
-from db import get_conn, owner_clause, LEGACY_PROVIDER
+from db import get_conn, json_col, owner_clause, LEGACY_PROVIDER
 # current_owner: (user_id, guest_id) 튜플. 게스트도 브라우저별로 서로 격리된다.
 from features.auth import current_owner
 from providers.base import (
@@ -24,7 +24,9 @@ from providers.base import (
 from providers.factory import (
     DEFAULT_PROVIDER, UnknownProviderError, get_provider, list_providers,
 )
-from providers.usage import UsageCollector
+from providers.usage import (
+    UsageCollector, credits_for_history, credits_result, credits_snapshot,
+)
 from llm import (
     QUESTION_TYPES, StreamingQuestionParser,
     read_pdf_pages, describe_images_progressively, assemble_pdf_text,
@@ -186,18 +188,22 @@ def rename_session(sid: int, name: str, owner):
 
 def save_generation(session_id: int, count: int, weight: int, model: str,
                     type_targets: dict, questions: list, raw: str,
-                    provider: str = None, title: str = None) -> int:
+                    provider: str = None, title: str = None,
+                    usage: dict = None, credits: dict = None) -> int:
     """
     한 번의 문제 생성 결과를 세션에 연결해 이력으로 저장.
     title은 사용자가 붙인 이름 — 비우면 NULL로 두고 화면에서 '제N회'로 대체한다.
+    usage·credits는 이 회차에 쓴 양 — 없으면 NULL로 두어 '모름'과 0을 구분한다.
+    저장된 세션을 재사용한 회차는 분석을 건너뛰므로 사용량이 훨씬 작게 잡히는데,
+    그게 사실이라 그대로 둔다 (재사용이 얼마나 아꼈는지가 회차마다 드러난다).
     """
     conn = get_conn()
     try:
         cur = conn.execute(
             """INSERT INTO generations
                (session_id, created_at, count, weight, model, type_targets,
-                questions, raw, provider, title)
-               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                questions, raw, provider, title, usage, credits)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 session_id,
                 datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -209,6 +215,8 @@ def save_generation(session_id: int, count: int, weight: int, model: str,
                 raw or "",
                 provider or LEGACY_PROVIDER,
                 (title or "").strip() or None,
+                json.dumps(usage, ensure_ascii=False) if usage else None,
+                json.dumps(credits, ensure_ascii=False) if credits else None,
             ),
         )
         conn.commit()
@@ -291,6 +299,9 @@ def load_generation(gid: int, owner):
         "type_targets": json.loads(r["type_targets"] or "{}"),
         "questions": json.loads(r["questions"] or "[]"),
         "raw": r["raw"] or "",
+        # 컬럼 추가 이전 회차는 값이 없다 → None. 화면은 상자를 숨긴다.
+        "usage": json_col(r, "usage"),
+        "credits": json_col(r, "credits"),
     }
 
 
@@ -542,47 +553,6 @@ def _batch_targets(type_slots, offset, batch_count) -> dict:
     return {t: batch_slice.count(t) for t in QUESTION_TYPES if batch_slice.count(t)}
 
 
-def _credits_snapshot(provider, api_key):
-    """잔액 조회. 실패해도 생성을 막아선 안 되므로 예외를 삼키고 None을 준다."""
-    if not getattr(provider, "supports_credits", False):
-        return None
-    try:
-        return provider.get_credits(api_key)
-    except Exception:
-        return None
-
-
-def _credits_result(before, after):
-    """
-    이번 생성에 쓴 크레딧 = (생성 후 누적 사용) - (생성 전 누적 사용).
-
-    게이트웨이는 토큰이 아니라 크레딧으로 과금하므로 토큰 수를 보여줘도 실제
-    소모와 연결되지 않는다. 그래서 전후 잔액의 차이로 계산한다.
-    """
-    if not after:
-        return None
-    a_total = after.get("total") or {}
-    spent = None
-    if before:
-        b_used = (before.get("total") or {}).get("used")
-        a_used = a_total.get("used")
-        if b_used is not None and a_used is not None:
-            spent = round(a_used - b_used, 6)      # float 오차 정리
-            # 월 갱신으로 카운터가 초기화되면 음수가 나온다 → 모르는 것으로 처리
-            if spent < 0:
-                spent = None
-    return {
-        "spent":        spent,
-        "remaining":    a_total.get("remaining"),
-        "quota":        a_total.get("quota"),
-        "used":         a_total.get("used"),
-        "sections":     after.get("sections", []),
-        "renewal_date": (after.get("monthly_allocated") or {}).get("renewal_date"),
-        # 생성 전 잔액을 못 읽었으면 이번 사용분을 계산할 수 없다 (화면에서 구분)
-        "spent_known":  spent is not None,
-    }
-
-
 def run_generation_events(p: dict):
     """
     문제 생성 파이프라인을 진행 이벤트를 내보내는 제너레이터로 실행.
@@ -607,7 +577,7 @@ def run_generation_events(p: dict):
 
     # 크레딧으로 과금하는 제공사는 생성 전 잔액을 먼저 찍어둔다 (LLM 호출 이전이어야
     # 이번 생성분만 차이로 잡힌다). 지원하지 않는 제공사는 None.
-    credits_before = _credits_snapshot(provider, api_key)
+    credits_before = credits_snapshot(provider, api_key)
 
     try:
         # ── 경로 A: 저장된 세션 재사용 (분석 LLM 호출 0회 → 토큰 절약) ──
@@ -744,9 +714,18 @@ def run_generation_events(p: dict):
                "generated": len(questions)}
 
         question_raw = "\n\n".join(raw_parts)
+
+        # 응답과 보관에 같은 값을 쓴다 (한 번만 조회 — 잔액 조회가 왕복 요청이라서)
+        gen_usage = usage.summary()
+        gen_credits = credits_result(credits_before,
+                                     credits_snapshot(provider, api_key))
+
         generation_id = save_generation(
             int(session_id), count, weight, model, type_targets, questions,
             question_raw, provider.name, p["gen_title"],
+            usage=gen_usage,
+            # 잔액은 시간이 지나면 틀린 값이 되므로 쓴 만큼만 남긴다
+            credits=credits_for_history(gen_credits),
         )
 
         yield {"type": "done", "payload": {
@@ -769,10 +748,9 @@ def run_generation_events(p: dict):
             "model":            model,
             "provider":         provider.name,
             "weight":           weight,
-            "usage":            usage.summary(),      # 이번 생성에 쓴 토큰
+            "usage":            gen_usage,           # 이번 생성에 쓴 토큰
             # 크레딧 과금 제공사만 채워진다. 있으면 화면이 토큰 대신 이걸 보여준다.
-            "credits":          _credits_result(credits_before,
-                                                _credits_snapshot(provider, api_key)),
+            "credits":          gen_credits,
         }}
 
     # 스트리밍은 HTTP 상태를 이미 보낸 뒤라 오류도 이벤트로 흘려보내야 한다
@@ -783,18 +761,18 @@ def run_generation_events(p: dict):
     except ProviderRateLimitError as e:
         yield {"type": "error", "status": 429, "message": str(e),
                "usage": usage.summary(),
-               "credits": _credits_result(credits_before,
-                                          _credits_snapshot(provider, api_key))}
+               "credits": credits_result(credits_before,
+                                          credits_snapshot(provider, api_key))}
     except ProviderError as e:
         yield {"type": "error", "status": 400, "message": str(e),
                "usage": usage.summary(),
-               "credits": _credits_result(credits_before,
-                                          _credits_snapshot(provider, api_key))}
+               "credits": credits_result(credits_before,
+                                          credits_snapshot(provider, api_key))}
     except Exception as e:
         yield {"type": "error", "status": 500, "message": f"서버 오류: {str(e)}",
                "usage": usage.summary(),
-               "credits": _credits_result(credits_before,
-                                          _credits_snapshot(provider, api_key))}
+               "credits": credits_result(credits_before,
+                                          credits_snapshot(provider, api_key))}
 
 
 @gen_bp.route("/generate", methods=["POST"])
