@@ -390,13 +390,6 @@ input:focus { outline: none; border-color: var(--primary); }
   font-size: 0.88rem; line-height: 1.7;
   white-space: pre-wrap;
 }
-.trap-box {
-  margin-top: 10px;
-  background: #fffbeb; border-left: 4px solid var(--warning);
-  padding: 14px 16px; border-radius: 0 8px 8px 0;
-  font-size: 0.88rem; line-height: 1.7;
-}
-.trap-box strong { color: var(--warning); }
 
 .check-btn {
   margin-top: 12px; padding: 8px 20px;

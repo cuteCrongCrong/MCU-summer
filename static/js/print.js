@@ -56,7 +56,7 @@ function printHeadBand(kind, meta) {
 }
 
 // ── 문제지 ──────────────────────────────────────
-// 정답·해설·함정포인트를 **문자열로도 넣지 않는다**.
+// 정답·해설을 **문자열로도 넣지 않는다**.
 function buildQuestionSheet(questions, meta) {
   const items = questions.map((q, i) => {
     const t = typeInfoOf(q);
