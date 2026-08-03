@@ -505,7 +505,34 @@
         <div class="bone-cat-grid" id="bone-subcategory-grid"></div>
       </div>
 
-      <!-- ③ 퀴즈 화면 -->
+      <!-- ②-B 출제 모드 선택 -->
+      <div id="bone-mode-view" style="display:none;">
+        <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <button type="button" onclick="boneBackToSubcategories()"
+                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">← 범위 다시 선택</button>
+          <span id="bone-mode-label" style="font-size:0.82rem;color:#2563eb;font-weight:700;"></span>
+        </div>
+        <div style="font-size:0.85rem;color:#64748b;margin-bottom:12px;">어떤 방식으로 풀지 선택하세요.</div>
+        <div class="bone-mode-grid">
+          <button class="bone-mode-tile" onclick="boneChooseMode('classic')">
+            <div style="font-size:1.8rem;">🔤</div>
+            <div style="font-weight:700;margin-top:6px;">한 문제씩 풀기</div>
+            <div style="font-size:0.78rem;color:#64748b;margin-top:4px;">번호 하나씩 순서 랜덤으로 출제</div>
+          </button>
+          <button class="bone-mode-tile" onclick="boneChooseMode('click')">
+            <div style="font-size:1.8rem;">🖱️</div>
+            <div style="font-weight:700;margin-top:6px;">단어은행에서 골라 채우기</div>
+            <div style="font-size:0.78rem;color:#64748b;margin-top:4px;">이미지 한 장의 빈칸을 한 번에 매칭</div>
+          </button>
+          <button class="bone-mode-tile" onclick="boneChooseMode('write')">
+            <div style="font-size:1.8rem;">✍️</div>
+            <div style="font-weight:700;margin-top:6px;">빈칸 한번에 쓰기</div>
+            <div style="font-size:0.78rem;color:#64748b;margin-top:4px;">이미지 한 장의 빈칸을 전부 입력 후 채점</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- ③ 퀴즈 화면: 한 문제씩 -->
       <div id="bone-quiz" style="display:none;">
         <div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
           <button type="button" onclick="boneBackToSubcategories()"
@@ -524,7 +551,7 @@
         </div>
 
         <label for="bone-input" id="bone-question-label" style="margin-bottom:6px;">번호의 이름은?</label>
-        <input type="text" id="bone-input" placeholder="예: 대퇴골 / femur" autocomplete="off"
+        <input type="text" id="bone-input" placeholder="예: femur" autocomplete="off"
                onkeydown="boneKey(event)" />
 
         <div id="bone-result"></div>
@@ -534,6 +561,67 @@
           <button class="check-btn" id="bone-giveup-btn" onclick="boneGiveUp()"
                   style="border-color:#cbd5e1;color:#64748b;">모르겠어요</button>
           <button class="btn-ghost" id="bone-next-btn" onclick="boneNextQuestion()" style="display:none;">다음 문제 →</button>
+        </div>
+      </div>
+
+      <!-- ③-B 클릭형 매칭: 이미지 한 장 + 단어은행 -->
+      <div id="bone-click-quiz" style="display:none;">
+        <div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+          <button type="button" onclick="boneBackToSubcategories()"
+                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">← 범위 다시 선택</button>
+          <span id="bone-click-scope-label" style="font-size:0.82rem;color:#2563eb;font-weight:700;"></span>
+        </div>
+
+        <div style="text-align:center;margin:8px 0 16px;">
+          <img id="bone-click-image" alt="골학 번호 그림"
+               style="max-width:100%;max-height:340px;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;" />
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <button type="button" id="bone-click-original-btn" onclick="boneClickShowOriginal()"
+                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">🖼️ 원본 보기</button>
+        </div>
+
+        <div style="font-size:0.82rem;color:#64748b;margin-bottom:6px;">번호를 클릭한 뒤, 아래 단어은행에서 알맞은 단어를 클릭해 채우세요.</div>
+        <div class="bone-slot-list" id="bone-click-slots"></div>
+
+        <div style="font-size:0.78rem;font-weight:700;color:#64748b;margin:14px 0 6px;">📚 단어은행</div>
+        <div class="bone-chip-bank" id="bone-click-bank"></div>
+
+        <div id="bone-click-summary" style="margin-top:12px;"></div>
+
+        <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="check-btn" id="bone-click-submit-btn" onclick="boneGradeClick()">채점하기</button>
+          <button class="btn-ghost" id="bone-click-next-btn" onclick="boneNextEntry()" style="display:none;">다음 이미지 →</button>
+        </div>
+      </div>
+
+      <!-- ③-C 빈칸 한번에 쓰기: 이미지 한 장 + 번호별 입력창 -->
+      <div id="bone-write-quiz" style="display:none;">
+        <div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+          <button type="button" onclick="boneBackToSubcategories()"
+                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">← 범위 다시 선택</button>
+          <span id="bone-write-scope-label" style="font-size:0.82rem;color:#2563eb;font-weight:700;"></span>
+        </div>
+
+        <div style="text-align:center;margin:8px 0 16px;">
+          <img id="bone-write-image" alt="골학 번호 그림"
+               style="max-width:100%;max-height:340px;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;" />
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <button type="button" id="bone-write-original-btn" onclick="boneWriteShowOriginal()"
+                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">🖼️ 원본 보기</button>
+        </div>
+
+        <div style="font-size:0.82rem;color:#64748b;margin-bottom:6px;">번호마다 이름을 채운 뒤 한 번에 채점하세요. (Enter로 다음 칸 이동)</div>
+        <div id="bone-write-rows"></div>
+
+        <div id="bone-write-summary" style="margin-top:12px;"></div>
+
+        <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="check-btn" id="bone-write-submit-btn" onclick="boneGradeWrite()">채점하기</button>
+          <button class="btn-ghost" id="bone-write-next-btn" onclick="boneNextEntry()" style="display:none;">다음 이미지 →</button>
         </div>
       </div>
 

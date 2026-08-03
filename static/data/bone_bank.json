@@ -31,32 +31,24 @@
         {
           "num": 1,
           "answers": [
-            "대퇴골",
-            "넙다리뼈",
             "femur"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "슬개골",
-            "무릎뼈",
             "patella"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "경골",
-            "정강뼈",
             "tibia"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "비골",
-            "종아리뼈",
             "fibula"
           ]
         }
@@ -73,7 +65,6 @@
         {
           "num": 1,
           "answers": [
-            "대퇴골두",
             "femoral head",
             "head of femur"
           ]
@@ -81,7 +72,6 @@
         {
           "num": 2,
           "answers": [
-            "대퇴골경",
             "femoral neck",
             "neck of femur"
           ]
@@ -89,7 +79,6 @@
         {
           "num": 3,
           "answers": [
-            "대퇴골두오목",
             "fovea capitis",
             "fovea for ligament of head"
           ]
@@ -97,32 +86,31 @@
         {
           "num": 4,
           "answers": [
-            "대전자",
             "greater trochanter"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "소전자",
             "lesser trochanter"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "전자간능선",
             "intertrochanteric crest"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "대퇴골체",
             "body of femur",
             "shaft of femur"
           ]
         }
+      ],
+      "structure": [
+        "femur"
       ]
     },
     {
@@ -136,81 +124,73 @@
         {
           "num": 1,
           "answers": [
-            "내측과상선",
             "medial supracondylar line"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "외측과상선",
             "lateral supracondylar line"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "내전근결절",
             "adductor tubercle"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "외측상과",
             "lateral epicondyle"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "외측상과",
             "lateral epicondyle"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "내측상과",
             "medial epicondyle"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "외측과",
             "lateral condyle"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "내측과",
             "medial condyle"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "과간와",
             "intercondylar fossa"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "외측과",
             "lateral condyle"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "슬개면",
             "patellar surface",
             "trochlear surface"
           ]
         }
+      ],
+      "structure": [
+        "femur"
       ]
     },
     {
@@ -224,21 +204,18 @@
         {
           "num": 1,
           "answers": [
-            "과간융기",
             "intercondylar eminence"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "후과간구역",
             "posterior intercondylar area"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "비골두",
             "fibula head",
             "head of fibula"
           ]
@@ -246,31 +223,33 @@
         {
           "num": 4,
           "answers": [
-            "외측과",
             "lateral condyle"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "내측과",
             "medial condyle"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "경골조면",
             "tibial tuberosity"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "전과간구역",
             "anterior intercondylar area"
           ]
         }
+      ],
+      "structure": [
+        "tibia and fibula"
+      ],
+      "view": [
+        "superior view"
       ]
     },
     {
@@ -284,62 +263,57 @@
         {
           "num": 1,
           "answers": [
-            "외과관절면",
             "articular surface of lateral malleolus"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "하관절면",
             "inferior articular surface"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "내과관절면",
             "articular surface of medial malleolus"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "비골",
             "fibula"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "외과",
-            "외측복사뼈",
             "lateral malleolus"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "내과",
-            "내측복사뼈",
             "medial malleolus"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "외과와",
-            "외과오목",
             "lateral malleolar fossa"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "경골",
             "tibia"
           ]
         }
+      ],
+      "structure": [
+        "tibia and fibula"
+      ],
+      "view": [
+        "inferior view"
       ]
     },
     {
@@ -353,7 +327,6 @@
         {
           "num": 1,
           "answers": [
-            "대퇴골두",
             "femoral head",
             "head of femur"
           ]
@@ -361,7 +334,6 @@
         {
           "num": 2,
           "answers": [
-            "대퇴골두",
             "femoral head",
             "head of femur"
           ]
@@ -369,14 +341,12 @@
         {
           "num": 3,
           "answers": [
-            "대전자",
             "greater trochanter"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "대퇴골두오목",
             "fovea capitis",
             "fovea"
           ]
@@ -384,28 +354,24 @@
         {
           "num": 5,
           "answers": [
-            "전자와",
             "trochanteric fossa"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "대전자",
             "greater trochanter"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "방형결절",
             "quadrate tubercle"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "대퇴골경",
             "femoral neck",
             "neck of femur"
           ]
@@ -413,36 +379,30 @@
         {
           "num": 9,
           "answers": [
-            "전자간능선",
             "intertrochanteric crest"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "소전자",
             "lesser trochanter"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "전자간선끝",
             "end of intertrochanteric line"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "소전자",
             "lesser trochanter"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "치골근선",
-            "나선선",
             "pectineal line",
             "spiral line"
           ]
@@ -450,11 +410,13 @@
         {
           "num": 14,
           "answers": [
-            "대퇴골체",
             "body of femur",
             "shaft of femur"
           ]
         }
+      ],
+      "structure": [
+        "femur"
       ]
     },
     {
@@ -468,98 +430,84 @@
         {
           "num": 1,
           "answers": [
-            "대퇴골",
             "femur"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "슬개골저",
             "base of patella"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "슬개골",
             "patella"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "내전근결절",
             "adductor tubercle"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "슬개골첨",
             "apex of patella"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "내측상과",
             "medial epicondyle"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "외측상과",
             "lateral epicondyle"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "슬와구",
             "popliteal groove"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "과간와",
             "intercondylar fossa"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "내측과",
             "medial condyle"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "외측과",
             "lateral condyle"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "내측과",
             "medial condyle"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "외측과",
             "lateral condyle"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "비골두",
             "fibula head",
             "head of fibula"
           ]
@@ -567,45 +515,45 @@
         {
           "num": 15,
           "answers": [
-            "내측결절",
             "medial tubercle"
           ]
         },
         {
           "num": 16,
           "answers": [
-            "비골",
             "fibula"
           ]
         },
         {
           "num": 17,
           "answers": [
-            "과간융기",
             "intercondylar eminence"
           ]
         },
         {
           "num": 18,
           "answers": [
-            "외측결절",
             "lateral tubercle"
           ]
         },
         {
           "num": 19,
           "answers": [
-            "경골",
             "tibia"
           ]
         },
         {
           "num": 20,
           "answers": [
-            "경골조면",
             "tibial tuberosity"
           ]
         }
+      ],
+      "structure": [
+        "knee joint"
+      ],
+      "view": [
+        "posterior view"
       ]
     },
     {
@@ -619,73 +567,69 @@
         {
           "num": 1,
           "answers": [
-            "후면",
             "posterior surface"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "후면",
             "posterior surface"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "외측면",
             "lateral surface"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "골간막",
             "interosseous membrane"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "경골",
             "tibia"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "비골",
             "fibula"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "내측면",
             "medial surface"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "내측면",
             "medial surface"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "외측면",
             "lateral surface"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "전연",
             "anterior border"
           ]
         }
+      ],
+      "structure": [
+        "tibia and fibula"
+      ],
+      "view": [
+        "transverse section"
       ]
     },
     {
@@ -699,21 +643,18 @@
         {
           "num": 1,
           "answers": [
-            "전자간선",
             "intertrochanteric line"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "전자간능선",
             "intertrochanteric crest"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "대퇴골두",
             "femoral head",
             "head of femur"
           ]
@@ -721,21 +662,18 @@
         {
           "num": 4,
           "answers": [
-            "대퇴골두오목",
             "fovea capitis"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "둔근조면",
             "gluteal trochanter"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "대퇴골경",
             "femoral neck",
             "neck of femur"
           ]
@@ -743,35 +681,30 @@
         {
           "num": 7,
           "answers": [
-            "대전자",
             "greater trochanter"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "전자와",
             "trochanteric fossa"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "둔근조면",
             "gluteal tuberosity"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "소전자",
             "lesser trochanter"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "대퇴골체",
             "shaft of femur",
             "body of femur"
           ]
@@ -779,108 +712,96 @@
         {
           "num": 12,
           "answers": [
-            "치골근선",
             "pectineal line"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "조선",
             "linea aspera"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "외측과상선",
             "lateral supracondylar line"
           ]
         },
         {
           "num": 15,
           "answers": [
-            "내측과상선",
             "medial supracondylar line"
           ]
         },
         {
           "num": 16,
           "answers": [
-            "슬개면",
             "patellar surface"
           ]
         },
         {
           "num": 17,
           "answers": [
-            "외측상과",
-            "lateral epicondyle"
+            "intercondylar fossa"
           ]
         },
         {
           "num": 18,
           "answers": [
-            "외측상과",
             "lateral epicondyle"
           ]
         },
         {
           "num": 19,
           "answers": [
-            "과간선",
             "intercondylar line"
           ]
         },
         {
           "num": 20,
           "answers": [
-            "슬와면",
             "popliteal surface"
           ]
         },
         {
           "num": 21,
           "answers": [
-            "내전근결절",
             "adductor tubercle"
           ]
         },
         {
           "num": 22,
           "answers": [
-            "외측과",
             "lateral condyle"
           ]
         },
         {
           "num": 23,
           "answers": [
-            "내측상과",
             "medial epicondyle"
           ]
         },
         {
           "num": 24,
           "answers": [
-            "외측상과",
             "lateral epicondyle"
           ]
         },
         {
           "num": 25,
           "answers": [
-            "외측과",
             "lateral condyle"
           ]
         },
         {
           "num": 26,
           "answers": [
-            "내측과",
             "medial condyle"
           ]
         }
+      ],
+      "structure": [
+        "femur"
       ]
     },
     {
@@ -894,98 +815,86 @@
         {
           "num": 1,
           "answers": [
-            "과간결절",
             "intercondylar tubercles"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "과간결절",
             "intercondylar tubercles"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "외측경골고평부",
             "lateral tibial plateau"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "내측경골고평부",
             "medial tibial plateau"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "내측경골고평부",
             "medial tibial plateau"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "외측경골고평부",
             "lateral tibial plateau"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "외측과",
             "lateral condyle"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "내측과",
             "medial condyle"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "내측과",
             "medial condyle"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "외측과",
             "lateral condyle"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "비골두첨",
+            "apex of head",
             "apex of head of fibula"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "과간융기",
             "intercondylar eminence"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "비골두첨",
+            "apex of head",
             "apex of head of fibula"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "거디결절",
             "gerdy tubercle",
             "anterolateral tibial tubercle"
           ]
@@ -993,213 +902,186 @@
         {
           "num": 15,
           "answers": [
-            "후과간구역",
             "posterior intercondylar area"
           ]
         },
         {
           "num": 16,
           "answers": [
-            "비골두",
             "head of fibula"
           ]
         },
         {
           "num": 17,
           "answers": [
-            "비골두",
             "head of fibula"
           ]
         },
         {
           "num": 18,
           "answers": [
-            "경골조면",
             "tibial tuberosity"
           ]
         },
         {
           "num": 19,
           "answers": [
-            "내측능",
             "medial crest"
           ]
         },
         {
           "num": 20,
           "answers": [
-            "전경골혈관구멍",
             "opening for anterior tibial vessels"
           ]
         },
         {
           "num": 21,
           "answers": [
-            "골간막",
             "interosseous membrane"
           ]
         },
         {
           "num": 22,
           "answers": [
-            "가자미근선",
             "soleal line"
           ]
         },
         {
           "num": 23,
           "answers": [
-            "영양공",
             "nutrient foramen"
           ]
         },
         {
           "num": 24,
           "answers": [
-            "골간막",
             "interosseous membrane"
           ]
         },
         {
           "num": 25,
           "answers": [
-            "골간연",
             "interosseous border"
           ]
         },
         {
           "num": 26,
           "answers": [
-            "내측면",
             "medial surface"
           ]
         },
         {
           "num": 27,
           "answers": [
-            "후면",
             "posterior surface"
           ]
         },
         {
           "num": 28,
           "answers": [
-            "전연",
             "anterior border"
           ]
         },
         {
           "num": 29,
           "answers": [
-            "내측연",
             "medial border"
           ]
         },
         {
           "num": 30,
           "answers": [
-            "골간연",
             "interosseous border"
           ]
         },
         {
           "num": 31,
           "answers": [
-            "전연",
             "anterior border"
           ]
         },
         {
           "num": 32,
           "answers": [
-            "비골체",
             "shaft of fibula"
           ]
         },
         {
           "num": 33,
           "answers": [
-            "비골체",
             "shaft of fibula"
           ]
         },
         {
           "num": 34,
           "answers": [
-            "외측면",
             "lateral surface"
           ]
         },
         {
           "num": 35,
           "answers": [
-            "경골체",
             "shaft of tibia"
           ]
         },
         {
           "num": 36,
           "answers": [
-            "경골체",
             "shaft of tibia"
           ]
         },
         {
           "num": 37,
           "answers": [
-            "후연",
             "posterior border"
           ]
         },
         {
           "num": 38,
           "answers": [
-            "비골절흔",
             "fibular notch"
           ]
         },
         {
           "num": 39,
           "answers": [
-            "비골절흔",
             "fibular notch"
           ]
         },
         {
           "num": 40,
           "answers": [
-            "후경골근건구",
             "groove for tendon of tibialis posterior"
           ]
         },
         {
           "num": 41,
           "answers": [
-            "외과",
             "lateral malleolus"
           ]
         },
         {
           "num": 42,
           "answers": [
-            "내과",
             "medial malleolus"
           ]
         },
         {
           "num": 43,
           "answers": [
-            "내과",
             "medial malleolus"
           ]
         },
         {
           "num": 44,
           "answers": [
-            "외과",
             "lateral malleolus"
           ]
         }
+      ],
+      "structure": [
+        "tibia and fibula"
       ]
     },
     {
@@ -1213,52 +1095,48 @@
         {
           "num": 1,
           "answers": [
-            "저",
             "base"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "외측관절면",
             "facet for lateral condyle of femur"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "내측관절면",
             "facet for medial condyle of femur"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "내측연",
             "medial border"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "외측연",
             "lateral border"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "첨",
             "apex"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "슬개인대부착면",
             "surface for patellar ligament"
           ]
         }
+      ],
+      "structure": [
+        "patella"
       ]
     },
     {
@@ -1272,60 +1150,58 @@
         {
           "num": 1,
           "answers": [
-            "주상골",
             "navicular"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "외과관절면",
             "lateral malleolar facet"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "중간쐐기골",
             "intermediate cuneiform"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "외측쐐기골",
             "lateral cuneiform"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "비골활차",
             "fibular trochlea"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "종골결절",
             "calcaneal tuberosity"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "입방골",
             "cuboid"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "제5중족골조면",
             "tuberosity of metatarsal v",
             "tuberosity of the fifth metatarsal"
           ]
         }
+      ],
+      "structure": [
+        "foot bones"
+      ],
+      "view": [
+        "lateral view"
       ]
     },
     {
@@ -1339,37 +1215,30 @@
         {
           "num": 1,
           "answers": [
-            "비골",
             "fibula"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "경골",
             "tibia"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "외과",
-            "외측복사뼈",
             "lateral malleolus"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "내과",
-            "내측복사뼈",
             "medial malleolus"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "거골하관절",
             "distal subtalar joint",
             "talocalcaneal joint"
           ]
@@ -1377,7 +1246,6 @@
         {
           "num": 6,
           "answers": [
-            "거골하관절",
             "talocrural joint",
             "ankle joint"
           ]
@@ -1385,87 +1253,82 @@
         {
           "num": 7,
           "answers": [
-            "종골",
             "calcaneus"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "거골두",
             "head of talus"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "입방골",
             "cuboid"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "주상골",
             "navicular"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "거주관절",
             "talonavicular joint"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "족근중족관절",
             "tarsometatarsal joints"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "종입방관절",
             "calcaneocuboid joint"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "가로발목뼈관절",
             "transverse tarsal joint"
           ]
         },
         {
           "num": 15,
           "answers": [
-            "중족골",
             "metatarsals"
           ]
         },
         {
           "num": 16,
           "answers": [
-            "지골",
             "phalanges"
           ]
         },
         {
           "num": 17,
           "answers": [
-            "중족지관절",
             "metatarsophalangeal joints"
           ]
         },
         {
           "num": 18,
           "answers": [
-            "지절간관절",
             "interphalangeal joints"
           ]
         }
+      ],
+      "structure": [
+        "foot bones"
+      ],
+      "view": [
+        "anterior view",
+        "dorsal view"
       ]
     },
     {
@@ -1479,28 +1342,24 @@
         {
           "num": 1,
           "answers": [
-            "원위지골",
             "distal phalanx"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "중위지골",
             "middle phalanx"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "근위지골",
             "proximal phalanx"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "중족골",
             "metatarsal bones",
             "metatarsal"
           ]
@@ -1508,7 +1367,6 @@
         {
           "num": 5,
           "answers": [
-            "내측(제1)쐐기골",
             "medial cuneiform",
             "1st cuneiform"
           ]
@@ -1516,7 +1374,6 @@
         {
           "num": 6,
           "answers": [
-            "중간(제2)쐐기골",
             "intermediate cuneiform",
             "2nd cuneiform"
           ]
@@ -1524,7 +1381,6 @@
         {
           "num": 7,
           "answers": [
-            "외측(제3)쐐기골",
             "lateral cuneiform",
             "3rd cuneiform"
           ]
@@ -1532,7 +1388,6 @@
         {
           "num": 8,
           "answers": [
-            "입방골",
             "cuboid bone",
             "cuboid"
           ]
@@ -1540,7 +1395,6 @@
         {
           "num": 9,
           "answers": [
-            "주상골",
             "navicular bone",
             "navicular"
           ]
@@ -1548,38 +1402,39 @@
         {
           "num": 10,
           "answers": [
-            "거골두",
             "head of talus"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "거골",
             "talus"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "거골경",
             "neck of talus"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "거골체",
             "body of talus"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "종골",
             "calcaneus"
           ]
         }
+      ],
+      "structure": [
+        "foot bones"
+      ],
+      "view": [
+        "superior view"
       ]
     },
     {
@@ -1593,7 +1448,6 @@
         {
           "num": 1,
           "answers": [
-            "거골두",
             "head of talus",
             "head of the talus"
           ]
@@ -1601,28 +1455,24 @@
         {
           "num": 2,
           "answers": [
-            "주상골",
             "navicular"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "재거돌기",
             "sustentaculum tali"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "내측쐐기골",
             "medial cuneiform"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "제1중족골",
             "1st metatarsal",
             "first metatarsal"
           ]
@@ -1630,7 +1480,6 @@
         {
           "num": 6,
           "answers": [
-            "거골후돌기",
             "posterior talar process",
             "posterior process of talus"
           ]
@@ -1638,38 +1487,39 @@
         {
           "num": 7,
           "answers": [
-            "엄지근위지골",
             "proximal phalanx of hallux"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "입방골조면",
             "cuboid tuberosity"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "엄지원위지골",
             "distal phalanx of hallux"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "종골결절내측돌기",
             "medial process of calcaneal tuberosity"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "종자골",
             "sesamoid bones"
           ]
         }
+      ],
+      "structure": [
+        "foot bones"
+      ],
+      "view": [
+        "medial view"
       ]
     },
     {
@@ -1683,42 +1533,36 @@
         {
           "num": 1,
           "answers": [
-            "횡돌기",
             "transverse process"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "천골갑",
             "sacral promontory"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "대좌골절흔",
             "greater sciatic notch"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "장골능",
             "iliac crest"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "장골능결절",
             "tubercle of iliac crest"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "장골익",
             "wing of ilium",
             "ala of ilium"
           ]
@@ -1726,122 +1570,112 @@
         {
           "num": 7,
           "answers": [
-            "전상장골극",
             "anterior superior iliac spine"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "전하장골극",
             "anterior inferior iliac spine"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "장치융기",
             "iliopubic eminence"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "좌골극",
             "ischial spine"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "치골근선",
             "pectineal line"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "미골",
             "coccyx"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "상치골지",
             "superior pubic ramus"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "관절연골",
             "articular cartilage"
           ]
         },
         {
           "num": 15,
           "answers": [
-            "치골결절",
             "pubic tubercle"
           ]
         },
         {
           "num": 16,
           "answers": [
-            "대퇴골대전자",
             "greater trochanter of femur"
           ]
         },
         {
           "num": 17,
           "answers": [
-            "소좌골절흔",
             "lesser sciatic notch"
           ]
         },
         {
           "num": 18,
           "answers": [
-            "폐쇄공",
             "obturator foramen"
           ]
         },
         {
           "num": 19,
           "answers": [
-            "치골궁",
             "pubic arch"
           ]
         },
         {
           "num": 20,
           "answers": [
-            "하치골지",
             "inferior pubic ramus"
           ]
         },
         {
           "num": 21,
           "answers": [
-            "좌골결절",
             "ischial tuberosity"
           ]
         },
         {
           "num": 22,
           "answers": [
-            "치골결합",
             "pubic symphysis"
           ]
         },
         {
           "num": 23,
           "answers": [
-            "대퇴골소전자",
             "lesser trochanter of femur"
           ]
         }
+      ],
+      "structure": [
+        "hip bone",
+        "pelvic bone"
+      ],
+      "view": [
+        "anterior view"
       ]
     },
     {
@@ -1855,157 +1689,142 @@
         {
           "num": 1,
           "answers": [
-            "전둔선",
             "anterior gluteal line"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "후둔선",
             "posterior gluteal line"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "장골익",
             "ala"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "장골",
             "ilium"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "장골능",
             "iliac crest"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "후상장골극",
             "posterior superior iliac spine"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "전상장골극",
             "anterior superior iliac spine"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "후하장골극",
             "posterior inferior iliac spine"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "하둔선",
             "inferior gluteal line"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "대좌골절흔",
             "greater sciatic notch"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "좌골체",
             "ischial body"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "전하장골극",
             "anterior inferior iliac spine"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "좌골극",
             "ischial spine"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "관골구",
             "acetabulum"
           ]
         },
         {
           "num": 15,
           "answers": [
-            "소좌골절흔",
             "lesser sciatic notch"
           ]
         },
         {
           "num": 16,
           "answers": [
-            "치골체",
             "pubic body"
           ]
         },
         {
           "num": 17,
           "answers": [
-            "좌골결절",
             "ischial tuberosity"
           ]
         },
         {
           "num": 18,
           "answers": [
-            "좌골",
             "ischium"
           ]
         },
         {
           "num": 19,
           "answers": [
-            "치골하지",
             "inferior ramus of pubis"
           ]
         },
         {
           "num": 20,
           "answers": [
-            "치골",
             "pubis"
           ]
         },
         {
           "num": 21,
           "answers": [
-            "좌골지",
             "ischial ramus"
           ]
         },
         {
           "num": 22,
           "answers": [
-            "폐쇄공",
             "obturator foramen"
           ]
         }
+      ],
+      "structure": [
+        "hip bone",
+        "pelvic bone"
+      ],
+      "view": [
+        "lateral view"
       ]
     },
     {
@@ -2019,199 +1838,175 @@
         {
           "num": 1,
           "answers": [
-            "장골와",
             "iliac fossa"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "전둔선",
             "anterior gluteal line"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "장골능",
             "iliac crest"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "후둔선",
             "posterior gluteal line"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "하둔선",
             "inferior gluteal line"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "장골조면",
             "iliac tuberosity"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "전상장골극",
             "anterior superior iliac spine"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "후상장골극",
             "posterior superior iliac spine"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "후상장골극",
             "posterior superior iliac spine"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "궁상선",
             "arcuate line"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "후하장골극",
             "posterior inferior iliac spine"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "상치골지",
             "superior pubic ramus"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "후하장골극",
             "posterior inferior iliac spine"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "대좌골절흔",
             "greater sciatic notch"
           ]
         },
         {
           "num": 15,
           "answers": [
-            "전하장골극",
             "anterior inferior iliac spine"
           ]
         },
         {
           "num": 16,
           "answers": [
-            "이개면",
             "auricular surface"
           ]
         },
         {
           "num": 17,
           "answers": [
-            "대좌골절흔",
             "greater sciatic notch"
           ]
         },
         {
           "num": 18,
           "answers": [
-            "좌골극",
             "ischial spine"
           ]
         },
         {
           "num": 19,
           "answers": [
-            "치골근선",
             "pectineal line"
           ]
         },
         {
           "num": 20,
           "answers": [
-            "치골결절",
             "pubic tubercle"
           ]
         },
         {
           "num": 21,
           "answers": [
-            "좌골극",
             "ischial spine"
           ]
         },
         {
           "num": 22,
           "answers": [
-            "소좌골절흔",
             "lesser sciatic notch"
           ]
         },
         {
           "num": 23,
           "answers": [
-            "폐쇄공",
             "obturator foramen"
           ]
         },
         {
           "num": 24,
           "answers": [
-            "좌골결절",
             "ischial tuberosity"
           ]
         },
         {
           "num": 25,
           "answers": [
-            "치골결합면",
             "symphysial surface"
           ]
         },
         {
           "num": 26,
           "answers": [
-            "좌골결절",
             "ischial tuberosity"
           ]
         },
         {
           "num": 27,
           "answers": [
-            "하치골지",
             "inferior pubic ramus"
           ]
         },
         {
           "num": 28,
           "answers": [
-            "좌골지",
             "ramus of ischium"
           ]
         }
+      ],
+      "structure": [
+        "hip bone",
+        "pelvic bone"
       ]
     },
     {
@@ -2225,28 +2020,24 @@
         {
           "num": 1,
           "answers": [
-            "장골능",
             "iliac crest"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "장골와",
             "iliac fossa"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "후상장골극",
             "posterior superior iliac spine"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "전상장골극",
             "anterior superior iliac spine",
             "iliac spine"
           ]
@@ -2254,14 +2045,12 @@
         {
           "num": 5,
           "answers": [
-            "이개면",
             "auricular surface"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "전하장골극",
             "anterior inferior iliac spine",
             "inferior iliac spine"
           ]
@@ -2269,101 +2058,94 @@
         {
           "num": 7,
           "answers": [
-            "후하장골극",
             "posterior inferior iliac spine"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "궁상선",
             "arcuate line"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "대좌골절흔",
             "greater sciatic notch"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "치골근선",
             "pectineal line"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "좌골극",
             "ischial spine"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "치골결절",
             "pubic tubercle"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "상치골지",
             "superior pubic ramus"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "좌골체",
             "body of ischium"
           ]
         },
         {
           "num": 15,
           "answers": [
-            "소좌골절흔",
             "lesser sciatic notch"
           ]
         },
         {
           "num": 16,
           "answers": [
-            "치골결합면",
             "symphysial surface"
           ]
         },
         {
           "num": 17,
           "answers": [
-            "폐쇄공",
             "obturator foramen"
           ]
         },
         {
           "num": 18,
           "answers": [
-            "하치골지",
             "inferior pubic ramus"
           ]
         },
         {
           "num": 19,
           "answers": [
-            "좌골지",
             "ramus of ischium"
           ]
         },
         {
           "num": 20,
           "answers": [
-            "좌골결절",
             "ischial tuberosity"
           ]
         }
+      ],
+      "structure": [
+        "hip bone",
+        "pelvic bone"
+      ],
+      "view": [
+        "medial view"
       ]
     },
     {
@@ -2377,116 +2159,108 @@
         {
           "num": 1,
           "answers": [
-            "요골",
             "radius"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "척골",
             "ulna"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "요골경상돌기",
             "radial styloid process"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "척골경상돌기",
             "ulnar styloid process"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "주상골",
             "scaphoid"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "월상골",
             "lunate"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "대능형골",
             "trapezium"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "주상골결절",
             "tubercle of scaphoid"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "두상골",
             "pisiform"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "삼각골",
             "triquetrum"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "대능형골결절",
             "tubercle of trapezium"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "유구골",
             "hamate"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "유구골갈고리",
             "hook of hamate"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "소능형골",
             "trapezoid"
           ]
         },
         {
           "num": 15,
           "answers": [
-            "유두골",
             "capitate"
           ]
         },
         {
           "num": 16,
           "answers": [
-            "중수골",
             "metacarpal bones",
             "metacarpals"
           ]
         }
+      ],
+      "structure": [
+        "wrist bones",
+        "carpal bones"
+      ],
+      "view": [
+        "anterior view",
+        "palmar view"
       ]
     },
     {
@@ -2500,102 +2274,96 @@
         {
           "num": 1,
           "answers": [
-            "요골",
             "radius"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "척골",
             "ulna"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "척골경상돌기",
             "ulnar styloid process"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "요골배측결절",
             "dorsal tubercle of radius"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "월상골",
             "lunate"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "주상골",
             "scaphoid"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "두상골",
             "pisiform"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "요골경상돌기",
             "radial styloid process"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "삼각골",
             "triquetrum"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "대능형골",
             "trapezium"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "유구골",
             "hamate"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "소능형골",
             "trapezoid"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "유두골",
             "capitate"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "중수골",
             "metacarpal bones",
             "metacarpals"
           ]
         }
+      ],
+      "structure": [
+        "wrist bones",
+        "carpal bones"
+      ],
+      "view": [
+        "posterior view",
+        "dorsal view"
       ]
     },
     {
@@ -2609,50 +2377,42 @@
         {
           "num": 1,
           "answers": [
-            "원위지골",
             "distal phalanges"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "중위지골",
             "middle phalanges"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "근위지골",
             "proximal phalanges"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "우측",
             "right"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "손바닥쪽",
-            "장측",
             "palmar"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "종자골",
             "sesamoid bones"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "중수골",
             "metacarpal bones",
             "metacarpals"
           ]
@@ -2660,42 +2420,36 @@
         {
           "num": 8,
           "answers": [
-            "소능형골",
             "trapezoid"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "유구골갈고리",
             "hook of hamate"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "유구골",
             "hamate"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "수근골",
             "carpal bones"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "유두골",
             "capitate"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "대능형골결절",
             "tubercle of trapezium",
             "tubercle"
           ]
@@ -2703,14 +2457,12 @@
         {
           "num": 14,
           "answers": [
-            "두상골",
             "pisiform"
           ]
         },
         {
           "num": 15,
           "answers": [
-            "주상골결절",
             "tubercle of scaphoid",
             "tubercle"
           ]
@@ -2718,38 +2470,36 @@
         {
           "num": 16,
           "answers": [
-            "대능형골",
             "trapezium"
           ]
         },
         {
           "num": 17,
           "answers": [
-            "수근골",
             "carpal bones"
           ]
         },
         {
           "num": 18,
           "answers": [
-            "삼각골",
             "triquetrum"
           ]
         },
         {
           "num": 19,
           "answers": [
-            "월상골",
             "lunate"
           ]
         },
         {
           "num": 20,
           "answers": [
-            "주상골",
             "scaphoid"
           ]
         }
+      ],
+      "structure": [
+        "hand bones"
       ]
     },
     {
@@ -2763,7 +2513,6 @@
         {
           "num": 1,
           "answers": [
-            "상면",
             "superior",
             "superior surface"
           ]
@@ -2771,38 +2520,39 @@
         {
           "num": 2,
           "answers": [
-            "후면",
             "posterior"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "골간",
             "shaft"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "흉골단",
             "sternal end"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "견봉단",
             "acromial end"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "전면",
             "anterior"
           ]
         }
+      ],
+      "structure": [
+        "clavicle"
+      ],
+      "view": [
+        "superior view"
       ]
     },
     {
@@ -2816,14 +2566,12 @@
         {
           "num": 1,
           "answers": [
-            "견봉관절면",
             "acromial facet"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "하면",
             "inferior",
             "inferior surface"
           ]
@@ -2831,52 +2579,51 @@
         {
           "num": 3,
           "answers": [
-            "늑쇄인대압흔",
             "impression for costoclavicular ligament"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "전면",
             "anterior"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "후면",
             "posterior"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "승모근선",
             "trapezoid line"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "흉골관절면",
             "sternal facet"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "원추결절",
             "conoid tubercle"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "쇄골하근구",
             "subclavian groove"
           ]
         }
+      ],
+      "structure": [
+        "clavicle"
+      ],
+      "view": [
+        "inferior view"
       ]
     },
     {
@@ -2890,35 +2637,30 @@
         {
           "num": 1,
           "answers": [
-            "상각",
             "superior angle"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "견봉",
             "acromion"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "관절와상결절",
             "supraglenoid tubercle"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "오구돌기",
             "coracoid process"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "극돌기",
             "spinous process",
             "spine of scapula"
           ]
@@ -2926,31 +2668,33 @@
         {
           "num": 6,
           "answers": [
-            "관절와",
             "glenoid cavity"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "관절와하결절",
             "infraglenoid tubercle"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "외측연",
             "lateral border"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "하각",
             "inferior angle"
           ]
         }
+      ],
+      "structure": [
+        "scapula"
+      ],
+      "view": [
+        "lateral view"
       ]
     },
     {
@@ -2964,42 +2708,36 @@
         {
           "num": 1,
           "answers": [
-            "견봉",
             "acromion"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "오구돌기",
             "coracoid process"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "쇄골",
             "clavicle"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "상각",
             "superior angle"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "상연",
             "superior border"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "해부목",
             "anatomic neck",
             "anatomical neck"
           ]
@@ -3007,63 +2745,54 @@
         {
           "num": 7,
           "answers": [
-            "견갑절흔",
             "suprascapular notch"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "경부",
             "neck"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "대결절",
             "greater tubercle"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "소결절",
             "lesser tubercle"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "내측연",
             "medial border"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "외과목",
             "surgical neck"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "관절와",
             "glenoid"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "견갑하와",
             "subscapular fossa"
           ]
         },
         {
           "num": 15,
           "answers": [
-            "결절간구",
             "intertubercular sulcus",
             "bicipital groove"
           ]
@@ -3071,59 +2800,57 @@
         {
           "num": 16,
           "answers": [
-            "대결절능",
             "crest of greater tubercle"
           ]
         },
         {
           "num": 17,
           "answers": [
-            "상완골두",
             "head of humerus"
           ]
         },
         {
           "num": 18,
           "answers": [
-            "외측연",
             "lateral border"
           ]
         },
         {
           "num": 19,
           "answers": [
-            "소결절능",
             "crest of lesser tubercle"
           ]
         },
         {
           "num": 20,
           "answers": [
-            "하각",
             "inferior angle"
           ]
         },
         {
           "num": 21,
           "answers": [
-            "견갑골",
             "scapula"
           ]
         },
         {
           "num": 22,
           "answers": [
-            "삼각근조면",
             "deltoid tuberosity"
           ]
         },
         {
           "num": 23,
           "answers": [
-            "상완골",
             "humerus"
           ]
         }
+      ],
+      "structure": [
+        "shoulder girdle"
+      ],
+      "view": [
+        "anterior view"
       ]
     },
     {
@@ -3137,70 +2864,60 @@
         {
           "num": 1,
           "answers": [
-            "쇄골",
             "clavicle"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "견갑절흔",
             "suprascapular notch"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "상연",
             "superior border"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "오구돌기",
             "coracoid process"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "견봉",
             "acromion"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "상각",
             "superior angle"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "견봉각",
             "acromial angle"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "극상와",
             "supraspinous fossa"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "극관절와절흔",
             "spinoglenoid notch"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "극",
             "spine",
             "spine of scapula"
           ]
@@ -3208,35 +2925,30 @@
         {
           "num": 11,
           "answers": [
-            "대결절",
             "greater tubercle"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "경부",
             "neck"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "상완골두",
             "head of humerus"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "극하와",
             "infraspinous fossa"
           ]
         },
         {
           "num": 15,
           "answers": [
-            "해부목",
             "anatomic neck",
             "anatomical neck"
           ]
@@ -3244,59 +2956,57 @@
         {
           "num": 16,
           "answers": [
-            "내측연",
             "medial border"
           ]
         },
         {
           "num": 17,
           "answers": [
-            "외과목",
             "surgical neck"
           ]
         },
         {
           "num": 18,
           "answers": [
-            "외측연",
             "lateral border"
           ]
         },
         {
           "num": 19,
           "answers": [
-            "하각",
             "inferior angle"
           ]
         },
         {
           "num": 20,
           "answers": [
-            "견갑골",
             "scapula"
           ]
         },
         {
           "num": 21,
           "answers": [
-            "삼각근조면",
             "deltoid tuberosity"
           ]
         },
         {
           "num": 22,
           "answers": [
-            "상완골",
             "humerus"
           ]
         },
         {
           "num": 23,
           "answers": [
-            "요골신경구",
             "radial groove"
           ]
         }
+      ],
+      "structure": [
+        "shoulder girdle"
+      ],
+      "view": [
+        "posterior view"
       ]
     },
     {
@@ -3310,14 +3020,12 @@
         {
           "num": 1,
           "answers": [
-            "대결절",
             "greater tubercle"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "전면",
             "anterior",
             "anterior view"
           ]
@@ -3325,7 +3033,6 @@
         {
           "num": 3,
           "answers": [
-            "극상근면",
             "superior facet on greater tubercle",
             "supraspinatus facet"
           ]
@@ -3333,7 +3040,6 @@
         {
           "num": 4,
           "answers": [
-            "결절간구",
             "intertubercular sulcus",
             "bicipital groove"
           ]
@@ -3341,7 +3047,6 @@
         {
           "num": 5,
           "answers": [
-            "소결절",
             "lesser tubercle",
             "subscapularis facet"
           ]
@@ -3349,21 +3054,18 @@
         {
           "num": 6,
           "answers": [
-            "상완골두",
             "head"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "해부목",
             "anatomical neck"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "결절간구",
             "intertubercular sulcus",
             "bicipital groove"
           ]
@@ -3371,10 +3073,12 @@
         {
           "num": 9,
           "answers": [
-            "외과목",
             "surgical neck"
           ]
         }
+      ],
+      "structure": [
+        "humerus"
       ]
     },
     {
@@ -3388,14 +3092,12 @@
         {
           "num": 1,
           "answers": [
-            "대결절",
             "greater tubercle"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "극상근면",
             "superior facet",
             "supraspinatus facet"
           ]
@@ -3403,14 +3105,12 @@
         {
           "num": 3,
           "answers": [
-            "해부목",
             "anatomical neck"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "극하근면",
             "middle facet",
             "infraspinatus facet"
           ]
@@ -3418,18 +3118,22 @@
         {
           "num": 5,
           "answers": [
-            "외과목",
             "surgical neck"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "소원근면",
             "inferior facet",
             "teres minor facet"
           ]
         }
+      ],
+      "structure": [
+        "humerus"
+      ],
+      "view": [
+        "posterior view"
       ]
     },
     {
@@ -3443,101 +3147,94 @@
         {
           "num": 1,
           "answers": [
-            "내측과상능선",
             "medial supracondylar ridge"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "외측과상능선",
             "lateral supracondylar ridge"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "구상와",
             "coronoid fossa"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "내측상과",
             "medial epicondyle"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "요골와",
             "radial fossa"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "외측상과",
             "lateral epicondyle"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "활차",
             "trochlea"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "구상돌기",
             "coronoid process"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "소두",
             "capitellum"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "척골조면",
             "ulnar tuberosity"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "요골두",
             "radial head"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "요골경",
             "radial neck"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "요골조면",
             "radial tuberosity"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "척골",
             "ulna"
           ]
         }
+      ],
+      "structure": [
+        "elbow",
+        "elbow joint"
+      ],
+      "view": [
+        "anterior view"
       ]
     },
     {
@@ -3551,80 +3248,76 @@
         {
           "num": 1,
           "answers": [
-            "외측과상능선",
             "lateral supracondylar ridge"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "상완골",
             "humerus"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "주두와",
             "olecranon fossa"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "내측과상능선",
             "medial supracondylar ridge"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "주두",
             "olecranon"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "외측상과",
             "lateral epicondyle"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "내측상과",
             "medial epicondyle"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "요골두",
             "radial head"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "요골경",
             "radial neck"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "척골",
             "ulna"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "요골",
             "radius"
           ]
         }
+      ],
+      "structure": [
+        "elbow",
+        "elbow joint"
+      ],
+      "view": [
+        "posterior view"
       ]
     },
     {
@@ -3638,105 +3331,90 @@
         {
           "num": 1,
           "answers": [
-            "전외측면",
             "anterolateral surface"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "전내측면",
             "anteromedial surface"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "내측연",
             "medial border"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "외측연",
             "lateral border"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "외측과상능선",
             "lateral supracondylar ridge"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "내측과상능선",
             "medial supracondylar ridge"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "외측과상능선",
             "lateral supracondylar ridge"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "요골와",
             "radial fossa"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "구상와",
             "coronoid fossa"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "외측상과",
             "lateral epicondyle"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "외측상과",
             "lateral epicondyle"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "내측상과",
             "medial epicondyle"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "소두",
             "capitellum"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "활차",
             "trochlea"
           ]
         },
         {
           "num": 15,
           "answers": [
-            "척골신경구",
             "groove for ulnar nerve",
             "ulnar groove"
           ]
@@ -3744,24 +3422,24 @@
         {
           "num": 16,
           "answers": [
-            "주두와",
             "olecranon fossa"
           ]
         },
         {
           "num": 17,
           "answers": [
-            "활차",
             "trochlea"
           ]
         },
         {
           "num": 18,
           "answers": [
-            "상완골과",
             "condyle of humerus"
           ]
         }
+      ],
+      "structure": [
+        "humerus"
       ]
     },
     {
@@ -3775,119 +3453,102 @@
         {
           "num": 1,
           "answers": [
-            "해부목",
             "anatomical neck"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "상완골두",
             "humeral head"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "해부목",
             "anatomical neck"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "대결절",
             "greater tuberosity"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "소결절",
             "lesser tuberosity"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "대결절",
             "greater tuberosity"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "결절간구",
             "intertubercular groove"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "외과목",
             "surgical neck"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "외측상과",
             "lateral epicondyle"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "구상와",
             "coronoid fossa"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "주두와",
             "olecranon fossa"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "외측상과",
             "lateral epicondyle"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "척골신경구",
             "ulnar nerve groove"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "내측상과",
             "medial epicondyle"
           ]
         },
         {
           "num": 15,
           "answers": [
-            "상완골소두",
             "humeral capitulum"
           ]
         },
         {
           "num": 16,
           "answers": [
-            "활차",
             "humeral trochlea"
           ]
         },
         {
           "num": 17,
           "answers": [
-            "전방",
             "anterior aspect",
             "anterior view"
           ]
@@ -3895,11 +3556,13 @@
         {
           "num": 18,
           "answers": [
-            "후방",
             "posterior aspect",
             "posterior view"
           ]
         }
+      ],
+      "structure": [
+        "humerus"
       ]
     },
     {
@@ -3913,117 +3576,102 @@
         {
           "num": 1,
           "answers": [
-            "주두",
-            "올레크라논",
             "olecranon"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "요골오목",
-            "와상돌기",
             "fovea"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "활차절흔",
             "trochlear notch"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "요골두",
             "head"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "요골절흔",
             "radial notch"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "요골경",
             "neck"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "이두박근조면",
             "bicipital tuberosity"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "구상돌기",
             "coronoid process"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "요골의 골간연",
             "interosseous crest of radius"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "척골의 골간연",
             "interosseous crest of ulna"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "요골경상돌기",
             "styloid process of radius"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "척골경상돌기",
             "styloid process of ulna"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "요골",
             "radius"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "척골",
             "ulna"
           ]
         },
         {
           "num": 15,
           "answers": [
-            "좌측",
             "left"
           ]
         },
         {
           "num": 16,
           "answers": [
-            "전방",
             "anterior"
           ]
         }
+      ],
+      "structure": [
+        "radius and ulna"
       ]
     },
     {
@@ -4037,81 +3685,72 @@
         {
           "num": 1,
           "answers": [
-            "주두",
-            "올레크라논",
             "olecranon"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "관절둘레",
             "articular circumference"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "요골경",
             "neck"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "이두박근조면",
             "bicipital tuberosity"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "요골의 골간연",
             "interosseous crest of radius"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "척골경상돌기",
             "styloid process of ulna"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "요골경상돌기",
             "styloid process of radius"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "척골",
             "ulna"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "요골",
             "radius"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "좌측",
             "left"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "후방",
             "posterior"
           ]
         }
+      ],
+      "structure": [
+        "radius and ulna"
       ]
     },
     {
@@ -4125,166 +3764,1273 @@
         {
           "num": 1,
           "answers": [
-            "주두",
-            "올레크라논",
             "olecranon"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "활차절흔",
             "trochlear notch"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "주두",
-            "올레크라논",
             "olecranon"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "척골의 요골절흔",
             "radial notch of ulna"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "요골두",
             "head of radius"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "요골두",
             "head of radius"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "구상돌기",
             "coronoid process"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "요골경",
             "neck of radius"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "요골경",
             "neck of radius"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "척골조면",
             "ulnar tuberosity"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "요골조면",
             "radial tuberosity"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "척골",
             "ulna"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "요골",
             "radius"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "골간연",
             "interosseous borders"
           ]
         },
         {
           "num": 15,
           "answers": [
-            "골간막",
             "interosseous membrane"
           ]
         },
         {
           "num": 16,
           "answers": [
-            "요골의 척골절흔",
             "ulnar notch of radius"
           ]
         },
         {
           "num": 17,
           "answers": [
-            "척골두",
             "head of ulna"
           ]
         },
         {
           "num": 18,
           "answers": [
-            "경상돌기",
             "styloid process"
           ]
         },
         {
           "num": 19,
           "answers": [
-            "경상돌기",
             "styloid process"
           ]
         },
         {
           "num": 20,
           "answers": [
-            "관절면",
             "articular facets"
           ]
         },
         {
           "num": 21,
           "answers": [
-            "경상돌기",
             "styloid process"
           ]
         },
         {
           "num": 22,
           "answers": [
-            "전방",
             "anterior"
           ]
         },
         {
           "num": 23,
           "answers": [
-            "후방",
             "posterior"
           ]
         }
+      ],
+      "structure": [
+        "radius and ulna"
+      ]
+    },
+    {
+      "id": "atlas_superior",
+      "title": "환추 (Atlas, C1) 상면",
+      "category": "vertebrae_thorax",
+      "subcategory": "vertebral_column",
+      "image": "/static/images/bones/atlas_superior_numbered.svg",
+      "original": "/static/images/bones/atlas-superior.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "anterior tubercle"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "anterior arch"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "articular facet for dens"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "lateral mass"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "transverse process"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "tubercle for transverse ligament of atlas"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "transverse foramen"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "vertebral foramen"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "superior articular surface of lateral mass for occipital condyle"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "posterior arch"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "groove for vertebral artery"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "posterior tubercle"
+          ]
+        }
+      ],
+      "structure": [
+        "atlas",
+        "C1"
+      ],
+      "view": [
+        "superior view"
+      ]
+    },
+    {
+      "id": "atlas_inferior",
+      "title": "환추 (Atlas, C1) 하면",
+      "category": "vertebrae_thorax",
+      "subcategory": "vertebral_column",
+      "image": "/static/images/bones/atlas_inferior_numbered.svg",
+      "original": "/static/images/bones/atlas-inferior.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "posterior tubercle"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "posterior arch"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "vertebral foramen"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "transverse process"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "transverse foramen"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "articular facet for dens"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "anterior arch"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "inferior articular surface of lateral mass for axis"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "anterior tubercle"
+          ]
+        }
+      ],
+      "structure": [
+        "atlas",
+        "C1"
+      ],
+      "view": [
+        "inferior view"
+      ]
+    },
+    {
+      "id": "axis_anterior",
+      "title": "축추 (Axis, C2) 전면",
+      "category": "vertebrae_thorax",
+      "subcategory": "vertebral_column",
+      "image": "/static/images/bones/axis_anterior_numbered.svg",
+      "original": "/static/images/bones/axis-anterior.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "anterior articular facet"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "dens"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "pedicle"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "superior articular facet for atlas"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "interarticular part"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "inferior articular facet for c3"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "transverse process"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "body"
+          ]
+        }
+      ],
+      "structure": [
+        "axis",
+        "C2"
+      ],
+      "view": [
+        "anterior view"
+      ]
+    },
+    {
+      "id": "axis_posterior",
+      "title": "축추 (Axis, C2) 후면",
+      "category": "vertebrae_thorax",
+      "subcategory": "vertebral_column",
+      "image": "/static/images/bones/axis_posterior_numbered.svg",
+      "original": "/static/images/bones/axis-posterior.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "dens"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "posterior articular facet"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "superior articular facet for atlas"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "transverse process"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "interarticular part"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "spinous process"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "inferior articular process"
+          ]
+        }
+      ],
+      "structure": [
+        "axis",
+        "C2"
+      ],
+      "view": [
+        "posterior view"
+      ]
+    },
+    {
+      "id": "axis_superior",
+      "title": "축추 (Axis, C2) 상면",
+      "category": "vertebrae_thorax",
+      "subcategory": "vertebral_column",
+      "image": "/static/images/bones/axis_superior_numbered.svg",
+      "original": "/static/images/bones/axis-superior.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "anterior arch"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "odontoid process",
+            "dens"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "superior articular facet"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "transverse foramen"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "body"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "transverse process"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "vertebral foramen"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "inferior articular facet"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "pedicle"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "lamina"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "vertebral arch"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "spinous process"
+          ]
+        }
+      ],
+      "structure": [
+        "axis",
+        "C2"
+      ],
+      "view": [
+        "superior view"
+      ]
+    },
+    {
+      "id": "cervical_superior",
+      "title": "경추 (Cervical vertebra) 상면",
+      "category": "vertebrae_thorax",
+      "subcategory": "vertebral_column",
+      "image": "/static/images/bones/cervical_superior_numbered.svg",
+      "original": "/static/images/bones/cervical-superior.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "vertebral body"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "transverse process"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "foramen transversarium"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "pedicle"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "lamina"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "superior articulate facet",
+            "superior articular facet"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "vertebral foramen"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "spinous process"
+          ]
+        }
+      ],
+      "structure": [
+        "cervical vertebra"
+      ],
+      "view": [
+        "superior view"
+      ]
+    },
+    {
+      "id": "thoracic_superior",
+      "title": "흉추 (T6 Vertebra) 상면",
+      "category": "vertebrae_thorax",
+      "subcategory": "vertebral_column",
+      "image": "/static/images/bones/thoracic_superior_numbered.svg",
+      "original": "/static/images/bones/thoracic-superior.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "body"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "vertebral foramen"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "superior costal facet"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "pedicle"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "superior vertebral notch"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "transverse costal facet"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "lamina"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "superior articular facet"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "spinous process"
+          ]
+        }
+      ],
+      "structure": [
+        "thoracic vertebra"
+      ],
+      "view": [
+        "superior view"
+      ]
+    },
+    {
+      "id": "thoracic_lateral",
+      "title": "흉추 (T6 Vertebra) 측면",
+      "category": "vertebrae_thorax",
+      "subcategory": "vertebral_column",
+      "image": "/static/images/bones/thoracic_lateral_numbered.svg",
+      "original": "/static/images/bones/thoracic-lateral.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "superior articular process and facet"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "superior costal facet"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "body"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "pedicle"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "transverse costal facet"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "transverse process"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "inferior articular process"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "inferior costal facet"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "inferior vertebral notch"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "spinous process"
+          ]
+        }
+      ],
+      "structure": [
+        "thoracic vertebra"
+      ],
+      "view": [
+        "lateral view"
+      ]
+    },
+    {
+      "id": "lumbar_superior",
+      "title": "요추 (Lumbar vertebra) 상면",
+      "category": "vertebrae_thorax",
+      "subcategory": "vertebral_column",
+      "image": "/static/images/bones/lumbar_superior_numbered.svg",
+      "original": "/static/images/bones/lumbar-superior.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "body"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "pedicle"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "transverse process"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "vertebral foramen"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "mamillary process"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "lamina"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "accessory process"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "superior articular process"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "spinous process"
+          ]
+        }
+      ],
+      "structure": [
+        "lumbar vertebra"
+      ],
+      "view": [
+        "superior view"
+      ]
+    },
+    {
+      "id": "lumbar_lateral",
+      "title": "요추 (Lumbar vertebra) 측면",
+      "category": "vertebrae_thorax",
+      "subcategory": "vertebral_column",
+      "image": "/static/images/bones/lumbar_lateral_numbered.svg",
+      "original": "/static/images/bones/lumbar-lateral.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "superior articular process"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "superior vertebral notch"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "transverse process"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "inferior articular process"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "spinous process"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "lamina"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "pedicle"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "inferior vertebral notch"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "facet"
+          ]
+        }
+      ],
+      "structure": [
+        "lumbar vertebra"
+      ],
+      "view": [
+        "lateral view"
+      ]
+    },
+    {
+      "id": "sacrum_anterior",
+      "title": "천골·미골 (Sacrum & Coccyx) 전면",
+      "category": "vertebrae_thorax",
+      "subcategory": "vertebral_column",
+      "image": "/static/images/bones/sacrum_anterior_numbered.svg",
+      "original": "/static/images/bones/sacrum-anterior.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "base of sacrum"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "lumbosacral articular surface"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "superior articular process"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "ala",
+            "wing"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "promontory"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "sacral part of pelvic brim",
+            "linea terminalis"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "anterior sacral foramina",
+            "pelvic sacral foramina"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "transverse ridges"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "apex of sacrum"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "coccyx"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "transverse process of coccyx"
+          ]
+        }
+      ],
+      "structure": [
+        "sacrum and coccyx"
+      ],
+      "view": [
+        "anterior view"
+      ]
+    },
+    {
+      "id": "ribs",
+      "title": "늑골 (Typical Rib)",
+      "category": "vertebrae_thorax",
+      "subcategory": "thorax",
+      "image": "/static/images/bones/ribs_numbered.svg",
+      "original": "/static/images/bones/ribs.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "head"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "tubercle"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "costal angle"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "articular facet for superior costal facet"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "neck"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "articular facet for transverse process"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "shaft"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "articulation with costal cartilage"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "costal groove"
+          ]
+        }
+      ],
+      "structure": [
+        "rib"
+      ]
+    },
+    {
+      "id": "sternum",
+      "title": "흉골 (Sternum) 전면",
+      "category": "vertebrae_thorax",
+      "subcategory": "thorax",
+      "image": "/static/images/bones/sternum_numbered.svg",
+      "original": "/static/images/bones/sternum.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "clavicle"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "clavicular notch"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "manubrium"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "jugular notch",
+            "suprasternal notch"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "angle of louis",
+            "sternal angle"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "transverse ridges"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "body",
+            "gladiolus"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "ribs"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "xiphoid process"
+          ]
+        }
+      ],
+      "structure": [
+        "sternum"
+      ],
+      "view": [
+        "anterior view"
+      ]
+    },
+    {
+      "id": "sternum_lateral",
+      "title": "흉골 (Sternum) 측면",
+      "category": "vertebrae_thorax",
+      "subcategory": "thorax",
+      "image": "/static/images/bones/sternum_lateral_numbered.svg",
+      "original": "/static/images/bones/sternum-lateral.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "clavicular notch"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "manubrium of sternum"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "first costal notch"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "manubriosternal joint",
+            "sternal angle"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "second costal notch"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "third costal notch"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "fourth costal notch"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "body of sternum"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "fifth costal notch"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "sixth costal notch"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "xiphisternal joint"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "seventh costal notch"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "xiphoid process of sternum"
+          ]
+        }
+      ],
+      "structure": [
+        "sternum"
+      ],
+      "view": [
+        "lateral view"
+      ]
+    },
+    {
+      "id": "sacrum_posterior",
+      "title": "천골·미골 (Sacrum & Coccyx) 후면",
+      "category": "vertebrae_thorax",
+      "subcategory": "vertebral_column",
+      "image": "/static/images/bones/sacrum_posterior_numbered.svg",
+      "original": "/static/images/bones/sacrum-posterior.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "facets of superior articular processes"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "auricular surface"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "sacral tuberosity"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "lateral sacral crest"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "median sacral crest"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "intermediate sacral crest"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "posterior sacral foramina"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "sacral cornu",
+            "sacral horn"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "sacral hiatus"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "coccygeal cornu",
+            "coccygeal horn"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "transverse process of coccyx"
+          ]
+        }
+      ],
+      "structure": [
+        "sacrum and coccyx"
+      ],
+      "view": [
+        "posterior view"
       ]
     }
   ]

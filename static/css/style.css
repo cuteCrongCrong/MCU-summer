@@ -356,6 +356,98 @@ input:focus { outline: none; border-color: var(--primary); }
   border-color: var(--primary); background: #eff6ff; transform: translateY(-2px);
 }
 
+/* 출제 모드 선택 (한 문제씩 / 클릭형 매칭 / 빈칸 한번에 쓰기) */
+.bone-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+.bone-mode-tile {
+  border: 1.5px solid var(--border); border-radius: 10px;
+  padding: 20px 14px;
+  text-align: center;
+  background: var(--surface);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+.bone-mode-tile:hover {
+  border-color: var(--primary); background: #eff6ff; transform: translateY(-2px);
+}
+
+/* 클릭형 매칭 — 번호 슬롯 목록 */
+.bone-slot-list {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.bone-slot {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  border: 1.5px solid var(--border); border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  background: var(--surface);
+  transition: border-color 0.15s, background 0.15s;
+}
+.bone-slot:hover { border-color: var(--primary); }
+.bone-slot-selected { border-color: var(--primary); background: #eff6ff; }
+.bone-slot-correct  { border-color: var(--success); background: #f0fdf4; cursor: default; }
+.bone-slot-wrong     { border-color: var(--danger); background: #fef2f2; cursor: default; }
+.bone-slot-num {
+  flex-shrink: 0;
+  min-width: 26px; height: 26px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 7px; background: #e2e8f0; color: var(--text-muted);
+  font-size: 0.8rem; font-weight: 700;
+}
+.bone-slot-text {
+  flex: 1; min-width: 60px;
+  font-size: 0.9rem; font-weight: 600; color: var(--text);
+}
+.bone-slot-answer {
+  flex-basis: 100%;
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.8rem; color: var(--danger);
+}
+
+/* 클릭형 매칭 — 단어은행 */
+.bone-chip-bank {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  min-height: 36px;
+}
+.bone-chip {
+  display: inline-block;
+  padding: 6px 14px;
+  border: 1.5px solid var(--primary);
+  border-radius: 999px;
+  background: #eff6ff; color: var(--primary);
+  font-size: 0.85rem; font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+.bone-chip:hover { background: #dbeafe; transform: translateY(-1px); }
+
+/* 빈칸 한번에 쓰기 — 번호별 입력창 */
+.bone-write-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.bone-write-row:last-child { border-bottom: none; }
+.bone-write-num {
+  flex-shrink: 0; width: 44px;
+  font-size: 0.85rem; font-weight: 700; color: var(--text-muted);
+}
+.bone-write-input {
+  flex: 1; min-width: 120px;
+  padding: 8px 12px;
+  border: 1.5px solid var(--border); border-radius: 8px;
+  font-size: 0.9rem; font-family: inherit;
+  background: var(--surface); color: var(--text);
+}
+.bone-write-input:focus { outline: none; border-color: var(--primary); }
+.bone-write-input:disabled { background: #f8fafc; color: var(--text-muted); }
+.bone-write-mark { font-weight: 700; }
+.bone-write-answer { font-size: 0.82rem; color: var(--danger); }
+
 .answer-section { margin-top: 16px; display: none; }
 .answer-section .answer-badge {
   display: inline-block; padding: 4px 12px;
