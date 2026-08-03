@@ -699,6 +699,11 @@ def parse_question_block(block: str) -> dict:
     current_key = None
     choice_lines = []
     buffer = []
+    # 정답:/해설:/함정포인트: 가 시작된 뒤인가.
+    # 모델이 해설을 '① …는 이래서 틀렸다' 식으로 선지별로 쓰는 일이 흔한데,
+    # 그 줄들까지 선택지로 집으면 선택지가 10개가 되고 해설은 그만큼 비어버린다.
+    # 이 구간에 들어서면 ①②③④⑤ 로 시작해도 선택지가 아니라 본문으로 본다.
+    in_answer = False
 
     def flush_buffer(key, buf):
         if key and buf:
@@ -720,18 +725,21 @@ def parse_question_block(block: str) -> dict:
         elif line == "선택지:":
             flush_buffer(current_key, buffer); buffer = []
             current_key = "선택지"
-        elif line.startswith(("①", "②", "③", "④", "⑤")):
+        elif not in_answer and line.startswith(("①", "②", "③", "④", "⑤")):
             choice_lines.append(line)
         elif line.startswith("정답:"):
             flush_buffer(current_key, buffer); buffer = []
+            in_answer = True
             q["정답"] = line.replace("정답:", "").strip(); current_key = None
         elif line.startswith("해설:"):
             flush_buffer(current_key, buffer); buffer = []
+            in_answer = True
             current_key = "해설"
             val = line.replace("해설:", "").strip()
             if val: buffer.append(val)
         elif line.startswith("함정포인트:"):
             flush_buffer(current_key, buffer); buffer = []
+            in_answer = True
             current_key = "함정포인트"
             val = line.replace("함정포인트:", "").strip()
             if val: buffer.append(val)
