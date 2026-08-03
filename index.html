@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>의대 예상문제 생성기</title>
   <link rel="stylesheet" href="/static/css/style.css" />
+  <!-- media 를 주지 않는다 — 화면용 미리보기 오버레이 규칙도 이 파일에 들어 있다 -->
+  <link rel="stylesheet" href="/static/css/print.css" />
 </head>
 <body>
 
@@ -51,8 +53,8 @@
       </button>
       <button class="home-card" onclick="switchTab('archive')">
         <span class="home-card-icon">🗂️</span>
-        <span class="home-card-title">생성한 문제</span>
-        <span class="home-card-desc" id="home-archive-desc">만든 문제<br>다시 보기</span>
+        <span class="home-card-title">보관함</span>
+        <span class="home-card-desc" id="home-archive-desc">만든 문제와<br>분석한 주제</span>
       </button>
       <button class="home-card" onclick="switchTab('wrong')">
         <span class="home-card-icon">❌</span>
@@ -63,6 +65,11 @@
         <span class="home-card-icon">🦴</span>
         <span class="home-card-title">골학 문제은행</span>
         <span class="home-card-desc">그림 보고<br>뼈 이름 맞히기</span>
+      </button>
+      <button class="home-card" onclick="switchTab('topics')">
+        <span class="home-card-icon">🔍</span>
+        <span class="home-card-title">기출 주제 분석</span>
+        <span class="home-card-desc">기출에 나온<br>주제 찾기</span>
       </button>
     </div>
 
@@ -190,6 +197,20 @@
         <span>(최대 30개)</span>
       </div>
 
+      <!-- 자동 배분에서만 의미가 있다 → 수동 모드에서는 auto-count-row와 함께 숨긴다 -->
+      <div id="preserve-types-row" style="margin-top:10px;">
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin-bottom:0;">
+          <input type="checkbox" id="preserve-types" style="width:16px;height:16px;margin-top:2px;accent-color:#2563eb;flex-shrink:0;" />
+          <span style="font-weight:400;color:#475569;">
+            기출에 있는 유형은 최소 1개씩 넣기
+            <span style="display:block;font-size:0.75rem;color:#64748b;margin-top:2px;">
+              비중이 작은 유형(예: 서술형)이 비율 계산에서 0개로 빠지는 것을 막습니다.
+              대신 기출 비율과 조금 달라집니다.
+            </span>
+          </span>
+        </label>
+      </div>
+
       <!-- 수동 모드: 유형별 개수를 각각 지정 -->
       <div id="manual-count-row" class="hidden" style="margin-top:8px;display:flex;flex-direction:column;gap:8px;">
         <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px 12px;">
@@ -279,13 +300,7 @@
     <!-- 생성 도중 오류 — 첫 문제가 나온 뒤엔 입력 화면이 숨겨지므로 여기에 표시 -->
     <div class="error-box" id="result-error-box"></div>
 
-    <!-- ④ 분석 결과 요약 -->
-    <div id="analysis-box" class="card">
-      <div class="card-title">📊 분석 결과 요약</div>
-      <div id="analysis-content"></div>
-    </div>
-
-    <!-- ⑤ 생성된 문제 -->
+    <!-- ④ 생성된 문제 -->
     <div id="result-box">
       <div class="result-head">
         <div class="card-title" id="result-title" style="padding:0 4px;margin-bottom:0;">
@@ -304,11 +319,30 @@
 
   </div><!-- /tab-generator -->
 
-  <!-- ══════════ 탭: 생성 문제 관리 (보관함) ══════════ -->
+  <!-- ══════════ 탭: 보관함 (생성한 문제 · 분석한 주제) ══════════ -->
   <div class="tab-panel hidden" id="tab-archive">
 
+    <!-- ── 서브뷰 0: 갈림길 (홈 카드와 같은 모양) ── -->
+    <div id="archive-hub-view">
+      <div class="home-cards">
+        <button class="home-card" onclick="openArchivePapers()">
+          <span class="home-card-icon">📄</span>
+          <span class="home-card-title">생성한 문제</span>
+          <span class="home-card-desc" id="hub-papers-desc">만든 문제<br>다시 보기</span>
+        </button>
+        <button class="home-card" onclick="openArchiveTopics()">
+          <span class="home-card-icon">🔍</span>
+          <span class="home-card-title">분석한 주제</span>
+          <span class="home-card-desc" id="hub-topics-desc">분석한 기출 주제<br>다시 보기</span>
+        </button>
+      </div>
+    </div>
+
     <!-- ── 서브뷰 A: 시험지 목록 ── -->
-    <div id="archive-list-view">
+    <div id="archive-list-view" class="hidden">
+      <div class="result-nav">
+        <button class="back-btn" onclick="showArchiveHub()">← 보관함</button>
+      </div>
       <div class="card">
         <div class="card-title">
           🗂️ 생성한 문제
@@ -327,16 +361,61 @@
     <div id="archive-view" class="hidden">
       <div class="result-nav">
         <button class="back-btn" onclick="closeArchiveView()">← 목록으로</button>
+        <!-- 두 벌을 한 번에 저장할 수 없다 — 연속 print()는 iOS가 제스처 단절로 막고,
+             파일명도 두 번 다르게 줄 수 없다. 그래서 버튼 2개다. -->
+        <span class="print-actions">
+          <button class="btn-ghost" onclick="printPaper('q')">🖨 문제지</button>
+          <button class="btn-ghost" onclick="printPaper('a')">🖨 정답·해설</button>
+        </span>
       </div>
       <div class="card" id="archive-paper-head">
         <div class="card-title" id="archive-paper-title">시험지</div>
         <div id="archive-paper-meta" style="font-size:0.83rem;color:#64748b;"></div>
-        <div class="resume-actions">
-          <button class="btn-ghost" id="archive-rename-btn">✏️ 이름 변경</button>
-          <button class="btn-ghost" id="archive-delete-btn">🗑️ 이 시험지 삭제</button>
-        </div>
       </div>
       <div id="archive-questions-container"></div>
+    </div>
+
+    <!-- ── 서브뷰 C: 분석한 주제 목록 ── -->
+    <div id="saved-topics-list-view" class="hidden">
+      <div class="result-nav">
+        <button class="back-btn" onclick="showArchiveHub()">← 보관함</button>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          🔍 분석한 주제
+          <span id="saved-topics-summary" style="font-weight:400;font-size:0.8rem;color:#64748b;"></span>
+          <button type="button" onclick="loadSavedTopics(true)" title="새로고침"
+                  style="margin-left:auto;font-size:0.76rem;padding:4px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
+        </div>
+        <div id="saved-topics-grid"></div>
+      </div>
+    </div>
+
+    <!-- ── 서브뷰 D: 분석 결과 한 건 열람 (기출 주제 분석 탭의 결과 화면과 같은 렌더러) ── -->
+    <div id="saved-topics-view" class="hidden">
+      <div class="result-nav">
+        <button class="back-btn" onclick="closeSavedTopicView()">← 목록으로</button>
+      </div>
+
+      <div class="card" id="saved-topic-head">
+        <div class="card-title" id="saved-topic-title">분석 결과</div>
+        <div id="saved-topic-meta" style="font-size:0.83rem;color:#64748b;"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📥 분석에 사용한 파일</div>
+        <div id="saved-topic-source-content"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="flex-wrap:wrap;">
+          <span>📌 기출에 나온 주제</span>
+          <span id="saved-topic-count-label" style="margin-left:auto;font-weight:400;font-size:0.82rem;color:#64748b;"></span>
+        </div>
+        <input type="text" id="saved-topic-search" placeholder="🔎 주제 · 파일명으로 걸러보기" oninput="topicFilter('saved')" />
+        <div id="saved-topic-list" style="margin-top:16px;"></div>
+        <div id="saved-topic-list-empty" style="font-size:0.88rem;color:#64748b;"></div>
+      </div>
     </div>
 
   </div><!-- /tab-archive -->
@@ -434,6 +513,140 @@
     </div>
   </div><!-- /tab-bones -->
 
+  <!-- ══════════ 탭: 기출 주제 분석 ══════════ -->
+  <!-- 문제 생성기와 같은 틀 (업로드 → 제공사/키/모델 → 실행 → 결과 페이지).
+       문제를 만들지 않으므로 '유형별 문제 수'·'기출 반영 강도'는 없다. -->
+  <div class="tab-panel hidden" id="tab-topics">
+
+  <!-- ── 서브뷰 A: 설정/입력 ── -->
+  <div id="topic-input-view">
+
+    <div class="card">
+      <div class="card-title">파일 업로드 및 설정</div>
+
+      <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:0.84rem;color:#1e3a8a;line-height:1.65;">
+        강의록에 있는 주제 중 <b>기출에 실제로 나온 것</b>만 골라
+        <b>어떤 강의록 몇 페이지 → 어떤 기출 몇 번</b> 형태로 정리합니다.<br />
+        주제 이름은 <b>강의록에 적힌 표현 그대로</b> 씁니다. (강의록에 없는 용어는 쓰지 않습니다)
+      </div>
+
+      <div class="form-grid">
+        <!-- 강의록 (여러 개 가능) -->
+        <div>
+          <label>📄 강의록 (PDF · 여러 개 선택 가능)</label>
+          <div class="file-drop" id="topic-drop-lecture">
+            <input type="file" id="topic-lecture-file" accept=".pdf" multiple />
+            <div class="icon">📂</div>
+            <div>파일을 끌어다 놓거나 클릭하세요</div>
+            <div class="hint">PDF만 · 최대 5개</div>
+            <div class="filename" id="topic-lecture-name"></div>
+          </div>
+        </div>
+        <!-- 기출문제 (여러 개 가능) -->
+        <div>
+          <label>📝 기출문제 (PDF · 여러 개 선택 가능)</label>
+          <div class="file-drop" id="topic-drop-exam">
+            <input type="file" id="topic-exam-file" accept=".pdf" multiple />
+            <div class="icon">📂</div>
+            <div>파일을 끌어다 놓거나 클릭하세요</div>
+            <div class="hint">PDF만 · 최대 5개</div>
+            <div class="filename" id="topic-exam-name"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LLM 제공사 선택 -->
+      <div style="margin-top:20px;">
+        <label for="topic-provider-select">🏛️ LLM 제공사</label>
+        <select id="topic-provider-select" class="select-field" onchange="topicSelectProvider(this.value)"></select>
+      </div>
+
+      <!-- API 키 -->
+      <div style="margin-top:20px;">
+        <label id="topic-api-key-label">🔑 API Key</label>
+        <input type="password" id="topic-api-key" placeholder="API 키 입력" autocomplete="off" onchange="topicLoadModels()" />
+        <div style="font-size:0.75rem;color:#64748b;margin-top:4px;">키를 입력하면 사용 가능한 모델 목록을 자동으로 불러옵니다.</div>
+        <div style="font-size:0.75rem;color:#16a34a;margin-top:4px;">🔒 입력한 키는 <b>서버·브라우저에 저장되지 않고</b>, 분석 요청 시에만 사용된 뒤 폐기됩니다.</div>
+      </div>
+
+      <!-- 모델 선택 -->
+      <div style="margin-top:20px;">
+        <label style="display:flex;align-items:center;gap:8px;">
+          🤖 사용할 모델 <span id="topic-model-load-msg" style="font-weight:400;font-size:0.8rem;color:#0ea5e9;"></span>
+          <button type="button" onclick="topicLoadModels()" title="모델 목록 새로고침" style="margin-left:auto;font-size:0.76rem;padding:4px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;color:#475569;">↻ 새로고침</button>
+        </label>
+        <select id="topic-model-select" class="select-field"></select>
+      </div>
+
+      <!-- 이번에 분석할 내용 이름 (선택) -->
+      <div style="margin-top:20px;">
+        <label for="topic-title">📛 이 분석 세트 이름 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 선택</span></label>
+        <input type="text" id="topic-title" maxlength="100" placeholder="예: 순환기 중간고사 대비" autocomplete="off" />
+        <div style="font-size:0.75rem;color:#64748b;margin-top:4px;">비워두면 <b>제N회</b>로 표시됩니다. 나중에 보관함에서 바꿀 수 있어요.</div>
+      </div>
+
+      <button class="btn btn-primary" id="topic-analyze-btn" onclick="topicAnalyze()">
+        🔍 기출 주제 분석하기
+      </button>
+    </div>
+
+    <!-- 진행 상태 -->
+    <div id="topic-status-box" class="card status-panel hidden">
+      <div class="card-title">분석 진행 상태</div>
+      <ul class="step-list">
+        <li class="step-item wait" id="topic-step1">
+          <span class="step-icon">📄</span>
+          <span class="step-text">PDF 텍스트·페이지 번호 추출 중...</span>
+        </li>
+        <li class="step-item wait" id="topic-step2">
+          <span class="step-icon">📚</span>
+          <span class="step-text">강의록 주제 정리 중...</span>
+        </li>
+        <li class="step-item wait" id="topic-step3">
+          <span class="step-icon">📝</span>
+          <span class="step-text">기출 문항과 대조 중...</span>
+        </li>
+        <li class="step-item wait" id="topic-step4">
+          <span class="step-icon">🔗</span>
+          <span class="step-text">주제 · 출처 연결 정리 중...</span>
+        </li>
+      </ul>
+    </div>
+
+    <!-- 에러 -->
+    <div class="error-box" id="topic-error-box"></div>
+
+  </div><!-- /topic-input-view -->
+
+  <!-- ── 서브뷰 B: 분석 결과 ── -->
+  <div id="topic-result-view" class="hidden">
+
+    <div class="result-nav">
+      <button class="back-btn" onclick="topicShowInput()">← 설정으로 돌아가기</button>
+      <button class="btn-ghost" onclick="topicShowInput()">🔍 새로 분석</button>
+    </div>
+
+    <!-- 분석에 쓰인 파일 요약 -->
+    <div class="card" id="topic-source-box">
+      <div class="card-title">📥 분석에 사용한 파일</div>
+      <div id="topic-source-content"></div>
+    </div>
+
+    <!-- 주제 목록 -->
+    <div class="card" id="topic-list-box">
+      <div class="card-title" style="flex-wrap:wrap;">
+        <span>📌 기출에 나온 주제</span>
+        <span id="topic-count-label" style="margin-left:auto;font-weight:400;font-size:0.82rem;color:#64748b;"></span>
+      </div>
+      <input type="text" id="topic-search" placeholder="🔎 주제 · 파일명으로 걸러보기" oninput="topicFilter()" />
+      <div id="topic-list" style="margin-top:16px;"></div>
+      <div id="topic-list-empty" style="font-size:0.88rem;color:#64748b;"></div>
+    </div>
+
+  </div><!-- /topic-result-view -->
+
+  </div><!-- /tab-topics -->
+
 </main>
 
 <!-- 오답 노트 저장 모달 -->
@@ -495,16 +708,25 @@
   </div>
 </div>
 
+<!-- 인쇄 미리보기 오버레이 (print.js 가 채운다).
+     반드시 body 직속이어야 한다 — print.css 가 인쇄 시
+     'body.print-mode > *:not(#print-root)' 로 나머지를 통째로 숨긴다. -->
+<div id="print-root" class="hidden"></div>
+
 <!-- ── 스크립트 (로드 순서 중요: common → 각 기능) ── -->
 <script src="/static/js/common.js"></script>
 <script src="/static/js/question_gen.js"></script>
 <script src="/static/js/wrong_note.js"></script>
 <script src="/static/js/bone_bank.js"></script>
+<script src="/static/js/topic_analysis.js"></script>
 <script src="/static/js/auth.js"></script>
 <!-- home.js 는 다른 모듈의 함수(setActiveSession, viewWrongFolder 등)를 쓰므로 마지막에 -->
 <script src="/static/js/home.js"></script>
 <!-- archive.js 는 home.js의 relativeDay, question_gen.js의 providerLabel 을 쓴다 -->
 <script src="/static/js/archive.js"></script>
+<script src="/static/js/topic_archive.js"></script>
+<!-- print.js 는 common.js의 escHtml/typeInfoOf/answerIndexOf 를 쓴다 -->
+<script src="/static/js/print.js"></script>
 
 </body>
 </html>

@@ -166,6 +166,32 @@ def init_db():
         # 생성 회차에 사용자가 붙인 이름. 백필하지 않는다 —
         # NULL(이름 없음)과 사용자가 지은 이름을 구분해야 화면에서 '제N회'로 대체할 수 있다.
         _ensure_column(conn, "generations", "title", "TEXT")
+
+        # ── 기출 주제 분석: 분석 결과 보관 (features/topic_analysis.py 담당) ──
+        # 문제 생성의 sessions/generations와 무관한 독립 테이블이다. 분석 결과는
+        # 재사용 자산이 아니라 완성된 결과물이라 회차/세션 구분이 필요 없다.
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS topic_analyses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT,                        -- 사용자가 붙인 이름. 비우면 NULL(화면은 '제N회')
+                created_at TEXT NOT NULL,
+                model TEXT,
+                provider TEXT,
+                lecture_docs TEXT,                 -- JSON: [{label,name,pages,source}]
+                exam_docs TEXT,                    -- JSON: 같은 형태
+                topics TEXT,                       -- JSON: [{주제,강의록,기출,출제형태,문항수}]
+                dropped INTEGER,                   -- 출처 미확인으로 제외한 항목 수
+                total_questions INTEGER,
+                user_id INTEGER,                   -- 소유자 (owner_clause 참고)
+                guest_id TEXT
+            )"""
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_topic_analyses_guest ON topic_analyses(guest_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_topic_analyses_user ON topic_analyses(user_id)"
+        )
         conn.commit()
     finally:
         conn.close()

@@ -275,20 +275,6 @@ input:focus { outline: none; border-color: var(--primary); }
 .cancel-btn:hover { background: #fef2f2; }
 .cancel-btn:focus-visible { outline: 2px solid var(--danger); outline-offset: 2px; }
 
-/* ── 개념/패턴 요약 ── */
-#analysis-box { display: none; }
-.tag-group { margin-bottom: 12px; }
-.tag-group-label { font-size: 0.78rem; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; }
-.tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.tag {
-  display: inline-block; padding: 4px 10px;
-  border-radius: 999px; font-size: 0.78rem; font-weight: 600;
-}
-.tag-blue   { background: #dbeafe; color: #1d4ed8; }
-.tag-green  { background: #dcfce7; color: #15803d; }
-.tag-orange { background: #ffedd5; color: #c2410c; }
-.tag-purple { background: #ede9fe; color: #7c3aed; }
-
 /* ── 문제 카드 ── */
 #result-box { display: none; }
 .question-card {
@@ -566,6 +552,12 @@ main { margin-top: 20px; }
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 14px;
 }
+/* 홈의 카드 5장은 3+2로 떨어지도록 넓은 화면에서 3열로 고정한다.
+   auto-fit에만 맡기면 폭에 따라 4+1처럼 어중간하게 갈릴 수 있다.
+   보관함 허브(카드 2장)는 그대로 auto-fit을 쓰도록 홈에만 스코프한다. */
+@media (min-width: 600px) {
+  #tab-home .home-cards { grid-template-columns: repeat(3, 1fr); }
+}
 .home-card {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 8px; min-height: 190px; padding: 22px 16px;
@@ -660,16 +652,34 @@ main { margin-top: 20px; }
   transition: background 0.15s;
 }
 .paper-open:hover { background: var(--primary-dark); }
-.paper-edit, .paper-del {
+/* 이름 변경은 카드 제목 옆 .title-edit-btn 으로 옮겼다(결과 화면과 같은 어법).
+   그래서 액션 줄에는 '풀기'와 삭제만 남는다.
+   목록에서는 두 가지를 조정한다.
+   ① 크기: 기본 0.95rem 은 이모지 글리프가 실제 글자보다 커 보여서 제목(1.02rem)
+      옆에서 튄다. 0.85rem 이면 글리프 높이가 이름의 약 8할로, 나란히 놓았을 때
+      이름보다 살짝 작게 읽힌다. (브라우저에서 실측해 맞춘 값)
+   ② 선명도: 기본 opacity 0.55 는 제목 옆에 상시 놓이면 흐릿해 보인다.
+      목록에서는 이름 변경의 유일한 입구라 처음부터 또렷해야 한다. */
+.paper-title .title-edit-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  position: relative;
+  padding: 2px 4px;
+  font-size: 0.85rem;
+  opacity: 1;
+}
+/* 글리프를 작게 만들면 누를 곳도 같이 작아진다. 레이아웃을 밀지 않도록
+   보이지 않는 영역만 넓혀 모바일 터치 타깃을 확보한다. */
+.paper-title .title-edit-btn::after {
+  content: ''; position: absolute; inset: -9px;
+}
+.paper-del {
   padding: 8px 11px; border-radius: 8px;
   background: var(--surface);
   font-size: 0.85rem; font-family: inherit; cursor: pointer;
+  border: 1px solid #fecaca; color: var(--danger);
 }
-.paper-edit { border: 1px solid var(--border); color: var(--text-muted); }
-.paper-edit:hover { border-color: var(--primary); background: #eff6ff; }
-.paper-del { border: 1px solid #fecaca; color: var(--danger); }
 .paper-del:hover { background: #fef2f2; }
-.paper-open:focus-visible, .paper-edit:focus-visible, .paper-del:focus-visible {
+.paper-open:focus-visible, .paper-del:focus-visible {
   outline: 2px solid var(--primary); outline-offset: 2px;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -698,7 +708,8 @@ main { margin-top: 20px; }
 .recent-meta { display: block; margin-top: 2px; font-size: 0.75rem; color: var(--text-muted); }
 .recent-arrow { font-size: 1.3rem; color: var(--text-faint); flex-shrink: 0; }
 /* 탭 패널 / 서브뷰 안의 카드들도 세로 간격 유지 */
-.tab-panel, #gen-input-view, #gen-result-view, #wrong-view {
+.tab-panel, #gen-input-view, #gen-result-view, #wrong-view,
+#topic-input-view, #topic-result-view {
   display: flex; flex-direction: column; gap: 24px;
 }
 
@@ -719,27 +730,6 @@ main { margin-top: 20px; }
   font-family: inherit; cursor: pointer; transition: all 0.15s;
 }
 .btn-ghost:hover { background: var(--primary-dark); }
-
-/* ── 분석 결과: 접을 수 있는 세부 항목 ── */
-.a-section {
-  border: 1.5px solid var(--border); border-radius: 10px;
-  margin-bottom: 12px; overflow: hidden; background: var(--surface);
-}
-.a-section > summary {
-  list-style: none; cursor: pointer;
-  padding: 12px 16px; font-size: 0.9rem; font-weight: 700; color: var(--text);
-  display: flex; align-items: center; gap: 8px;
-  background: #f8fafc; transition: background 0.15s;
-}
-.a-section > summary::-webkit-details-marker { display: none; }
-.a-section > summary::after {
-  content: '▸'; margin-left: auto; color: var(--text-muted);
-  transition: transform 0.15s; font-size: 0.9rem;
-}
-.a-section[open] > summary { border-bottom: 1px solid var(--border); }
-.a-section[open] > summary::after { transform: rotate(90deg); }
-.a-section:hover > summary { background: #eef2f7; }
-.a-section .a-body { padding: 14px 16px; }
 
 /* ── 오답 노트 모달 ── */
 .modal-overlay {
@@ -784,6 +774,92 @@ main { margin-top: 20px; }
   color: var(--text-muted); font-size: 0.85rem; font-family: inherit; cursor: pointer;
 }
 .modal .divider { text-align: center; font-size: 0.76rem; color: #94a3b8; margin: 14px 0 4px; }
+
+/* ══════════════════════════════════════════════
+   기출 주제 분석 탭 (topic_analysis.js)
+   ══════════════════════════════════════════════ */
+
+/* 진행 상태 박스 — #status-box와 같은 모양이지만 표시/숨김은 .hidden으로 제어 */
+.status-panel {
+  border-radius: 10px; padding: 20px 24px;
+  background: #eff6ff; border: 1.5px solid #bfdbfe;
+  box-shadow: none;
+}
+
+/* 분석에 사용한 파일 목록 */
+.topic-doc-group { margin-bottom: 14px; }
+.topic-doc-group:last-child { margin-bottom: 0; }
+.topic-doc-row {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding: 7px 12px; margin-bottom: 6px;
+  background: #f8fafc; border: 1px solid var(--border); border-radius: 8px;
+}
+.topic-doc-name { font-size: 0.86rem; font-weight: 600; color: var(--text); word-break: break-all; }
+.topic-doc-meta { font-size: 0.76rem; color: var(--text-muted); margin-left: auto; }
+
+/* 주제 카드 — 한 주제 = 한 줄 흐름(주제 / 강의록 몇p → 기출 몇번) */
+.topic-item {
+  border: 1.5px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; margin-bottom: 10px; background: var(--surface);
+  transition: border-color 0.15s;
+}
+.topic-item:hover { border-color: #bfdbfe; }
+.topic-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.topic-rank {
+  flex-shrink: 0;
+  min-width: 24px; height: 24px; padding: 0 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 7px; background: #e2e8f0; color: var(--text-muted);
+  font-size: 0.78rem; font-weight: 700;
+}
+.topic-name { font-size: 0.98rem; font-weight: 700; color: var(--text); line-height: 1.5; }
+.topic-hits {
+  margin-left: auto; flex-shrink: 0;
+  padding: 3px 10px; border-radius: 999px;
+  background: #ffedd5; color: #c2410c;
+  font-size: 0.74rem; font-weight: 700; white-space: nowrap;
+}
+
+/* 출처 줄: 📄 강의록 12p  →  📝 기출 4번 */
+.topic-trace {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
+  padding: 10px 12px; background: #f8fafc; border-radius: 8px;
+  font-size: 0.84rem; line-height: 1.9;
+}
+.topic-trace-side { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.topic-trace-label {
+  font-size: 0.74rem; font-weight: 700; color: var(--text-muted); white-space: nowrap;
+}
+.topic-arrow { color: #94a3b8; font-weight: 700; }
+.topic-src { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.topic-src-name { font-size: 0.8rem; color: var(--text); word-break: break-all; }
+.topic-chip {
+  display: inline-block; padding: 2px 8px; border-radius: 6px;
+  font-size: 0.76rem; font-weight: 700; white-space: nowrap;
+}
+.topic-chip-lec  { background: #dbeafe; color: #1d4ed8; }
+.topic-chip-exam { background: #dcfce7; color: #15803d; }
+
+.topic-note {
+  margin-top: 8px; padding-left: 2px;
+  font-size: 0.82rem; color: var(--text-muted); line-height: 1.7;
+}
+
+/* 한 줄 요약 (복사용) — 위 "📌 기출에 나온 주제" 목록과 같은 형식(테두리 있는
+   흰 카드 행)으로 보이게 한다. 굵게 강조하지 않은 평문 한 줄 = 주제 하나. */
+.topic-summary-list {
+  display: flex; flex-direction: column; gap: 8px; margin-top: 10px;
+}
+.topic-summary-row {
+  border: 1.5px solid var(--border); border-radius: 10px;
+  padding: 10px 14px; background: var(--surface);
+  font-size: 0.86rem; line-height: 1.6; color: var(--text);
+}
+
+#topic-search { margin-top: 4px; }
 
 /* ── 원본 텍스트 폴드 ── */
 details { margin-top: 12px; }
