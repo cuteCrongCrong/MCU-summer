@@ -75,7 +75,7 @@
 
     <!-- 이어서 하기 (세션이 있을 때만) -->
     <div class="card resume-card hidden" id="resume-card">
-      <div class="resume-label">이어서 하기</div>
+      <div class="resume-label">문제 생성 이어서 하기</div>
       <div class="resume-name" id="resume-name"></div>
       <div class="resume-meta" id="resume-meta"></div>
       <div class="resume-actions">
@@ -567,6 +567,9 @@
         <input type="password" id="topic-api-key" placeholder="API 키 입력" autocomplete="off" onchange="topicLoadModels()" />
         <div style="font-size:0.75rem;color:#64748b;margin-top:4px;">키를 입력하면 사용 가능한 모델 목록을 자동으로 불러옵니다.</div>
         <div style="font-size:0.75rem;color:#16a34a;margin-top:4px;">🔒 입력한 키는 <b>서버·브라우저에 저장되지 않고</b>, 분석 요청 시에만 사용된 뒤 폐기됩니다.</div>
+
+        <!-- 발급 방법 — 내용은 common.js의 renderKeyHelp()가 채운다 -->
+        <details class="key-help" id="topic-key-help" hidden></details>
       </div>
 
       <!-- 모델 선택 -->
@@ -642,6 +645,9 @@
       <div id="topic-list" style="margin-top:16px;"></div>
       <div id="topic-list-empty" style="font-size:0.88rem;color:#64748b;"></div>
     </div>
+
+    <!-- 이번 분석에 쓴 토큰·크레딧 — common.js의 renderSpend()가 채운다 -->
+    <details class="usage-box" id="topic-usage-box" hidden></details>
 
   </div><!-- /topic-result-view -->
 

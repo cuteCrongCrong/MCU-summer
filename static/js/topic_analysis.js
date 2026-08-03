@@ -59,6 +59,13 @@ function topicShowError(msg) {
   box.style.display = 'block';
 }
 
+// 이번 분석에 쓴 토큰·크레딧 (common.js의 공용 렌더러를 이 탭 상자에 그린다).
+// 보관함에서 다시 열어본 분석에는 사용량이 없다 — 그때 쓴 값이지 결과의 일부가
+// 아니라서 저장하지 않기 때문. 그래서 topicRenderResult()가 아니라 분석 직후에만 부른다.
+function topicRenderSpend(data) {
+  renderSpend(data, { boxId: 'topic-usage-box', noun: '분석' });
+}
+
 // ── LLM 제공사 (/providers) ──
 let topicProviders = [];
 let topicCurrentProvider = null;
@@ -91,6 +98,7 @@ function topicSelectProvider(name) {
   document.getElementById('topic-api-key-label').textContent = `🔑 ${info.label} API Key`;
   keyInput.placeholder = info.key_placeholder || 'API 키 입력';
   keyInput.value = topicApiKeyByProvider[name] || '';
+  renderKeyHelp(info, 'topic-key-help');
 
   topicPopulateModels([info.default_model]);
   topicLoadModels();
@@ -156,6 +164,7 @@ async function topicAnalyze() {
   document.getElementById('topic-analyze-btn').disabled = true;
   document.getElementById('topic-status-box').classList.remove('hidden');
   document.getElementById('topic-error-box').style.display = 'none';
+  topicRenderSpend(null);   // 지난 회차의 사용량 표가 남아 보이지 않게
   ['topic-step1','topic-step2','topic-step3','topic-step4'].forEach(s => setStep(s, 'wait'));
 
   // 단계 표시는 UI 피드백용 (서버는 한 번에 처리한다)
@@ -182,10 +191,12 @@ async function topicAnalyze() {
     setStep('topic-step4', 'done');
 
     if (!resp.ok || data.error) {
-      topicShowError(data.error || '알 수 없는 오류가 발생했습니다.');
+      // 오류로 끝나도 그때까지 쓴 토큰·크레딧은 이미 소모됐으므로 문구에 덧붙인다
+      topicShowError((data.error || '알 수 없는 오류가 발생했습니다.') + spendSuffix(data));
       return;
     }
 
+    topicRenderSpend(data);
     topicRenderResult(data, 'main');
     topicShowResult();
     // 방금 분석한 것이 보관함에 저장됐으므로 목록 캐시를 버린다

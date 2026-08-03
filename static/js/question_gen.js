@@ -301,16 +301,6 @@ function setResultTitle(title) {
 }
 
 // 생성 직후 결과를 화면에 반영 (제목 + 이름 변경 버튼 상태)
-// ── 크레딧 (전북대 게이트웨이) ──
-// 게이트웨이는 토큰이 아니라 크레딧으로 과금하므로 토큰 수 대신 크레딧을 보여준다.
-// 크레딧은 소수가 나올 수 있어 정수/소수를 나눠 표기한다.
-function fmtCredit(v) {
-  if (v == null) return '—';
-  if (Number.isInteger(v)) return v.toLocaleString('ko-KR');
-  const max = Math.abs(v) < 1 ? 4 : 2;
-  return v.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: max });
-}
-
 // 키 입력란 아래 한 줄 — 생성 전에 잔액을 확인하는 용도
 async function loadCredits() {
   const info = currentProviderInfo();
@@ -343,133 +333,6 @@ async function loadCredits() {
   } catch (err) {
     text.textContent = '잔액을 조회하지 못했습니다.';
   }
-}
-
-// 결과 화면 — 이번 생성에 쓴 크레딧 + 남은 총 크레딧
-function renderCredits(credits) {
-  const box = document.getElementById('usage-box');
-  box.hidden = false;
-  box.open = false;
-
-  const spent = credits.spent_known
-    ? `이번 생성에 쓴 크레딧 ${fmtCredit(credits.spent)}`
-    : '이번 사용분은 계산하지 못했습니다';
-  const summaryText = `💳 ${spent} <span class="usage-note">· 남은 크레딧 ${fmtCredit(credits.remaining)}</span>`;
-
-  const rows = (credits.sections || []).map(s => `<tr>
-      <td>${escHtml(s.label)}</td>
-      <td>${fmtCredit(s.quota)}</td>
-      <td>${fmtCredit(s.used)}</td>
-      <td><b>${fmtCredit(s.remaining)}</b></td>
-    </tr>`).join('');
-
-  let body = `<table class="usage-table">
-      <thead><tr><th>구분</th><th>할당</th><th>누적 사용</th><th>남음</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-
-  if (credits.renewal_date) {
-    body += `<div class="usage-models">월별 할당 갱신: ${escHtml(credits.renewal_date)}</div>`;
-  }
-  if (!credits.spent_known) {
-    body += `<div class="usage-warn">생성 전 잔액을 읽지 못해 이번 사용분을 계산할 수 없었습니다.
-             위 표의 누적 사용량은 정상입니다.</div>`;
-  }
-
-  box.innerHTML = `<summary>${summaryText}</summary>`
-                + `<div class="usage-body">${body}`
-                + `<div class="usage-foot">플랫폼이 알려준 잔액입니다. 정산이 늦게 반영되면 이번 사용분이 실제보다 적게 보일 수 있습니다.</div>`
-                + `</div>`;
-}
-
-// 제공사에 따라 크레딧과 토큰 중 맞는 쪽을 보여준다.
-// 전북대 게이트웨이는 크레딧으로 과금하므로 토큰 수를 보여주지 않는다.
-function renderSpend(payload) {
-  if (payload && payload.credits) return renderCredits(payload.credits);
-  return renderUsage(payload && payload.usage);
-}
-
-// 오류·중단으로 끝나면 결과 화면이 안 보일 수 있어, 쓴 만큼을 오류 문구에 덧붙인다.
-// (중단해도 그 시점까지의 크레딧·토큰은 이미 소모됐으므로 알려주는 게 맞다)
-function spendSuffix(ev) {
-  const c = ev && ev.credits;
-  if (c) {
-    const left = `남은 크레딧 ${fmtCredit(c.remaining)}`;
-    return c.spent_known
-      ? `\n여기까지 쓴 크레딧: ${fmtCredit(c.spent)} (${left})`
-      : `\n${left}`;
-  }
-  return usageSuffix(ev && ev.usage);
-}
-
-function usageSuffix(usage) {
-  if (!usage || !usage.calls) return '';
-  const num = n => (n || 0).toLocaleString('ko-KR');
-  if (usage.unreported_calls >= usage.calls) {
-    return `\nLLM 호출 ${num(usage.calls)}회 — 토큰 사용량은 제공사가 알려주지 않았습니다.`;
-  }
-  return `\n여기까지 쓴 토큰: ${num(usage.total)}개 (호출 ${num(usage.calls)}회)`;
-}
-
-// ── 토큰 사용량 (이번 생성) ──
-// 서버가 준 usage 요약을 그대로 표로 그린다. 계산은 서버에서 끝냈다.
-function renderUsage(usage) {
-  const box = document.getElementById('usage-box');
-  if (!usage || !usage.calls) {          // 호출 자체가 없었으면 숨긴다
-    box.hidden = true;
-    box.innerHTML = '';
-    box.open = false;
-    return;
-  }
-  box.hidden = false;
-
-  const num = n => (n || 0).toLocaleString('ko-KR');
-  // 제공사가 usage를 안 준 호출 — 0으로 합치면 안 쓴 것처럼 보이므로 따로 알린다
-  const allUnreported = usage.unreported_calls >= usage.calls;
-  const rowNote = r => (r.unreported_calls
-    ? ` <span class="usage-note">(${r.unreported_calls}회 미보고)</span>` : '');
-
-  const summaryText = allUnreported
-    ? `🔢 토큰 사용량 — 제공사가 알려주지 않음 (호출 ${num(usage.calls)}회)`
-    : `🔢 이번 생성에 쓴 토큰 ${num(usage.total)}개 <span class="usage-note">· 호출 ${num(usage.calls)}회</span>`;
-
-  let body = '';
-  if (allUnreported) {
-    body = `<div class="usage-warn">이 제공사는 응답에 토큰 사용량을 담아 보내지 않습니다.
-            호출은 ${num(usage.calls)}회 있었지만 몇 토큰을 썼는지는 알 수 없습니다.</div>`;
-  } else {
-    const rows = usage.by_stage.map(r => `<tr>
-        <td>${escHtml(r.label)}${rowNote(r)}</td>
-        <td>${num(r.calls)}</td>
-        <td>${num(r.input)}</td>
-        <td>${num(r.output)}</td>
-        <td><b>${num(r.total)}</b></td>
-      </tr>`).join('');
-
-    body = `<table class="usage-table">
-        <thead><tr><th>단계</th><th>호출</th><th>입력</th><th>출력</th><th>합계</th></tr></thead>
-        <tbody>${rows}</tbody>
-        <tfoot><tr>
-          <td>전체</td><td>${num(usage.calls)}</td>
-          <td>${num(usage.input)}</td><td>${num(usage.output)}</td>
-          <td><b>${num(usage.total)}</b></td>
-        </tr></tfoot>
-      </table>`;
-
-    if (usage.by_model.length > 1) {
-      body += `<div class="usage-models">모델별: ` + usage.by_model.map(m =>
-        `${escHtml(m.model)} ${num(m.total)}`).join(' · ') + `</div>`;
-    }
-    if (usage.unreported_calls) {
-      body += `<div class="usage-warn">${num(usage.unreported_calls)}회는 제공사가 사용량을
-               알려주지 않아 위 합계에 빠져 있습니다. 실제 사용량은 더 많습니다.</div>`;
-    }
-  }
-
-  box.innerHTML = `<summary>${summaryText}</summary>`
-                + `<div class="usage-body">${body}`
-                + `<div class="usage-foot">제공사가 응답에 담아 보낸 값입니다. 청구 기준과 다를 수 있습니다.</div>`
-                + `</div>`;
 }
 
 function applyGenerationResult(payload) {
@@ -742,39 +605,12 @@ function selectProvider(name) {
   document.getElementById('api-key-label').textContent = `🔑 ${info.label} API Key`;
   keyInput.placeholder = info.key_placeholder || 'API 키 입력';
   keyInput.value = apiKeyByProvider[name] || '';
-  renderKeyHelp(info);
+  renderKeyHelp(info, 'key-help');
   loadCredits();
 
   // 제공사가 바뀌면 이전 모델 목록은 무효 → 기본 모델만 남기고 다시 조회
   populateModels([info.default_model]);
   loadModels();
-}
-
-// 발급 절차를 아직 모르는 제공사(전북대 게이트웨이)는 steps가 비어 있다 → 도움말째로 숨긴다.
-function renderKeyHelp(info) {
-  const box = document.getElementById('key-help');
-  const steps = info.key_help_steps || [];
-
-  box.open = false;            // 제공사를 바꾸면 접힌 상태로 되돌린다
-  if (!steps.length) {
-    box.hidden = true;
-    box.innerHTML = '';
-    return;
-  }
-  box.hidden = false;
-
-  const note = info.key_help_note
-    ? `<div class="key-help-note">💡 ${escHtml(info.key_help_note)}</div>` : '';
-  // 발급 페이지는 외부 사이트 → 새 탭으로 열고, opener를 넘기지 않는다
-  const link = info.key_help_url
-    ? `<a class="key-help-link" href="${escHtml(info.key_help_url)}" target="_blank" rel="noopener noreferrer">🔗 키 발급 페이지 열기</a>` : '';
-
-  box.innerHTML =
-    `<summary>❓ ${escHtml(info.label)} API 키 발급 방법</summary>` +
-    `<div class="key-help-body">` +
-      `<ol>${steps.map(s => `<li>${escHtml(s)}</li>`).join('')}</ol>` +
-      note + link +
-    `</div>`;
 }
 
 // ── 모델 목록 (/models 자동 로드) ──

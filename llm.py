@@ -926,7 +926,8 @@ TOPIC_MAX_TOKENS = 8000
 
 def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
                          describe_images: bool = False, provider=None,
-                         side_budget: int = TOPIC_SIDE_CHAR_BUDGET) -> list:
+                         side_budget: int = TOPIC_SIDE_CHAR_BUDGET,
+                         usage=None) -> list:
     """
     업로드된 PDF 여러 개를 '라벨 + 페이지 마커가 붙은 텍스트'로 추출한다.
 
@@ -947,7 +948,8 @@ def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
         name = f.filename or f"{label_prefix}{i}"
         try:
             raw = extract_text_from_pdf(f, api_key, model,
-                                        describe_images=describe_images, provider=provider)
+                                        describe_images=describe_images,
+                                        provider=provider, usage=usage)
         except ProviderError:
             raise                      # 키·한도 오류는 라우트가 상태코드로 구분하므로 그대로
         except Exception as e:
@@ -1164,14 +1166,14 @@ def parse_topic_analysis(raw: str, lecture_docs: list, exam_docs: list) -> dict:
 
 
 def run_topic_analysis(lecture_docs: list, exam_docs: list, api_key: str,
-                       model: str, provider=None) -> dict:
+                       model: str, provider=None, usage=None) -> dict:
     """추출된 강의록·기출 문서 목록 → 주제 대응표 (LLM 1회 호출)."""
     prompt = build_topic_analysis_prompt(
         build_topic_doc_block(lecture_docs),
         build_topic_doc_block(exam_docs),
     )
     raw = call_llm(prompt, api_key, model, provider=provider,
-                   max_tokens=TOPIC_MAX_TOKENS)
+                   max_tokens=TOPIC_MAX_TOKENS, usage=usage)
     result = parse_topic_analysis(raw, lecture_docs, exam_docs)
     result["raw"] = raw
     return result

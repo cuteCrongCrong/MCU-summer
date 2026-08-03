@@ -24,7 +24,7 @@ from providers.base import (
 from providers.factory import (
     DEFAULT_PROVIDER, UnknownProviderError, get_provider, list_providers,
 )
-from providers.usage import UsageCollector
+from providers.usage import UsageCollector, credits_result, credits_snapshot
 from llm import (
     QUESTION_TYPES, StreamingQuestionParser,
     read_pdf_pages, describe_images_progressively, assemble_pdf_text,
@@ -542,47 +542,6 @@ def _batch_targets(type_slots, offset, batch_count) -> dict:
     return {t: batch_slice.count(t) for t in QUESTION_TYPES if batch_slice.count(t)}
 
 
-def _credits_snapshot(provider, api_key):
-    """잔액 조회. 실패해도 생성을 막아선 안 되므로 예외를 삼키고 None을 준다."""
-    if not getattr(provider, "supports_credits", False):
-        return None
-    try:
-        return provider.get_credits(api_key)
-    except Exception:
-        return None
-
-
-def _credits_result(before, after):
-    """
-    이번 생성에 쓴 크레딧 = (생성 후 누적 사용) - (생성 전 누적 사용).
-
-    게이트웨이는 토큰이 아니라 크레딧으로 과금하므로 토큰 수를 보여줘도 실제
-    소모와 연결되지 않는다. 그래서 전후 잔액의 차이로 계산한다.
-    """
-    if not after:
-        return None
-    a_total = after.get("total") or {}
-    spent = None
-    if before:
-        b_used = (before.get("total") or {}).get("used")
-        a_used = a_total.get("used")
-        if b_used is not None and a_used is not None:
-            spent = round(a_used - b_used, 6)      # float 오차 정리
-            # 월 갱신으로 카운터가 초기화되면 음수가 나온다 → 모르는 것으로 처리
-            if spent < 0:
-                spent = None
-    return {
-        "spent":        spent,
-        "remaining":    a_total.get("remaining"),
-        "quota":        a_total.get("quota"),
-        "used":         a_total.get("used"),
-        "sections":     after.get("sections", []),
-        "renewal_date": (after.get("monthly_allocated") or {}).get("renewal_date"),
-        # 생성 전 잔액을 못 읽었으면 이번 사용분을 계산할 수 없다 (화면에서 구분)
-        "spent_known":  spent is not None,
-    }
-
-
 def run_generation_events(p: dict):
     """
     문제 생성 파이프라인을 진행 이벤트를 내보내는 제너레이터로 실행.
@@ -607,7 +566,7 @@ def run_generation_events(p: dict):
 
     # 크레딧으로 과금하는 제공사는 생성 전 잔액을 먼저 찍어둔다 (LLM 호출 이전이어야
     # 이번 생성분만 차이로 잡힌다). 지원하지 않는 제공사는 None.
-    credits_before = _credits_snapshot(provider, api_key)
+    credits_before = credits_snapshot(provider, api_key)
 
     try:
         # ── 경로 A: 저장된 세션 재사용 (분석 LLM 호출 0회 → 토큰 절약) ──
@@ -771,8 +730,8 @@ def run_generation_events(p: dict):
             "weight":           weight,
             "usage":            usage.summary(),      # 이번 생성에 쓴 토큰
             # 크레딧 과금 제공사만 채워진다. 있으면 화면이 토큰 대신 이걸 보여준다.
-            "credits":          _credits_result(credits_before,
-                                                _credits_snapshot(provider, api_key)),
+            "credits":          credits_result(credits_before,
+                                                credits_snapshot(provider, api_key)),
         }}
 
     # 스트리밍은 HTTP 상태를 이미 보낸 뒤라 오류도 이벤트로 흘려보내야 한다
@@ -783,18 +742,18 @@ def run_generation_events(p: dict):
     except ProviderRateLimitError as e:
         yield {"type": "error", "status": 429, "message": str(e),
                "usage": usage.summary(),
-               "credits": _credits_result(credits_before,
-                                          _credits_snapshot(provider, api_key))}
+               "credits": credits_result(credits_before,
+                                          credits_snapshot(provider, api_key))}
     except ProviderError as e:
         yield {"type": "error", "status": 400, "message": str(e),
                "usage": usage.summary(),
-               "credits": _credits_result(credits_before,
-                                          _credits_snapshot(provider, api_key))}
+               "credits": credits_result(credits_before,
+                                          credits_snapshot(provider, api_key))}
     except Exception as e:
         yield {"type": "error", "status": 500, "message": f"서버 오류: {str(e)}",
                "usage": usage.summary(),
-               "credits": _credits_result(credits_before,
-                                          _credits_snapshot(provider, api_key))}
+               "credits": credits_result(credits_before,
+                                          credits_snapshot(provider, api_key))}
 
 
 @gen_bp.route("/generate", methods=["POST"])

@@ -286,3 +286,14 @@ python tests/test_usage.py
 **`providers/` 를 건드렸으면 push 전에 한 번 돌려보자.** API 키 없이도 돌아간다 — LLM SDK를 가짜로 바꿔서 확인하기 때문에 토큰도 0원도 안 든다.
 
 프로바이더를 새로 추가할 때는 `complete` · `complete_stream` · `describe_image` 세 곳에서 `usage`에 기록하는지 확인할 것. 안 하면 화면의 토큰 사용량이 조용히 0으로 나온다.
+
+### LLM을 호출하는 기능을 새로 만들 때 (사용량 배선) 💸
+
+사용량은 **호출 경로를 따라 손으로 넘겨줘야** 잡힌다. 빠뜨려도 아무 오류가 안 나고 화면에 0으로 보이기 때문에, 새 기능이 LLM을 부른다면 아래를 확인하자. (`features/topic_analysis.py`가 그대로 이 모양이다)
+
+1. 라우트 맨 위에서 `usage = UsageCollector()` — `try` **바깥**에 둔다. 오류로 끝나도 그때까지 쓴 만큼은 알려줘야 하므로.
+2. 크레딧 과금 제공사용으로 첫 LLM 호출 **직전에** `credits_before = credits_snapshot(provider, api_key)`.
+3. 단계가 바뀔 때마다 `usage.set_stage("...")` — 키는 `providers/usage.py`의 `STAGE_LABELS`에 함께 추가한다.
+4. `llm.py` 함수에 `usage=usage`를 끝까지 넘긴다. 중간 함수 하나만 빠뜨려도 그 아래 호출이 통째로 안 잡힌다.
+5. 성공·오류 응답 **양쪽**에 `usage`(토큰)와 `credits`(크레딧)를 실는다.
+6. 프런트에서는 `common.js`의 `renderSpend(data, { boxId, noun })`로 그리고, 오류 문구에는 `spendSuffix(data)`를 덧붙인다. 결과 화면에 `<details class="usage-box" id="...">` 빈 상자만 두면 된다.

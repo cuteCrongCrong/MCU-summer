@@ -1,6 +1,12 @@
 """
-LLM 토큰 사용량 수집기.
+한 번의 작업(문제 생성 / 주제 분석)에 무엇을 얼마나 썼는지 모으는 곳.
 
+과금 방식이 두 갈래라 수집 방법도 둘이다.
+  - 토큰 과금(대부분) → UsageCollector 가 호출마다 토큰을 누적한다
+  - 크레딧 과금(전북대 게이트웨이) → 토큰 수가 소모와 연결되지 않으므로
+    작업 전후 잔액을 찍어 그 차이를 쓴다 (credits_snapshot / credits_result)
+
+토큰 수집 쪽 배경:
 한 번의 "생성하기"에 LLM 호출이 10~20번 일어난다(이미지 설명 N회 + 개념 분석 2회
 + 형식 분석 2회 + 문제 생성 배치 N회). 그중 이미지 설명과 개념 분석은
 ThreadPoolExecutor에서 병렬로 돌기 때문에, 누적은 Lock으로 보호한다.
@@ -17,12 +23,14 @@ ThreadPoolExecutor에서 병렬로 돌기 때문에, 누적은 Lock으로 보호
 import threading
 
 # 화면에 보여줄 단계 이름 — 키는 SSE stage 키와 같은 값을 쓴다.
-# 표시 순서도 이 순서를 따른다.
+# 표시 순서도 이 순서를 따른다. 문제 생성과 주제 분석이 한 표를 공유하는데,
+# 두 기능이 겹쳐 도는 일이 없어서(각자 자기 요청 안에서만 산다) 섞이지 않는다.
 STAGE_LABELS = {
     "extract":  "이미지 설명",
     "concepts": "개념 분석",
     "format":   "형식 분석",
     "generate": "문제 생성",
+    "topics":   "주제 분석",      # 기출 주제 분석 (features/topic_analysis.py)
 }
 
 
@@ -125,3 +133,46 @@ class UsageCollector:
             "by_stage":         by_stage,
             "by_model":         by_model,
         }
+
+
+# ──────────────────────────────────────────────
+# 크레딧 과금 제공사 (전북대 게이트웨이)
+#   토큰이 아니라 크레딧으로 과금하므로 토큰 수를 보여줘도 실제 소모와 연결되지
+#   않는다. 대신 작업 전후 잔액을 찍어 그 차이를 이번 사용분으로 쓴다.
+#   문제 생성·주제 분석이 같은 방식으로 쓰므로 여기(공용)에 둔다.
+# ──────────────────────────────────────────────
+
+def credits_snapshot(provider, api_key):
+    """잔액 조회. 실패해도 작업을 막아선 안 되므로 예외를 삼키고 None을 준다."""
+    if not getattr(provider, "supports_credits", False):
+        return None
+    try:
+        return provider.get_credits(api_key)
+    except Exception:
+        return None
+
+
+def credits_result(before, after):
+    """이번 작업에 쓴 크레딧 = (작업 후 누적 사용) - (작업 전 누적 사용)."""
+    if not after:
+        return None
+    a_total = after.get("total") or {}
+    spent = None
+    if before:
+        b_used = (before.get("total") or {}).get("used")
+        a_used = a_total.get("used")
+        if b_used is not None and a_used is not None:
+            spent = round(a_used - b_used, 6)      # float 오차 정리
+            # 월 갱신으로 카운터가 초기화되면 음수가 나온다 → 모르는 것으로 처리
+            if spent < 0:
+                spent = None
+    return {
+        "spent":        spent,
+        "remaining":    a_total.get("remaining"),
+        "quota":        a_total.get("quota"),
+        "used":         a_total.get("used"),
+        "sections":     after.get("sections", []),
+        "renewal_date": (after.get("monthly_allocated") or {}).get("renewal_date"),
+        # 작업 전 잔액을 못 읽었으면 이번 사용분을 계산할 수 없다 (화면에서 구분)
+        "spent_known":  spent is not None,
+    }
