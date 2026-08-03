@@ -85,10 +85,17 @@
       <section class="home-group">
         <h3 class="home-group-title">바로 풀기</h3>
         <div class="home-cards">
-          <button class="home-card home-card-wide" onclick="switchTab('bones')">
+          <!-- 묶음에 혼자라 격자에서 전체 폭을 차지한다. 높이는 다른 카드와 같게 두어
+               '한 칸짜리 큰 카드'로 보이게 한다 (얇은 가로 막대는 각주처럼 읽혔다).
+               문항 수를 넣지 않는 이유: bone_bank.json 이 91KB라 홈에서 세려고 받기엔
+               크고, 숫자를 박아두면 팀원이 데이터를 추가할 때마다 틀려진다. -->
+          <button class="home-card" onclick="switchTab('bones')">
             <span class="home-card-icon">🦴</span>
             <span class="home-card-title">골학 문제은행</span>
-            <span class="home-card-desc">그림 보고 뼈 이름 맞히기 — 준비 없이 바로</span>
+            <!-- 다른 카드와 달리 한 줄이다. 전체 폭이라 데스크톱에서는 한 줄로 충분하고,
+                 좁은 화면에서는 두 줄로 두면 카드가 142px 이 되어 '이어서 하기'가
+                 첫 화면 밖으로 밀린다(실측). 한 줄이면 122px. -->
+            <span class="home-card-desc">그림 속 번호 부위 맞히기 · 자료 없이 바로 시작</span>
           </button>
         </div>
       </section>
