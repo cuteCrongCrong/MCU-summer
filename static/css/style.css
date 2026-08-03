@@ -556,11 +556,32 @@ main { margin-top: 20px; }
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 14px;
 }
-/* 홈의 카드 5장은 3+2로 떨어지도록 넓은 화면에서 3열로 고정한다.
-   auto-fit에만 맡기면 폭에 따라 4+1처럼 어중간하게 갈릴 수 있다.
-   보관함 허브(카드 2장)는 그대로 auto-fit을 쓰도록 홈에만 스코프한다. */
-@media (min-width: 600px) {
-  #tab-home .home-cards { grid-template-columns: repeat(3, 1fr); }
+/* ── 홈: 성격별 묶음 (만들기 / 복습하기 / 바로 풀기) ──
+   전에는 카드 5장을 한 격자에 넣고 3열로 고정해서 3+2로 떨어졌고,
+   둘째 줄 오른쪽 한 칸이 비었다. 이제 묶음마다 격자를 따로 두므로
+   빈 칸이 생길 수 없다 — 묶음 안의 카드 수만큼만 열이 만들어진다. */
+.home-groups { display: flex; flex-direction: column; gap: 18px; }
+.home-group { display: flex; flex-direction: column; gap: 8px; }
+.home-group-title {
+  margin: 0; padding-left: 2px;
+  font-size: 0.76rem; font-weight: 800; letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+/* 최소 폭을 180px에서 150px로 낮춘다 — 375px 화면에서도 2열이 유지돼
+   (150*2+14=314 ≤ 343) 묶음 셋이 3줄로 끝난다. 180px이면 5줄이 된다. */
+#tab-home .home-group .home-cards {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+/* 2열이 유지되면 카드 폭이 165px까지 좁아진다 — 기본 190px 높이를 그대로 두면
+   폭보다 훨씬 긴 상자가 되고 묶음 셋이 쌓여 세로가 630px을 넘는다. */
+@media (max-width: 659px) {
+  #tab-home .home-group .home-card { min-height: 150px; padding: 16px 12px; }
+  #tab-home .home-group .home-card-icon { font-size: 1.9rem; }
+  #tab-home .home-group .home-card-title { font-size: 0.95rem; }
+  /* 묶음에 혼자인 카드(바로 풀기 → 골학)는 전체 폭을 쓰므로 낮아도 존재감이 남는다.
+     좁은 화면에서 150px 를 그대로 두면 '이어서 하기'가 첫 화면 밖으로 밀린다.
+     :only-child 라 그 묶음에 카드가 하나 더 생기면 이 규칙은 저절로 풀린다. */
+  #tab-home .home-group .home-card:only-child { min-height: 120px; }
 }
 .home-card {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -581,10 +602,19 @@ main { margin-top: 20px; }
 .home-card-title { font-size: 1.05rem; font-weight: 700; color: var(--text); }
 .home-card-desc { font-size: 0.82rem; color: var(--text-muted); line-height: 1.55; }
 /* 3열로 놓이는 넓은 화면에서만 정사각형에 가깝게 (좁은 화면에선 과하게 길어짐).
-   그리드 아이템은 stretch로 높이가 정해져 aspect-ratio가 무시되므로 높이를 직접 준다. */
+   그리드 아이템은 stretch로 높이가 정해져 aspect-ratio가 무시되므로 높이를 직접 준다.
+   ⚠️ 홈은 묶음마다 2열이라 카드 폭이 400px 넘는다 — 240px를 그대로 두면
+      '정사각형에 가깝게'라는 이 규칙의 의도와 정반대인 납작한 가로 상자가 된다.
+      그래서 아래에서 홈만 따로 낮춘다. (보관함 허브는 이 값을 그대로 쓴다) */
 @media (min-width: 660px) {
   .home-card { min-height: 240px; }
+  #tab-home .home-group .home-card { min-height: 160px; }
 }
+
+/* 묶음에 카드가 하나뿐이면(바로 풀기 → 골학) auto-fit 이 빈 트랙을 접어
+   그 카드가 전체 폭을 차지한다. 높이는 다른 카드와 같으므로 별도 규칙이 필요 없다.
+   전에는 여기서 가로로 눕혀(높이 68px) 폭만 넓은 막대로 만들었는데,
+   면적이 일반 카드 한 장보다도 작아져(0.92배) 각주처럼 읽혔다. */
 @media (prefers-reduced-motion: reduce) {
   .home-card { transition: border-color 0.15s; }
   .home-card:hover { transform: none; }
