@@ -266,3 +266,23 @@ git commit            # 병합 완료
 | `chore:` | 설정·빌드 등 잡무 |
 
 예) `feat: 로그인 세션 유지 기능 추가`
+
+---
+
+## 10. 테스트 (`tests/`) 🧪
+
+별도 설치 없이 그냥 실행한다. pytest 같은 프레임워크를 쓰지 않으므로 `requirements.txt`에 추가할 것도 없다.
+
+```bash
+python tests/test_usage.py
+```
+
+통과하면 `전부 통과`, 실패하면 어느 항목이 왜 틀렸는지 출력하고 종료 코드 1을 낸다.
+
+| 파일 | 무엇을 지키는가 |
+|---|---|
+| `tests/test_usage.py` | LLM 토큰 사용량 수집 (`providers/usage.py`) |
+
+**`providers/` 를 건드렸으면 push 전에 한 번 돌려보자.** API 키 없이도 돌아간다 — LLM SDK를 가짜로 바꿔서 확인하기 때문에 토큰도 0원도 안 든다.
+
+프로바이더를 새로 추가할 때는 `complete` · `complete_stream` · `describe_image` 세 곳에서 `usage`에 기록하는지 확인할 것. 안 하면 화면의 토큰 사용량이 조용히 0으로 나온다.

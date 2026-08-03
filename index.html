@@ -155,8 +155,16 @@
     <div style="margin-top:20px;">
       <label id="api-key-label">🔑 API Key</label>
       <input type="password" id="api-key" placeholder="API 키 입력" autocomplete="off" onchange="loadModels()" />
-      <div style="font-size:0.75rem;color:#64748b;margin-top:4px;">키를 입력하면 사용 가능한 모델 목록을 자동으로 불러옵니다.</div>
       <div style="font-size:0.75rem;color:#16a34a;margin-top:4px;">🔒 입력한 키는 <b>서버·브라우저에 저장되지 않고</b>, 문제 생성 요청 시에만 사용된 뒤 폐기됩니다.</div>
+
+      <!-- 발급 방법 — 내용은 제공사마다 달라서 renderKeyHelp()가 채운다 -->
+      <details class="key-help" id="key-help" hidden></details>
+
+      <!-- 크레딧 잔액 — 조회를 지원하는 제공사(전북대 게이트웨이)에서만 보인다 -->
+      <div class="credits-bar" id="credits-bar" hidden>
+        <span id="credits-bar-text">API 키를 입력하면 잔액을 조회합니다.</span>
+        <button type="button" id="credits-refresh-btn" onclick="loadCredits()">↻ 조회</button>
+      </div>
     </div>
 
     <!-- 모델 선택 -->
@@ -287,6 +295,9 @@
                 title="이름 붙이기" aria-label="이름 붙이기" style="display:none;">✏️</button>
       </div>
       <div id="questions-container"></div>
+
+      <!-- 이번 생성에 쓴 토큰 — 내용은 renderUsage()가 채운다 -->
+      <details class="usage-box" id="usage-box" hidden></details>
     </div>
 
   </div><!-- /gen-result-view -->
@@ -455,8 +466,8 @@
 <!-- 첫 방문 로그인 안내 모달 (auth.js가 열고 닫는다) -->
 <div class="modal-overlay" id="welcome-modal">
   <div class="modal" style="max-width:520px;">
-    <h3>🔐 로그인하면 기록이 계정에 남습니다</h3>
-    <div class="modal-sub">로그인 없이도 모든 기능을 쓸 수 있어요. 다만 만든 기록이 <b>어디에</b> 남는지가 달라집니다.</div>
+    <h3>🔐 로그인하면 기록이 계정에 저장됩니다.</h3>
+    <div class="modal-sub">로그인 없이도 모든 기능을 사용할 수 있지만, 기록은 브라우저에만 임시로 저장됩니다.</div>
 
     <div style="display:flex;flex-direction:column;gap:10px;">
       <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:12px 14px;font-size:0.84rem;color:#166534;line-height:1.6;">

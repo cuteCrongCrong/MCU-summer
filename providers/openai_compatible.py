@@ -69,17 +69,19 @@ class OpenAICompatibleProvider(Provider):
         return OpenAI(api_key=api_key, base_url=self.base_url)
 
     def complete(self, prompt: str, api_key: str, model: str,
-                 max_tokens: int = None) -> str:
+                 max_tokens: int = None, usage=None) -> str:
         with _translate_errors(self.label):
             response = self._client(api_key).chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=max_tokens or self.max_tokens,
             )
+        if usage is not None:
+            usage.add(model, getattr(response, "usage", None))
         return response.choices[0].message.content
 
     def complete_stream(self, prompt: str, api_key: str, model: str,
-                        max_tokens: int = None):
+                        max_tokens: int = None, usage=None):
         """
         응답을 델타 조각으로 흘려보낸다.
 
@@ -87,22 +89,45 @@ class OpenAICompatibleProvider(Provider):
         _translate_errors()가 제너레이터 본문 전체를 감싸고 있어야 조각을 받다가
         생긴 오류도 번역된다. (with 블록은 yield 사이에도 계속 활성 상태)
         """
+        kwargs = dict(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=max_tokens or self.max_tokens,
+            stream=True,
+        )
         with _translate_errors(self.label):
-            with self._client(api_key).chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=max_tokens or self.max_tokens,
-                stream=True,
-            ) as stream:
+            client = self._client(api_key)
+            # 스트리밍은 기본적으로 usage를 안 보내준다 → 마지막에 usage 청크를 달라고
+            # 요청한다. 이 옵션을 모르는 호환 서버는 400을 내므로, 그때는 옵션 없이
+            # 한 번 더 시도한다 (사용량만 포기하고 생성은 정상 진행).
+            try:
+                stream = client.chat.completions.create(
+                    **kwargs, stream_options={"include_usage": True}
+                )
+            except APIStatusError as e:
+                if e.status_code != 400:
+                    raise
+                stream = client.chat.completions.create(**kwargs)
+
+            with stream:
+                reported = False
                 for chunk in stream:
-                    # 마지막 usage 전용 청크 등 choices가 빈 경우가 있다
+                    # usage 전용 청크는 choices가 비어 있다
+                    chunk_usage = getattr(chunk, "usage", None)
+                    if chunk_usage and usage is not None:
+                        usage.add(model, chunk_usage)
+                        reported = True
                     if not chunk.choices:
                         continue
                     delta = chunk.choices[0].delta.content
                     if delta:
                         yield delta
+                # 끝까지 usage 청크가 없었으면 '제공사가 안 알려줌'으로 남긴다
+                if usage is not None and not reported:
+                    usage.add(model, None)
 
-    def describe_image(self, png_bytes: bytes, api_key: str, model: str) -> str:
+    def describe_image(self, png_bytes: bytes, api_key: str, model: str,
+                       usage=None) -> str:
         """
         Vision LLM으로 이미지가 '무엇인지' 한국어로 설명 생성.
         전체 전사가 아니라, 그림·그래프·표·해부도·검사 소견 등 핵심 내용을 요약.
@@ -122,6 +147,8 @@ class OpenAICompatibleProvider(Provider):
                     ],
                 }],
             )
+        if usage is not None:
+            usage.add(model, getattr(resp, "usage", None))
         return (resp.choices[0].message.content or "").strip()
 
     def list_models(self, api_key: str) -> list:

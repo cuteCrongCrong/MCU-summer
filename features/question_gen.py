@@ -24,6 +24,7 @@ from providers.base import (
 from providers.factory import (
     DEFAULT_PROVIDER, UnknownProviderError, get_provider, list_providers,
 )
+from providers.usage import UsageCollector
 from llm import (
     QUESTION_TYPES, StreamingQuestionParser,
     read_pdf_pages, describe_images_progressively, assemble_pdf_text,
@@ -380,6 +381,28 @@ def get_providers():
     return jsonify({"providers": list_providers(), "default": DEFAULT_PROVIDER})
 
 
+@gen_bp.route("/credits", methods=["GET"])
+def get_credits():
+    """크레딧 잔액 조회 — 지원하는 제공사(전북대 게이트웨이)에서만 동작."""
+    api_key = request.headers.get("X-Api-Key", "")
+    if not api_key:
+        return jsonify({"error": "API 키가 필요합니다."}), 400
+    try:
+        provider = get_provider(request.args.get("provider"))
+    except UnknownProviderError as e:
+        return jsonify({"error": str(e)}), 400
+    if not provider.supports_credits:
+        return jsonify({"error": f"{provider.label}는 크레딧 조회를 지원하지 않습니다."}), 400
+    try:
+        return jsonify(provider.get_credits(api_key))
+    except ProviderAuthError as e:
+        return jsonify({"error": str(e)}), 401
+    except ProviderRateLimitError as e:
+        return jsonify({"error": str(e)}), 429
+    except ProviderError as e:
+        return jsonify({"error": str(e)}), 400
+
+
 @gen_bp.route("/models", methods=["GET"])
 def get_models():
     api_key = request.headers.get("X-Api-Key", "")
@@ -516,6 +539,47 @@ def _batch_targets(type_slots, offset, batch_count) -> dict:
     return {t: batch_slice.count(t) for t in QUESTION_TYPES if batch_slice.count(t)}
 
 
+def _credits_snapshot(provider, api_key):
+    """잔액 조회. 실패해도 생성을 막아선 안 되므로 예외를 삼키고 None을 준다."""
+    if not getattr(provider, "supports_credits", False):
+        return None
+    try:
+        return provider.get_credits(api_key)
+    except Exception:
+        return None
+
+
+def _credits_result(before, after):
+    """
+    이번 생성에 쓴 크레딧 = (생성 후 누적 사용) - (생성 전 누적 사용).
+
+    게이트웨이는 토큰이 아니라 크레딧으로 과금하므로 토큰 수를 보여줘도 실제
+    소모와 연결되지 않는다. 그래서 전후 잔액의 차이로 계산한다.
+    """
+    if not after:
+        return None
+    a_total = after.get("total") or {}
+    spent = None
+    if before:
+        b_used = (before.get("total") or {}).get("used")
+        a_used = a_total.get("used")
+        if b_used is not None and a_used is not None:
+            spent = round(a_used - b_used, 6)      # float 오차 정리
+            # 월 갱신으로 카운터가 초기화되면 음수가 나온다 → 모르는 것으로 처리
+            if spent < 0:
+                spent = None
+    return {
+        "spent":        spent,
+        "remaining":    a_total.get("remaining"),
+        "quota":        a_total.get("quota"),
+        "used":         a_total.get("used"),
+        "sections":     after.get("sections", []),
+        "renewal_date": (after.get("monthly_allocated") or {}).get("renewal_date"),
+        # 생성 전 잔액을 못 읽었으면 이번 사용분을 계산할 수 없다 (화면에서 구분)
+        "spent_known":  spent is not None,
+    }
+
+
 def run_generation_events(p: dict):
     """
     문제 생성 파이프라인을 진행 이벤트를 내보내는 제너레이터로 실행.
@@ -534,6 +598,14 @@ def run_generation_events(p: dict):
     model, count, weight = p["model"], p["count"], p["weight"]
     session_id, owner = p["session_id"], p["owner"]
 
+    # 이번 생성에서 쓴 토큰을 단계별로 모은다. 오류·취소로 끝나도 그 시점까지의
+    # 사용량은 알려줘야 하므로 try 바깥에 둔다 (except 절에서도 참조).
+    usage = UsageCollector()
+
+    # 크레딧으로 과금하는 제공사는 생성 전 잔액을 먼저 찍어둔다 (LLM 호출 이전이어야
+    # 이번 생성분만 차이로 잡힌다). 지원하지 않는 제공사는 None.
+    credits_before = _credits_snapshot(provider, api_key)
+
     try:
         # ── 경로 A: 저장된 세션 재사용 (분석 LLM 호출 0회 → 토큰 절약) ──
         if session_id:
@@ -545,6 +617,7 @@ def run_generation_events(p: dict):
             reused = True
         # ── 경로 B: 새 파일 업로드 → 분석 후 세션 저장 ──
         else:
+            usage.set_stage("extract")
             yield {"type": "stage", "key": "extract", "status": "active"}
             # 강의자료: 텍스트만 추출 (이미지 설명 생략)
             lecture_pages, _ = read_pdf_pages(p["lecture_bytes"], api_key,
@@ -556,7 +629,8 @@ def run_generation_events(p: dict):
                                                   describe_images=True)
             total_imgs = len(img_jobs)
             yield {"type": "progress", "key": "extract", "done": 0, "total": total_imgs}
-            for done_imgs in describe_images_progressively(img_jobs, api_key, model, provider):
+            for done_imgs in describe_images_progressively(img_jobs, api_key, model,
+                                                          provider, usage):
                 yield {"type": "progress", "key": "extract",
                        "done": done_imgs, "total": total_imgs}
             exam_raw = assemble_pdf_text(exam_pages, total_imgs)
@@ -570,17 +644,19 @@ def run_generation_events(p: dict):
             yield {"type": "stage", "key": "extract", "status": "done",
                    "source_info": source_info}
 
+            usage.set_stage("concepts")
             yield {"type": "stage", "key": "concepts", "status": "active"}
             yield {"type": "progress", "key": "concepts", "done": 0, "total": 2}
             gen1 = analyze_concepts_progressively(lecture_text, exam_text,
-                                                  api_key, model, provider)
+                                                  api_key, model, provider, usage)
             part1 = yield from _forward_progress(gen1, "concepts", 2)
             yield {"type": "stage", "key": "concepts", "status": "done"}
 
+            usage.set_stage("format")
             yield {"type": "stage", "key": "format", "status": "active"}
             yield {"type": "progress", "key": "format", "done": 0, "total": 2}
             gen2 = analyze_exam_format_progressively(exam_text, part1["type_stats"],
-                                                     api_key, model, provider)
+                                                     api_key, model, provider, usage)
             part2 = yield from _forward_progress(gen2, "format", 2)
             yield {"type": "stage", "key": "format", "status": "done"}
 
@@ -625,6 +701,7 @@ def run_generation_events(p: dict):
             for t in QUESTION_TYPES:
                 type_slots.extend([t] * type_targets.get(t, 0))
 
+        usage.set_stage("generate")
         yield {"type": "stage", "key": "generate", "status": "active", "total": count}
 
         questions, raw_parts = [], []
@@ -644,7 +721,8 @@ def run_generation_events(p: dict):
             parser = StreamingQuestionParser()
             batch_raw = []
             for piece in call_llm_stream(batch_prompt, api_key, model,
-                                         provider=provider, max_tokens=GEN_MAX_TOKENS):
+                                         provider=provider, max_tokens=GEN_MAX_TOKENS,
+                                         usage=usage):
                 batch_raw.append(piece)
                 for q in parser.feed(piece):
                     questions.append(q)
@@ -684,17 +762,32 @@ def run_generation_events(p: dict):
             "model":            model,
             "provider":         provider.name,
             "weight":           weight,
+            "usage":            usage.summary(),      # 이번 생성에 쓴 토큰
+            # 크레딧 과금 제공사만 채워진다. 있으면 화면이 토큰 대신 이걸 보여준다.
+            "credits":          _credits_result(credits_before,
+                                                _credits_snapshot(provider, api_key)),
         }}
 
     # 스트리밍은 HTTP 상태를 이미 보낸 뒤라 오류도 이벤트로 흘려보내야 한다
     except ProviderAuthError as e:
-        yield {"type": "error", "status": 401, "message": str(e)}
+        # 키가 틀린 경우엔 잔액 조회도 실패하므로 credits는 None이 된다
+        yield {"type": "error", "status": 401, "message": str(e),
+               "usage": usage.summary(), "credits": None}
     except ProviderRateLimitError as e:
-        yield {"type": "error", "status": 429, "message": str(e)}
+        yield {"type": "error", "status": 429, "message": str(e),
+               "usage": usage.summary(),
+               "credits": _credits_result(credits_before,
+                                          _credits_snapshot(provider, api_key))}
     except ProviderError as e:
-        yield {"type": "error", "status": 400, "message": str(e)}
+        yield {"type": "error", "status": 400, "message": str(e),
+               "usage": usage.summary(),
+               "credits": _credits_result(credits_before,
+                                          _credits_snapshot(provider, api_key))}
     except Exception as e:
-        yield {"type": "error", "status": 500, "message": f"서버 오류: {str(e)}"}
+        yield {"type": "error", "status": 500, "message": f"서버 오류: {str(e)}",
+               "usage": usage.summary(),
+               "credits": _credits_result(credits_before,
+                                          _credits_snapshot(provider, api_key))}
 
 
 @gen_bp.route("/generate", methods=["POST"])
@@ -707,7 +800,9 @@ def generate():
 
     for ev in run_generation_events(params):
         if ev["type"] == "error":
-            return jsonify({"error": ev["message"]}), ev["status"]
+            return jsonify({"error": ev["message"],
+                            "usage": ev.get("usage"),
+                            "credits": ev.get("credits")}), ev["status"]
         if ev["type"] == "done":
             return jsonify(ev["payload"])
     return jsonify({"error": "생성 결과를 받지 못했습니다."}), 500
