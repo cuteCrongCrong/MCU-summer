@@ -203,7 +203,7 @@ function renderHomeRecent(sessions, folders, analyses) {
   const nth = {};
   [...analyses].sort((a, b) => a.id - b.id).forEach((a, i) => { nth[a.id] = i + 1; });
 
-  // 세 종류를 시간순으로 섞어 최근 4건만
+  // 세 종류를 시간순으로 섞어 최근 5건만 (목록이 길어지면 홈이 아니라 보관함이 된다)
   const rows = [
     ...sessions.map(s => ({
       when: s.created_at, icon: '📄', name: s.name,
@@ -221,7 +221,7 @@ function renderHomeRecent(sessions, folders, analyses) {
       meta: `주제 분석 · 주제 ${a.num_topics || 0}개`,
       onClick: () => openSavedTopicFromHome(a),
     })),
-  ].sort((a, b) => String(b.when).localeCompare(String(a.when))).slice(0, 4);
+  ].sort((a, b) => String(b.when).localeCompare(String(a.when))).slice(0, 5);
 
   const card = document.getElementById('home-recent-card');
   card.classList.toggle('hidden', !rows.length);
