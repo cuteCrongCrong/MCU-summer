@@ -993,8 +993,9 @@ main { margin-top: 20px; }
   white-space: pre-wrap;
 }
 
-/* 한 줄 요약 (복사용) — 위 "📌 기출에 나온 주제" 목록과 같은 형식(테두리 있는
-   흰 카드 행)으로 보이게 한다. 굵게 강조하지 않은 평문 한 줄 = 주제 하나. */
+/* 한 줄 요약 (복사용) — "📌 기출에 나온 주제" 제목 바로 밑에 접어두고, 아래 주제
+   목록과 같은 형식(테두리 있는 흰 카드 행)으로 보이게 한다.
+   굵게 강조하지 않은 평문 한 줄 = 주제 하나. */
 .topic-summary-list {
   display: flex; flex-direction: column; gap: 8px; margin-top: 10px;
 }

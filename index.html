@@ -444,6 +444,8 @@
           <span>📌 기출에 나온 주제</span>
           <span id="saved-topic-count-label" style="margin-left:auto;font-weight:400;font-size:0.82rem;color:#64748b;"></span>
         </div>
+        <!-- 한 줄 요약 폴드 — topic_analysis.js의 topicRenderList()가 채운다 -->
+        <div id="saved-topic-summary-box"></div>
         <input type="text" id="saved-topic-search" placeholder="🔎 주제 · 파일명으로 걸러보기" oninput="topicFilter('saved')" />
         <div id="saved-topic-list" style="margin-top:16px;"></div>
         <div id="saved-topic-list-empty" style="font-size:0.88rem;color:#64748b;"></div>
@@ -681,6 +683,8 @@
         <span>📌 기출에 나온 주제</span>
         <span id="topic-count-label" style="margin-left:auto;font-weight:400;font-size:0.82rem;color:#64748b;"></span>
       </div>
+      <!-- 한 줄 요약 폴드 — topic_analysis.js의 topicRenderList()가 채운다 -->
+      <div id="topic-summary-box"></div>
       <input type="text" id="topic-search" placeholder="🔎 주제 · 파일명으로 걸러보기" oninput="topicFilter()" />
       <div id="topic-list" style="margin-top:16px;"></div>
       <div id="topic-list-empty" style="font-size:0.88rem;color:#64748b;"></div>
