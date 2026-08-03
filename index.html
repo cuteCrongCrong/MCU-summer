@@ -44,33 +44,54 @@
       <p id="home-subtitle">강의자료와 기출문제를 올리면 예상문제를 만들어 드려요</p>
     </div>
 
-    <!-- 기능 카드 (홈의 주 진입점) -->
-    <div class="home-cards">
-      <button class="home-card" onclick="openGenerator()">
-        <span class="home-card-icon">📝</span>
-        <span class="home-card-title">문제 생성</span>
-        <span class="home-card-desc" id="home-gen-desc">강의자료로<br>예상문제 만들기</span>
-      </button>
-      <button class="home-card" onclick="switchTab('archive')">
-        <span class="home-card-icon">🗂️</span>
-        <span class="home-card-title">보관함</span>
-        <span class="home-card-desc" id="home-archive-desc">만든 문제와<br>분석한 주제</span>
-      </button>
-      <button class="home-card" onclick="switchTab('wrong')">
-        <span class="home-card-icon">❌</span>
-        <span class="home-card-title">오답 노트</span>
-        <span class="home-card-desc" id="home-wrong-desc">틀린 문제<br>모아 보기</span>
-      </button>
-      <button class="home-card" onclick="switchTab('bones')">
-        <span class="home-card-icon">🦴</span>
-        <span class="home-card-title">골학 문제은행</span>
-        <span class="home-card-desc">그림 보고<br>뼈 이름 맞히기</span>
-      </button>
-      <button class="home-card" onclick="switchTab('topics')">
-        <span class="home-card-icon">🔍</span>
-        <span class="home-card-title">기출 주제 분석</span>
-        <span class="home-card-desc">기출에 나온<br>주제 찾기</span>
-      </button>
+    <!-- 기능 카드 (홈의 주 진입점) — 성격이 다른 셋으로 묶는다.
+           만들기   : 내 자료(PDF)를 넣어 새로 만드는 것
+           복습하기 : 이미 만들어 둔 것을 다시 보는 것
+           바로 풀기 : 자료도 API 키도 없이 그냥 들어가서 풀 수 있는 것
+         묶음이 늘거나 카드가 옮겨가면 이 주석도 같이 고칠 것. -->
+    <div class="home-groups">
+      <section class="home-group">
+        <h3 class="home-group-title">만들기</h3>
+        <div class="home-cards">
+          <button class="home-card" onclick="openGenerator()">
+            <span class="home-card-icon">📝</span>
+            <span class="home-card-title">문제 생성</span>
+            <span class="home-card-desc" id="home-gen-desc">강의자료로<br>예상문제 만들기</span>
+          </button>
+          <button class="home-card" onclick="switchTab('topics')">
+            <span class="home-card-icon">🔍</span>
+            <span class="home-card-title">기출 주제 분석</span>
+            <span class="home-card-desc">기출에 나온<br>주제 찾기</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="home-group">
+        <h3 class="home-group-title">복습하기</h3>
+        <div class="home-cards">
+          <button class="home-card" onclick="switchTab('archive')">
+            <span class="home-card-icon">🗂️</span>
+            <span class="home-card-title">보관함</span>
+            <span class="home-card-desc" id="home-archive-desc">만든 문제와<br>분석한 주제</span>
+          </button>
+          <button class="home-card" onclick="switchTab('wrong')">
+            <span class="home-card-icon">❌</span>
+            <span class="home-card-title">오답 노트</span>
+            <span class="home-card-desc" id="home-wrong-desc">틀린 문제<br>모아 보기</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="home-group">
+        <h3 class="home-group-title">바로 풀기</h3>
+        <div class="home-cards">
+          <button class="home-card home-card-wide" onclick="switchTab('bones')">
+            <span class="home-card-icon">🦴</span>
+            <span class="home-card-title">골학 문제은행</span>
+            <span class="home-card-desc">그림 보고 뼈 이름 맞히기 — 준비 없이 바로</span>
+          </button>
+        </div>
+      </section>
     </div>
 
     <!-- 이어서 하기 (세션이 있을 때만) -->
