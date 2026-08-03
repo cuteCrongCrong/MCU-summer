@@ -48,17 +48,38 @@ async function loadHome() {
   });
 }
 
-// 불러오기 자체가 실패한 경우. 부제는 항상 보이는 자리라 여기에 알린다.
-// (기능 카드는 정적 링크라 그대로 눌러 들어갈 수 있다)
+// 불러오기 자체가 실패한 경우. 실패를 화면 어딘가에는 반드시 남긴다 —
+// 아무 말 없이 '기능 카드만 덩그러니 있는 화면'이 나가면 사용자는 저장된 게
+// 없는 것으로 오해하고, 실패한 줄도 모른다. (기능 카드는 정적 링크라
+//  그대로 눌러 들어갈 수 있으므로 진입 자체를 막지는 않는다)
 //
-// 부제 외에는 아무것도 건드리지 않는다 — 탭을 오가다 실패한 경우 직전에
-// 성공한 화면이 그대로 남아 있는데, 인사말만 지우면 이름은 사라지고
-// 이어서하기 카드는 남는 어긋난 상태가 된다. 첫 로드라면 마크업 기본값이
-// 이미 '안녕하세요'라 손댈 필요도 없다.
+// 부제가 있으면 거기에 쓴다. 부제 외에는 아무것도 건드리지 않는다 —
+// 탭을 오가다 실패한 경우 직전에 성공한 화면이 그대로 남아 있는데,
+// 인사말만 지우면 이름은 사라지고 이어서하기 카드는 남는 어긋난 상태가 된다.
+//
+// 부제를 마크업에서 뺀 경우에는 최근 활동 카드를 빌려 쓴다. 저장된 내용을
+// 못 읽었다는 말이 들어갈 자리로는 '내 기록'을 보여주는 이 카드가 가장 가깝다.
 function showHomeLoadError() {
+  const msg = '저장된 내용을 불러오지 못했습니다. 새로고침해 주세요.';
+
   const sub = document.getElementById('home-subtitle');
-  sub.textContent = '저장된 내용을 불러오지 못했습니다. 새로고침해 주세요.';
-  sub.style.color = 'var(--danger)';
+  if (sub) {
+    sub.textContent = msg;
+    sub.style.color = 'var(--danger)';
+    return;
+  }
+
+  const card = document.getElementById('home-recent-card');
+  if (!card) return;                  // 둘 다 없으면 알릴 자리가 없다
+  card.classList.remove('hidden');
+  const list = document.getElementById('home-recent-list');
+  if (list) {
+    list.innerHTML = '';
+    const p = document.createElement('p');
+    p.style.cssText = 'font-size:0.88rem;color:var(--danger);';
+    p.textContent = msg;
+    list.appendChild(p);
+  }
 }
 
 // 보관함 요약(시험지 수·문제 수) — 세션별 회차 목록을 합산한다.
@@ -93,12 +114,20 @@ async function fetchJson(url) {
   return resp.json();
 }
 
+// 인사말 영역은 마크업에서 빼도 되게 두었다 (헤더에 이미 서비스 이름이 있어서
+// 함께 두면 같은 말이 두 번 나온다). 없으면 조용히 건너뛴다 —
+// 여기서 터지면 이 아래 렌더가 하나도 실행되지 않아 홈이 통째로 빈다.
 function renderHomeGreeting(me, sessions) {
-  const name = me && me.user && me.user.name ? me.user.name : null;
-  document.getElementById('home-hello').textContent =
-    name ? `안녕하세요, ${name}님` : '안녕하세요';
-
+  const hello = document.getElementById('home-hello');
   const sub = document.getElementById('home-subtitle');
+  if (!hello && !sub) return;
+
+  const name = me && me.user && me.user.name ? me.user.name : null;
+  if (hello) {
+    hello.textContent = name ? `안녕하세요, ${name}님` : '안녕하세요';
+  }
+  if (!sub) return;
+
   sub.style.color = '';   // 직전 로드가 실패해 빨갛게 남아 있을 수 있다
   if (!sessions.length) {
     sub.textContent = '강의자료와 기출문제를 올리면 예상문제를 만들어 드려요';
