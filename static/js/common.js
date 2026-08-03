@@ -302,7 +302,6 @@ function buildQuestionCard(q, idx, folder, ns) {
       <div class="answer-section" id="${ns}ans-${idx}">
         <div class="answer-badge">✅ 정답: ${escMath(q['정답'] || '-')}</div>
         ${q['해설'] ? `<div class="explain-box"><strong>💡 해설</strong>\n${escMath(q['해설'])}</div>` : ''}
-        ${q['함정포인트'] ? `<div class="trap-box"><strong>⚠️ 함정포인트</strong>\n${escMath(q['함정포인트'])}</div>` : ''}
         ${origBtn}
       </div>`;
 

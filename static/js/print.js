@@ -130,7 +130,6 @@ function buildAnswerSheet(questions, meta) {
           <span class="p-ex">${escHtml(ex)}</span></div>
         <div class="p-ansline"><b>정답</b> ${answerText(q)}</div>
         ${q['해설'] ? `<div class="p-exp">${escMath(q['해설'])}</div>` : ''}
-        ${q['함정포인트'] ? `<div class="p-trap">${escMath(q['함정포인트'])}</div>` : ''}
       </div>`;
   }).join('');
 
