@@ -275,6 +275,7 @@ git commit            # 병합 완료
 
 ```bash
 python tests/test_usage.py
+python tests/test_generation_flow.py
 ```
 
 통과하면 `전부 통과`, 실패하면 어느 항목이 왜 틀렸는지 출력하고 종료 코드 1을 낸다.
@@ -282,8 +283,11 @@ python tests/test_usage.py
 | 파일 | 무엇을 지키는가 |
 |---|---|
 | `tests/test_usage.py` | LLM 토큰 사용량 수집 (`providers/usage.py`) |
+| `tests/test_generation_flow.py` | 문제 생성 파이프라인이 끝까지 도는지 (`run_generation_events`) |
 
-**`providers/` 를 건드렸으면 push 전에 한 번 돌려보자.** API 키 없이도 돌아간다 — LLM SDK를 가짜로 바꿔서 확인하기 때문에 토큰도 0원도 안 든다.
+**`providers/` 나 `features/question_gen.py` 를 건드렸으면 push 전에 한 번 돌려보자.** API 키 없이도 돌아간다 — LLM SDK·프로바이더를 가짜로 바꿔서 확인하기 때문에 토큰도 0원도 안 든다.
+
+`test_generation_flow.py` 는 함수를 하나씩 부르지 않고 **파이프라인 전체를 흘려본다.** 생성 경로는 API 키가 있어야 지나가는 곳이라, 단위 테스트만으로는 "이름 하나 안 가져왔다"(`NameError`) 같은 오류가 사용자가 생성을 돌릴 때까지 발견되지 않는다. 실제로 그렇게 새어나간 적이 있어서 추가했다.
 
 프로바이더를 새로 추가할 때는 `complete` · `complete_stream` · `describe_image` 세 곳에서 `usage`에 기록하는지 확인할 것. 안 하면 화면의 토큰 사용량이 조용히 0으로 나온다.
 
