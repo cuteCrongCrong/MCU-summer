@@ -16,6 +16,7 @@ const BONE_CATEGORIES = [
   {
     key: 'skull', label: 'Skull', icon: '💀',
     subs: [
+      { key: 'entire_skull', label: 'Entire Skull', icon: '💀' },
       { key: 'neurocranium', label: 'Neurocranium', icon: '🧠' },
       { key: 'viscerocranium', label: 'Viscerocranium', icon: '🦷' },
     ],
