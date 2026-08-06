@@ -30,7 +30,11 @@
   --shadow-key: 0 6px 20px rgba(37,99,235,0.14);
 }
 body {
-  font-family: system-ui, 'Apple SD Gothic Neo', 'Nanum Gothic', sans-serif;
+  /* Pretendard Variable 은 45~920 전 구간을 낸다. 이전 스택(system-ui)은 Windows 에서
+     맑은 고딕으로 풀리는데 이 글꼴엔 400/700 두 굵기뿐이라, 이 파일이 쓰는
+     font-weight 600·800 이 전부 700 으로 떨어져 600/700/800 이 한 굵기로 보였다.
+     뒤쪽은 CDN 실패 시의 폴백 — 예전 렌더링과 동일하다. */
+  font-family: 'Pretendard Variable', system-ui, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;

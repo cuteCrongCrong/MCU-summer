@@ -48,7 +48,7 @@
 
 /* ── 지면 (화면 미리보기와 인쇄가 같은 규칙을 쓴다) ── */
 .p-sheet {
-  font: 10.5pt/1.55 system-ui, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+  font: 10.5pt/1.55 'Pretendard Variable', system-ui, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
   color: #000; max-width: 182mm; margin: 0 auto;
 }
 .p-band { border-bottom: 1.5px solid #000; padding-bottom: 3mm; margin-bottom: 6mm; }
@@ -127,6 +127,6 @@
   body:not(.print-mode)::before {
     content: '인쇄하려면 시험지 화면에서 [문제지 인쇄] 또는 [정답·해설 인쇄] 버튼을 눌러 주세요.';
     display: block; padding: 40mm 20mm; font-size: 12pt; line-height: 1.8;
-    font-family: system-ui, 'Malgun Gothic', sans-serif;
+    font-family: 'Pretendard Variable', system-ui, 'Malgun Gothic', sans-serif;
   }
 }
