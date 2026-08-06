@@ -386,9 +386,11 @@
                   title="새로고침" aria-label="생성한 문제 목록 새로고침" style="margin-left:auto;">↻</button>
         </div>
         <div id="archive-filter-row" class="hidden" style="margin-bottom:14px;">
-          <select id="archive-session-filter" class="select-field" onchange="renderArchive()"></select>
+          <select id="archive-session-filter" class="select-field" onchange="archiveFilterChanged()"></select>
         </div>
         <div id="archive-grid"></div>
+        <!-- 페이지 버튼 — 내용은 renderArchive()가 채운다 (한 장뿐이면 빈 채로 둔다) -->
+        <div id="archive-pager"></div>
       </div>
     </div>
 
@@ -427,6 +429,8 @@
                   title="새로고침" aria-label="분석한 주제 목록 새로고침" style="margin-left:auto;">↻</button>
         </div>
         <div id="saved-topics-grid"></div>
+        <!-- 페이지 버튼 — 내용은 renderSavedTopics()가 채운다 (한 장뿐이면 빈 채로 둔다) -->
+        <div id="topics-pager"></div>
       </div>
     </div>
 

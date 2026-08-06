@@ -404,6 +404,80 @@ function viewOriginalImage(src, title) {
 }
 
 // ══════════════════════════════════════════════
+// 목록 페이지 나누기 — 보관함의 두 목록(시험지 · 분석한 주제) 공용
+//   카드가 계속 쌓이면 옛날 것을 찾으려 끝까지 스크롤해야 한다.
+//   두 목록은 같은 .paper-grid 마크업을 쓰므로 자르는 규칙도 한 곳에 둔다.
+//   ⚠️ 문제 카드 목록(renderQuestions)에는 쓰지 않는다 — 고른 선택지·입력한 답·
+//      채점 색이 전부 DOM 에만 있어서, 잘라 다시 그리면 답안이 날아간다.
+// ══════════════════════════════════════════════
+
+// 목록 key → 한 페이지 개수 + 그 목록을 다시 그리는 함수.
+// render 를 화살표로 감싼 것은 호출 시점에 찾게 하려는 것이다 — 이 파일은
+// archive.js/topic_archive.js 보다 먼저 로드돼서 직접 적으면 undefined 다.
+const PAGED_LISTS = {
+  papers: { perPage: 10, render: () => renderArchive() },
+  topics: { perPage: 10, render: () => renderSavedTopics() },
+};
+
+const pageByList = {};                 // key → 지금 보고 있는 페이지 (1-based)
+
+function setPage(key, n) { pageByList[key] = Math.max(1, n); }
+
+// 현재 페이지 몫만 잘라 준다. 페이지가 범위를 벗어나 있으면 마지막 페이지로
+// 당겨온다 — 마지막 장에 남은 카드를 지웠을 때 빈 화면이 뜨는 것을 막는다.
+function pageSlice(key, rows) {
+  const perPage = PAGED_LISTS[key].perPage;
+  const totalPages = Math.max(1, Math.ceil(rows.length / perPage));
+  const page = Math.min(pageByList[key] || 1, totalPages);
+  pageByList[key] = page;
+  const start = (page - 1) * perPage;
+  return { page, totalPages, items: rows.slice(start, start + perPage) };
+}
+
+// 버튼 줄에 실을 번호들. 7장까지는 전부 늘어놓고, 그보다 많으면
+// 처음·마지막·현재±1 만 남기고 사이를 '…' 로 접는다 (좁은 화면에서 줄이 넘친다).
+function pagerItems(page, totalPages) {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+  const from = Math.max(2, page - 1);
+  const to = Math.min(totalPages - 1, page + 1);
+  const out = [1];
+  if (from > 2) out.push('…');
+  for (let i = from; i <= to; i++) out.push(i);
+  if (to < totalPages - 1) out.push('…');
+  out.push(totalPages);
+  return out;
+}
+
+// 페이지 버튼 줄. 한 장뿐이면 빈 문자열 — 목록이 짧으면 지금까지와 똑같이 보인다.
+function pagerHtml(key, page, totalPages) {
+  if (totalPages <= 1) return '';
+
+  const arrow = (target, glyph, label) =>
+    `<button class="pager-btn pager-arrow" onclick="goPage('${key}', ${target})"` +
+    `${target < 1 || target > totalPages ? ' disabled' : ''}` +
+    ` title="${label}" aria-label="${label}">${glyph}</button>`;
+
+  const nums = pagerItems(page, totalPages).map(n =>
+    n === '…'
+      ? '<span class="pager-gap" aria-hidden="true">…</span>'
+      : `<button class="pager-btn" onclick="goPage('${key}', ${n})"` +
+        `${n === page ? ' aria-current="page"' : ` aria-label="${n}페이지로"`}>${n}</button>`
+  ).join('');
+
+  return `<nav class="pager" aria-label="페이지">`
+    + arrow(page - 1, '◀', '이전 페이지') + nums + arrow(page + 1, '▶', '다음 페이지')
+    + `</nav>`;
+}
+
+// 페이지를 바꾸고 그 목록만 다시 그린다. 카드가 통째로 바뀌므로 맨 위로 올려 준다
+// (보관함 안쪽 화면을 옮길 때와 같은 어법 — archive.js showArchiveSubview).
+function goPage(key, n) {
+  setPage(key, n);
+  PAGED_LISTS[key].render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ══════════════════════════════════════════════
 // 사용량 표시 (토큰 / 크레딧) — 문제 생성기·기출 주제 분석 공용
 //   두 탭이 각자 자기 결과 화면에 같은 모양의 접힌 상자를 띄운다.
 //   그래서 대상 상자 id와 작업 이름('생성'/'분석')을 인자로 받는다.

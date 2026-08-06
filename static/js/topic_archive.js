@@ -14,9 +14,13 @@ function invalidateSavedTopics() { savedTopicsLoaded = false; }
 async function loadSavedTopics(force) {
   if (savedTopicsLoaded && !force) return renderSavedTopics();
 
+  // 다시 받으면 새 분석이 맨 앞에 들어와 보던 페이지가 밀린다 (archive.js와 같은 이유)
+  if (force) setPage('topics', 1);
+
   const grid = document.getElementById('saved-topics-grid');
   grid.className = '';
   grid.innerHTML = '<div style="color:#94a3b8;font-size:0.88rem;">불러오는 중…</div>';
+  document.getElementById('topics-pager').innerHTML = '';
   try {
     const data = await (await fetch('/topic-analyses')).json();
     savedTopicRows = data.analyses || [];
@@ -24,6 +28,7 @@ async function loadSavedTopics(force) {
     renderSavedTopics();
   } catch (err) {
     grid.innerHTML = '<div style="color:#dc2626;font-size:0.88rem;">목록을 불러오지 못했습니다.</div>';
+    document.getElementById('topics-pager').innerHTML = '';
   }
 }
 
@@ -37,6 +42,7 @@ function savedTopicFiles(names) {
 
 function renderSavedTopics() {
   const grid = document.getElementById('saved-topics-grid');
+  const pager = document.getElementById('topics-pager');
   const rows = savedTopicRows;
 
   const totalTopics = rows.reduce((sum, r) => sum + (r.num_topics || 0), 0);
@@ -51,17 +57,22 @@ function renderSavedTopics() {
         <div style="margin-top:8px;font-size:0.92rem;">아직 분석한 주제가 없습니다.</div>
         <div style="margin-top:4px;font-size:0.83rem;">기출 주제 분석에서 강의록·기출을 올리면 여기에 모입니다.</div>
       </div>`;
+    pager.innerHTML = '';
     return;
   }
 
   // 전체 분석 중 몇 번째로 만든 것인지 (오래된 것이 제1회). 세션 같은 묶음이
   // 없으므로 전역 순번을 쓴다 (문제 생성기는 세션별 순번).
   // 앞 회차를 지우면 번호가 밀리므로, 카드에는 날짜를 항상 함께 둔다.
+  // ⚠️ 세는 대상은 페이지 몫이 아니라 savedTopicRows 전체다 (archive.js와 같은 이유).
   const ordinal = {};
   [...savedTopicRows].sort((a, b) => a.id - b.id).forEach((r, i) => { ordinal[r.id] = i + 1; });
 
+  // 여기서부터는 이 페이지 몫(items)만 그린다 (common.js — 시험지 목록과 공용)
+  const { page, totalPages, items } = pageSlice('topics', rows);
+
   grid.className = 'paper-grid';
-  grid.innerHTML = rows.map(r => {
+  grid.innerHTML = items.map(r => {
     const lec = savedTopicFiles(r.lecture_names);
     const exam = savedTopicFiles(r.exam_names);
     const dropNote = r.dropped
@@ -84,6 +95,8 @@ function renderSavedTopics() {
         </div>
       </div>`;
   }).join('');
+
+  pager.innerHTML = pagerHtml('topics', page, totalPages);
 }
 
 // ── 분석 한 건 열람 ──

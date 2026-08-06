@@ -69,8 +69,13 @@ async function updateArchiveHubCounts() {
 async function loadArchive(force) {
   if (archiveLoaded && !force) return renderArchive();
 
+  // ↻ 새로고침으로 다시 받는 길. 새 시험지는 맨 앞에 들어와 보던 페이지가
+  // 통째로 밀리므로 1페이지부터 보여준다.
+  if (force) setPage('papers', 1);
+
   const grid = document.getElementById('archive-grid');
   grid.innerHTML = '<div style="color:#94a3b8;font-size:0.88rem;">불러오는 중…</div>';
+  document.getElementById('archive-pager').innerHTML = '';
   try {
     const sessions = (await (await fetch('/sessions')).json()).sessions || [];
     // 세션마다 회차 목록을 병렬로 받아 한 배열로 합친다 (home.js와 같은 조합 패턴)
@@ -87,7 +92,16 @@ async function loadArchive(force) {
     renderArchive();
   } catch (err) {
     grid.innerHTML = '<div style="color:#dc2626;font-size:0.88rem;">목록을 불러오지 못했습니다.</div>';
+    document.getElementById('archive-pager').innerHTML = '';
   }
+}
+
+// 강의자료 필터를 바꾸면 목록 자체가 달라져 보던 페이지 번호가 의미를 잃는다.
+// (다른 목록의 3페이지는 아무 뜻이 없다. 범위를 벗어나는 것만이면 pageSlice가
+//  당겨 주지만, 그래도 새 목록은 처음부터 보여주는 것이 맞다)
+function archiveFilterChanged() {
+  setPage('papers', 1);
+  renderArchive();
 }
 
 // 세션이 2개 이상일 때만 필터를 보여준다 (1개면 고를 게 없다)
@@ -108,6 +122,7 @@ function renderSessionFilter(sessions) {
 
 function renderArchive() {
   const grid = document.getElementById('archive-grid');
+  const pager = document.getElementById('archive-pager');
   const sel = document.getElementById('archive-session-filter');
   const filter = sel && !document.getElementById('archive-filter-row').classList.contains('hidden')
     ? sel.value : '';
@@ -125,11 +140,14 @@ function renderArchive() {
         <div style="margin-top:8px;font-size:0.92rem;">아직 만든 문제가 없습니다.</div>
         <div style="margin-top:4px;font-size:0.83rem;">문제 생성기에서 문제를 만들면 여기에 모입니다.</div>
       </div>`;
+    pager.innerHTML = '';
     return;
   }
 
   // 같은 세션 안에서 몇 번째로 만든 것인지 (오래된 것이 제1회).
   // 앞 회차를 지우면 번호가 밀리므로, 카드에는 날짜를 항상 함께 둔다.
+  // ⚠️ 세는 대상은 화면에 그릴 몫이 아니라 archiveRows 전체다. 필터나 페이지로
+  //    잘린 배열로 세면 '제N회'가 페이지마다 1부터 다시 시작한다.
   const ordinal = {};
   const seen = {};
   [...archiveRows].sort((a, b) => a.id - b.id).forEach(r => {
@@ -137,8 +155,11 @@ function renderArchive() {
     ordinal[r.id] = seen[r.session_id];
   });
 
+  // 여기서부터는 이 페이지 몫(items)만 그린다 (common.js — 분석한 주제 목록과 공용)
+  const { page, totalPages, items } = pageSlice('papers', rows);
+
   grid.className = 'paper-grid';
-  grid.innerHTML = rows.map(r => {
+  grid.innerHTML = items.map(r => {
     const tt = r.type_targets || {};
     const hasTt = Object.keys(TYPE_BADGE).some(t => (tt[t] || 0) > 0);
     const badges = hasTt
@@ -175,6 +196,8 @@ function renderArchive() {
         </div>
       </div>`;
   }).join('');
+
+  pager.innerHTML = pagerHtml('papers', page, totalPages);
 }
 
 // ── 시험지 한 장 열람 ──
@@ -285,6 +308,8 @@ async function renamePaper(gid) {
 
 // 삭제도 목록 카드에서만 한다. 상세 화면(풀기)에는 버튼이 없으므로
 // 삭제 시점에 상세 화면이 열려 있는 경우는 없다.
+// 페이지 번호는 건드리지 않는다 — 보던 자리에 머무는 것이 자연스럽고,
+// 마지막 장에 남은 하나를 지워 페이지가 사라지는 경우는 pageSlice가 당겨 준다.
 async function deletePaper(gid) {
   if (!confirm('이 시험지를 삭제할까요? 담긴 문제도 함께 사라집니다.')) return;
   await fetch('/generation/' + gid, { method: 'DELETE' });
