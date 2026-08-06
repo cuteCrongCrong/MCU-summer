@@ -56,12 +56,12 @@
           <button class="home-card" onclick="openGenerator()">
             <span class="home-card-icon">📝</span>
             <span class="home-card-title">문제 생성</span>
-            <span class="home-card-desc" id="home-gen-desc">강의자료로<br>예상문제 만들기</span>
+            <span class="home-card-desc" id="home-gen-desc">강의자료와 기출문제로<br>예상문제 만들기</span>
           </button>
           <button class="home-card" onclick="switchTab('topics')">
             <span class="home-card-icon">🔍</span>
             <span class="home-card-title">기출 주제 분석</span>
-            <span class="home-card-desc">기출에 나온<br>주제 찾기</span>
+            <span class="home-card-desc">강의자료에서 기출에 나온<br>주제 찾기</span>
           </button>
         </div>
       </section>
@@ -95,7 +95,7 @@
             <!-- 다른 카드와 달리 한 줄이다. 전체 폭이라 데스크톱에서는 한 줄로 충분하고,
                  좁은 화면에서는 두 줄로 두면 카드가 142px 이 되어 '이어서 하기'가
                  첫 화면 밖으로 밀린다(실측). 한 줄이면 122px. -->
-            <span class="home-card-desc">그림 속 번호 부위 맞히기 · 자료 없이 바로 시작</span>
+            <span class="home-card-desc">그림 속 부위의 이름 맞히기</span>
           </button>
         </div>
       </section>
@@ -138,8 +138,8 @@
 
   <!-- ⓪ 저장된 세션 -->
   <div class="card" id="session-card">
-    <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
-      <span>💾 저장된 세션 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 분석 없이 바로 생성 (토큰 절약)</span></span>
+    <div class="card-title" style="justify-content:space-between;">
+      <span>💾 저장된 세션 <span class="card-note">분석 없이 바로 생성 (토큰 절약)</span></span>
       <button type="button" class="icon-btn" onclick="loadSessions()" title="새로고침" aria-label="저장된 세션 새로고침">↻</button>
     </div>
     <div id="session-list" style="margin-top:6px;font-size:0.88rem;color:#64748b;">불러오는 중…</div>
@@ -470,8 +470,8 @@
 
     <!-- 폴더 목록 -->
     <div class="card" id="wrong-card">
-      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
-        <span>❌ 오답 노트 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 틀린/헷갈린 문제를 폴더로 모아두기</span></span>
+      <div class="card-title" style="justify-content:space-between;">
+        <span>❌ 오답 노트 <span class="card-note">틀린/헷갈린 문제를 폴더로 모아두기</span></span>
         <button type="button" class="icon-btn" onclick="loadWrongFolders()" title="새로고침" aria-label="오답 노트 폴더 새로고침">↻</button>
       </div>
       <div id="wrong-folder-list" style="margin-top:6px;font-size:0.88rem;color:#64748b;">불러오는 중…</div>
@@ -491,8 +491,8 @@
   <!-- ══════════ 탭: 골학 문제은행 ══════════ -->
   <div class="tab-panel hidden" id="tab-bones">
     <div class="card">
-      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span>🦴 골학 문제은행 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 그림 속 번호 부위의 이름 맞히기 (범위 선택 후 랜덤·중복 없이 출제)</span></span>
+      <div class="card-title" style="justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <span>🦴 골학 문제은행 <span class="card-note">랜덤으로 중복 없이 출제</span></span>
         <span id="bone-score" style="font-size:0.85rem;color:#475569;"></span>
       </div>
 
