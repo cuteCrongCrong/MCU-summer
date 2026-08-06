@@ -29,6 +29,7 @@ from providers.usage import (
 )
 from llm import (
     QUESTION_TYPES, StreamingQuestionParser, IMAGE_DESCRIBE, IMAGE_TRANSCRIBE,
+    MAX_FILES_PER_SIDE, GEN_SIDE_CHAR_BUDGET, GEN_DOC_MIN_CHARS,
     read_pdf_pages, describe_images_progressively, assemble_pdf_text,
     truncate, build_source_info,
     analyze_concepts_progressively, analyze_exam_format_progressively,
@@ -442,6 +443,15 @@ class GenerateParamError(Exception):
         self.status = status
 
 
+def _collect_pdfs(field: str):
+    """업로드 목록에서 빈 항목을 걸러내고 확장자를 확인한다. (topic_analysis와 같은 규칙)"""
+    files = [f for f in request.files.getlist(field) if f and f.filename]
+    for f in files:
+        if not f.filename.lower().endswith(".pdf"):
+            raise GenerateParamError(f"PDF 파일만 올릴 수 있습니다: {f.filename}")
+    return files
+
+
 def read_generate_params() -> dict:
     """
     요청에서 생성에 필요한 값을 전부 꺼내 dict로 반환.
@@ -500,16 +510,22 @@ def read_generate_params() -> dict:
         raise GenerateParamError("문제 세트 이름은 100자 이내로 입력해주세요.")
 
     session_id = request.form.get("session_id", "").strip()
-    lecture_bytes = exam_bytes = None
+    lecture_files = []
+    exam_files = []
     lecture_name = ""
     if not session_id:
-        lecture_file = request.files.get("lecture")
-        exam_file    = request.files.get("exam")
-        if not lecture_file or not exam_file:
+        lectures = _collect_pdfs("lecture")
+        exams    = _collect_pdfs("exam")
+        if not lectures or not exams:
             raise GenerateParamError("강의자료와 기출문제 파일을 모두 업로드해주세요.")
-        lecture_bytes = lecture_file.read()
-        exam_bytes    = exam_file.read()
-        lecture_name  = lecture_file.filename or "강의자료"
+        if len(lectures) > MAX_FILES_PER_SIDE or len(exams) > MAX_FILES_PER_SIDE:
+            raise GenerateParamError(
+                f"강의자료·기출은 각각 최대 {MAX_FILES_PER_SIDE}개까지 올릴 수 있습니다.")
+        # 요청 컨텍스트가 살아 있을 때 바이트로 읽어둔다
+        # (스트리밍 제너레이터는 컨텍스트가 닫힌 뒤에 돈다 — owner를 미리 잡는 것과 같은 이유)
+        lecture_files = [(f.filename or "강의자료", f.read()) for f in lectures]
+        exam_files    = [(f.filename or "기출문제", f.read()) for f in exams]
+        lecture_name  = lecture_files[0][0]
 
     return {
         "api_key":        api_key,
@@ -525,9 +541,9 @@ def read_generate_params() -> dict:
         "session_id":     session_id,
         # 소유자는 요청 컨텍스트가 살아 있을 때 확정해둔다 (스트리밍 제너레이터에서는 못 읽음)
         "owner":          current_owner(),
-        "lecture_bytes":  lecture_bytes,
-        "exam_bytes":     exam_bytes,
-        "lecture_name":   lecture_name,
+        "lecture_files":  lecture_files,   # [(파일명, bytes)]
+        "exam_files":     exam_files,
+        "lecture_name":   lecture_name,    # 세션 이름에 쓸 대표 파일명 (첫 파일)
         "name":           request.form.get("name", "").strip(),
     }
 
@@ -543,6 +559,33 @@ def _forward_progress(gen, key: str, total: int):
         except StopIteration as stop:
             return stop.value
         yield {"type": "progress", "key": key, "done": done, "total": total}
+
+
+def _join_side(files, parts, image_mode):
+    """
+    한쪽(강의자료 전체 / 기출 전체)의 파일별 텍스트를 예산 안에서 잘라 하나로 합친다.
+
+    예산을 파일 수로 나눠 배정하므로, 파일이 1개면 예전과 똑같이 GEN_SIDE_CHAR_BUDGET
+    (=MAX_TEXT_CHARS) 전부를 쓴다. 파일이 여럿이면 어디부터 다른 자료인지 LLM이 알 수
+    있게 파일명 구분선을 넣는다.
+    반환: (합친 텍스트, 반영 범위 dict) — 범위는 파일들을 합산한 값이다.
+    """
+    per_doc = max(GEN_DOC_MIN_CHARS, GEN_SIDE_CHAR_BUDGET // len(files))
+    chunks, chars, used = [], 0, 0
+    for (name, _), (pages, jobs) in zip(files, parts):
+        raw = assemble_pdf_text(pages, len(jobs), image_mode)
+        info = build_source_info(raw, per_doc)
+        chars += info["chars"]
+        used  += info["used"]
+        text = truncate(raw, per_doc)
+        chunks.append(f"===== {name} =====\n{text}" if len(files) > 1 else text)
+    return "\n\n".join(chunks), {
+        "chars": chars,
+        "used": used,
+        "limit": per_doc * len(files),
+        "truncated": used < chars,
+        "coverage": round(used / chars * 100) if chars else 100,
+    }
 
 
 def _batch_targets(type_slots, offset, batch_count) -> dict:
@@ -594,33 +637,32 @@ def run_generation_events(p: dict):
             yield {"type": "stage", "key": "extract", "status": "active"}
             # 강의자료: 그림 속 글자만 그대로 전사 (손글씨·판서 보존). 그림 해설은 안 한다 —
             #  해설은 LLM이 지어낸 문장이라 강의자료에 없는 용어를 끌어들인다.
-            lecture_pages, lec_jobs = read_pdf_pages(p["lecture_bytes"], api_key,
-                                                     image_mode=IMAGE_TRANSCRIBE)
             # 기출문제: 이미지/그림 페이지는 Vision LLM 설명으로 보존
             #  (예: 신체 부위 그림 → 부위 이름 쓰기 문제 등)
-            exam_pages, img_jobs = read_pdf_pages(p["exam_bytes"], api_key,
-                                                  image_mode=IMAGE_DESCRIBE)
-            # 진행률은 강의자료·기출을 합쳐서 센다 (강의자료도 이제 Vision을 쓰므로)
-            total_imgs = len(lec_jobs) + len(img_jobs)
-            yield {"type": "progress", "key": "extract", "done": 0, "total": total_imgs}
-            for done_imgs in describe_images_progressively(lec_jobs, api_key, model,
-                                                           provider, usage,
-                                                           IMAGE_TRANSCRIBE):
-                yield {"type": "progress", "key": "extract",
-                       "done": done_imgs, "total": total_imgs}
-            for done_imgs in describe_images_progressively(img_jobs, api_key, model,
-                                                           provider, usage,
-                                                           IMAGE_DESCRIBE):
-                yield {"type": "progress", "key": "extract",
-                       "done": len(lec_jobs) + done_imgs, "total": total_imgs}
-            lecture_raw = assemble_pdf_text(lecture_pages, len(lec_jobs), IMAGE_TRANSCRIBE)
-            exam_raw = assemble_pdf_text(exam_pages, len(img_jobs), IMAGE_DESCRIBE)
+            # 여기까지는 LLM 호출이 없다 (페이지 선정만) — 진행률 총계를 먼저 알아야 하므로
+            # 양쪽 파일을 모두 읽어 대상 페이지를 센 뒤에 Vision 호출을 시작한다.
+            lec_parts  = [read_pdf_pages(data, api_key, image_mode=IMAGE_TRANSCRIBE)
+                          for _, data in p["lecture_files"]]
+            exam_parts = [read_pdf_pages(data, api_key, image_mode=IMAGE_DESCRIBE)
+                          for _, data in p["exam_files"]]
 
-            lecture_text = truncate(lecture_raw)
-            exam_text    = truncate(exam_raw)
+            total_imgs = sum(len(jobs) for _, jobs in lec_parts + exam_parts)
+            yield {"type": "progress", "key": "extract", "done": 0, "total": total_imgs}
+            done_imgs = 0
+            for parts, mode in ((lec_parts, IMAGE_TRANSCRIBE), (exam_parts, IMAGE_DESCRIBE)):
+                for _, jobs in parts:
+                    for d in describe_images_progressively(jobs, api_key, model,
+                                                           provider, usage, mode):
+                        yield {"type": "progress", "key": "extract",
+                               "done": done_imgs + d, "total": total_imgs}
+                    done_imgs += len(jobs)
+
+            lecture_text, lecture_src = _join_side(p["lecture_files"], lec_parts,
+                                                   IMAGE_TRANSCRIBE)
+            exam_text, exam_src = _join_side(p["exam_files"], exam_parts, IMAGE_DESCRIBE)
             source_info = {
-                "lecture": build_source_info(lecture_raw),   # 원문 반영 범위
-                "exam":    build_source_info(exam_raw),
+                "lecture": lecture_src,   # 원문 반영 범위 (파일 여러 개면 합산)
+                "exam":    exam_src,
             }
             yield {"type": "stage", "key": "extract", "status": "done",
                    "source_info": source_info}
@@ -644,7 +686,10 @@ def run_generation_events(p: dict):
             analysis = {**part1, **part2, "source_info": source_info}
 
             # 세션 저장 (이름: 사용자 지정 or 파일명+시각) — 현재 소유자(로그인/게스트) 소유
-            base = p["lecture_name"].rsplit(".", 1)[0]
+            base = p["lecture_name"].rsplit(".", 1)[0]   # 확장자 떼기 (첫 파일 기준)
+            extra = len(p["lecture_files"]) - 1
+            if extra > 0:
+                base += f" 외 {extra}개"
             name = p["name"] or f"{base} · {datetime.now().strftime('%m/%d %H:%M')}"
             session_id = save_session(name, model, analysis, owner, provider.name)
             analysis["name"] = name

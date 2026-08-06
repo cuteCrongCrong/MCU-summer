@@ -23,6 +23,17 @@ _default_provider = get_provider()
 # 강의/기출 텍스트를 LLM에 넣기 전 문서당 최대 글자 수.
 MAX_TEXT_CHARS = 100000
 
+# 한쪽(강의록/기출)당 업로드 파일 개수 상한 — 주제 분석·문제 생성 공통.
+# 프런트(static/js/topic_analysis.js · question_gen.js)도 같은 값을 들고 있으므로 함께 고친다.
+MAX_FILES_PER_SIDE = 7
+
+# 문제 생성: 한쪽(강의자료 전체 / 기출 전체)에 배정하는 글자 예산.
+# 파일이 1개면 예전 동작(문서 하나에 MAX_TEXT_CHARS)과 정확히 같아지도록 그 값을 그대로 쓴다.
+GEN_SIDE_CHAR_BUDGET = MAX_TEXT_CHARS
+# 파일을 여러 개 올려도 문서당 이만큼은 보장. 상한까지 채웠을 때의 몫으로 잡아
+# '문서당 몫 × 파일수 ≤ 예산'이 허용 개수 전 구간에서 성립하게 한다. (주제 분석과 같은 방식)
+GEN_DOC_MIN_CHARS = GEN_SIDE_CHAR_BUDGET // MAX_FILES_PER_SIDE
+
 # 이미지/스캔 페이지 → Vision LLM으로 텍스트를 남긴다 (토큰 비용 상한용)
 IMAGE_DESC_MAX = 15          # 기출: 설명할 이미지 페이지 최대 개수
 LECTURE_IMAGE_MAX = 40       # 강의록: 손글씨·판서 페이지가 많아 기출보다 넉넉히 잡는다
@@ -987,14 +998,11 @@ def run_analysis(lecture_text: str, exam_text: str, api_key: str, model: str,
 # 문제 생성은 문서 1개당 MAX_TEXT_CHARS(100000)를 쓰는데, 여기서도 그만큼 여유를 주되
 # 강의+기출을 한 프롬프트에 함께 넣는 점을 감안해 살짝 보수적으로 잡는다.
 TOPIC_SIDE_CHAR_BUDGET = 120000
-# 한쪽(강의록/기출)당 업로드 파일 개수 상한. features/topic_analysis.py가 이 값으로 검증하고
-# static/js/topic_analysis.js가 같은 값을 들고 있다.
-TOPIC_MAX_FILES_PER_SIDE = 7
 # 파일을 여러 개 올려도 문서당 이만큼은 보장 (예산 ÷ 파일수가 너무 작아지는 것 방지).
-# 상한까지 채웠을 때의 몫으로 잡아 둔다 — 이래야 '문서당 몫 × 파일수 ≤ 예산'이 허용 개수
-# 전 구간에서 성립한다. 손으로 따로 잡으면 파일 상한을 올렸을 때 이 최소치가 예산을
-# 덮어써서(max가 최소치를 고름) 프롬프트가 조용히 예산을 넘긴다.
-TOPIC_DOC_MIN_CHARS = TOPIC_SIDE_CHAR_BUDGET // TOPIC_MAX_FILES_PER_SIDE
+# 상한(MAX_FILES_PER_SIDE)까지 채웠을 때의 몫으로 잡아 둔다 — 이래야 '문서당 몫 × 파일수
+# ≤ 예산'이 허용 개수 전 구간에서 성립한다. 손으로 따로 잡으면 파일 상한을 올렸을 때 이
+# 최소치가 예산을 덮어써서(max가 최소치를 고름) 프롬프트가 조용히 예산을 넘긴다.
+TOPIC_DOC_MIN_CHARS = TOPIC_SIDE_CHAR_BUDGET // MAX_FILES_PER_SIDE
 # 주제 목록이 길어져도 JSON이 잘리지 않도록.
 # 주제마다 강의록발췌·기출 원문이 붙어 항목당 분량이 늘었으므로 기존(8000)보다 넉넉히 잡는다.
 TOPIC_MAX_TOKENS = 16000

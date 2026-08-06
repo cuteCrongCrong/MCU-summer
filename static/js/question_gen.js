@@ -3,26 +3,33 @@
 //   common.js 이후 로드. escHtml/renderQuestions/TYPE_BADGE 등은 common.js 것을 재사용.
 // ══════════════════════════════════════════════
 
-// ── 파일 드래그앤드롭 UX ──
+const GEN_MAX_FILES = 7;   // llm.py MAX_FILES_PER_SIDE와 같은 값으로 유지
+
+// ── 파일 드래그앤드롭 UX (여러 개 지원) ──
 function setupDrop(dropId, inputId, nameId) {
   const drop = document.getElementById(dropId);
   const input = document.getElementById(inputId);
   const nameEl = document.getElementById(nameId);
 
-  input.addEventListener('change', () => {
-    if (input.files[0]) nameEl.textContent = '✅ ' + input.files[0].name;
-  });
+  const show = () => {
+    const files = Array.from(input.files || []);
+    if (!files.length) { nameEl.textContent = ''; return; }
+    nameEl.textContent = `✅ ${files.length}개 — ${files.map(f => f.name).join(', ')}`;
+    // 상한을 넘으면 빨갛게 — 생성 버튼을 누르기 전에 알아채도록
+    nameEl.style.color = files.length > GEN_MAX_FILES ? '#dc2626' : '';
+  };
+
+  input.addEventListener('change', show);
   drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag-over'); });
   drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
   drop.addEventListener('drop', e => {
     e.preventDefault(); drop.classList.remove('drag-over');
-    const file = e.dataTransfer.files[0];
-    if (file && file.name.endsWith('.pdf')) {
-      const dt = new DataTransfer();
-      dt.items.add(file);
-      input.files = dt.files;
-      nameEl.textContent = '✅ ' + file.name;
-    }
+    const pdfs = Array.from(e.dataTransfer.files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+    if (!pdfs.length) return;
+    const dt = new DataTransfer();
+    pdfs.forEach(f => dt.items.add(f));
+    input.files = dt.files;
+    show();
   });
 }
 setupDrop('drop-lecture', 'lecture-file', 'lecture-name');
@@ -99,8 +106,8 @@ function clearSession() {
 
 // ── 메인 생성 함수 ──
 async function generate() {
-  const lectureFile = document.getElementById('lecture-file').files[0];
-  const examFile    = document.getElementById('exam-file').files[0];
+  const lectureFiles = Array.from(document.getElementById('lecture-file').files || []);
+  const examFiles    = Array.from(document.getElementById('exam-file').files || []);
   const apiKey      = document.getElementById('api-key').value.trim();
   const weight      = document.getElementById('weight').value;
   const model       = document.getElementById('model-select').value;
@@ -118,7 +125,7 @@ async function generate() {
   }
 
   // 새 파일을 올렸다면 세션보다 파일 분석을 우선 (세션 자동 해제)
-  if (lectureFile && examFile && currentSessionId) clearSession();
+  if (lectureFiles.length && examFiles.length && currentSessionId) clearSession();
 
   const useSession = !!currentSessionId;
 
@@ -126,8 +133,11 @@ async function generate() {
   if (!apiKey) return alert('API 키를 입력해주세요.');
   if (manualMode && (count < 1 || count > 30)) return alert('유형별 문제 수의 합계는 1~30개 사이여야 합니다.');
   if (!useSession) {
-    if (!lectureFile) return alert('강의자료 PDF를 업로드하거나, 저장된 세션을 선택해주세요.');
-    if (!examFile)    return alert('기출문제 PDF를 업로드하거나, 저장된 세션을 선택해주세요.');
+    if (!lectureFiles.length) return alert('강의자료 PDF를 업로드하거나, 저장된 세션을 선택해주세요.');
+    if (!examFiles.length)    return alert('기출문제 PDF를 업로드하거나, 저장된 세션을 선택해주세요.');
+    if (lectureFiles.length > GEN_MAX_FILES || examFiles.length > GEN_MAX_FILES) {
+      return alert(`강의자료·기출은 각각 최대 ${GEN_MAX_FILES}개까지 올릴 수 있습니다.`);
+    }
   }
 
   // UI 초기화
@@ -153,8 +163,9 @@ async function generate() {
   if (useSession) {
     form.append('session_id', currentSessionId);
   } else {
-    form.append('lecture', lectureFile);
-    form.append('exam', examFile);
+    // 같은 키로 여러 번 append → 서버에서 getlist('lecture')로 받는다
+    lectureFiles.forEach(f => form.append('lecture', f));
+    examFiles.forEach(f => form.append('exam', f));
   }
 
   genAbort = new AbortController();

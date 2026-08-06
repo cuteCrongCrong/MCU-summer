@@ -29,16 +29,14 @@ from providers.usage import (
     UsageCollector, credits_for_history, credits_result, credits_snapshot,
 )
 from llm import (
-    IMAGE_DESCRIBE, IMAGE_TRANSCRIBE, TOPIC_MAX_FILES_PER_SIDE,
+    IMAGE_DESCRIBE, IMAGE_TRANSCRIBE, MAX_FILES_PER_SIDE,
     extract_labeled_docs, run_topic_analysis,
 )
 
 topic_bp = Blueprint("topic", __name__)
 
-# 한쪽(강의록/기출)당 업로드 파일 개수 상한.
-# 파일 수가 늘수록 문서당 반영 글자수가 줄고(예산 분할) 프롬프트도 커지므로 상한을 둔다.
-# 글자 예산(TOPIC_SIDE_CHAR_BUDGET)과 맞물려 있어 llm.py에서 한 번만 정한다.
-MAX_FILES_PER_SIDE = TOPIC_MAX_FILES_PER_SIDE
+# 업로드 파일 개수 상한은 글자 예산과 맞물려 있어 llm.py에서 한 번만 정한다
+# (MAX_FILES_PER_SIDE — 문제 생성기와 공용).
 
 
 def _collect_pdfs(field: str):

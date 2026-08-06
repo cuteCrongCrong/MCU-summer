@@ -67,7 +67,11 @@ class FakeProvider:
     default_model = "fake-model"
     supports_credits = False        # 크레딧 미지원 경로
 
+    def __init__(self):
+        self.prompts = []           # 업로드 경로 테스트가 '무엇이 LLM에 갔는지' 확인용
+
     def complete(self, prompt, api_key, model, max_tokens=None, usage=None):
+        self.prompts.append(prompt)
         if usage is not None:
             usage.add(model, FakeUsage())
         return "{}"
@@ -95,6 +99,7 @@ class FakeCreditProvider(FakeProvider):
     supports_credits = True
 
     def __init__(self):
+        super().__init__()          # prompts 기록도 상속 (안 부르면 complete가 터진다)
         self._used = 100.0
 
     def get_credits(self, api_key):
@@ -125,7 +130,8 @@ def run_pipeline(provider, owner, sid):
         "gen_title": "연기 테스트",
         "manual_targets": None,      # 자동 배분
         "preserve_types": False,
-        "lecture_bytes": None, "exam_bytes": None,   # 경로 A라 안 쓰인다
+        "lecture_files": [], "exam_files": [],       # 경로 A라 안 쓰인다
+        "lecture_name": "", "name": "",
     }
     done = error = None
     for ev in run_generation_events(params):
@@ -180,8 +186,90 @@ def test_flow():
         delete_session(sid, owner)      # 연결된 회차도 함께 지워진다
 
 
+def _make_pdf(lines):
+    """텍스트 레이어만 있는 PDF 바이트. (그림이 없으므로 Vision 호출을 타지 않는다)"""
+    import fitz
+    doc = fitz.open()
+    page = doc.new_page()
+    y = 72
+    for ln in lines:
+        page.insert_text((72, y), ln)
+        y += 18
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
+def test_upload_flow():
+    """
+    업로드 경로(B)를 파일 여러 개로 흘려본다.
+
+    경로 A(세션 재사용)만 돌리면 PDF 추출·예산 분할·세션 저장이 통째로 안 지나간다.
+    다중 파일은 그 구간에만 있으므로 여기서 확인해야 한다.
+    """
+    print("\n[업로드 경로 · 파일 여러 개]")
+    db.init_db()
+    owner = (None, "__flow_test_upload__")
+    prov = FakeProvider()
+
+    params = {
+        "api_key": "test-key", "provider": prov, "model": "fake-model",
+        "count": 2, "weight": 5, "session_id": "", "owner": owner,
+        "gen_title": "업로드 연기 테스트",
+        "manual_targets": None,
+        "preserve_types": False,
+        "lecture_files": [
+            ("골학1.pdf", _make_pdf(["LECTUREMARKERALPHA cranial bones"])),
+            ("골학2.pdf", _make_pdf(["LECTUREMARKERBETA sutures of skull"])),
+        ],
+        "exam_files": [
+            ("기출2024.pdf", _make_pdf(["EXAMMARKERGAMMA 1. foramen magnum"])),
+            ("기출2025.pdf", _make_pdf(["EXAMMARKERDELTA 2. jugular foramen"])),
+        ],
+        "lecture_name": "골학1.pdf",
+        "name": "",
+    }
+
+    done = error = None
+    session_name = None
+    for ev in run_generation_events(params):
+        if ev["type"] == "done":
+            done = ev["payload"]
+        elif ev["type"] == "error":
+            error = ev
+        elif ev["type"] == "analysis":
+            session_name = ev["payload"]["session_name"]
+
+    check("오류 없이 끝난다", error is None, error)
+    check("done 페이로드가 온다", done is not None)
+    if not done:
+        return
+
+    # 파일 4개가 전부 LLM 프롬프트까지 갔는가 (하나라도 빠지면 그 자료는 무시된 것)
+    joined = "\n".join(prov.prompts)
+    for marker in ("LECTUREMARKERALPHA", "LECTUREMARKERBETA",
+                   "EXAMMARKERGAMMA", "EXAMMARKERDELTA"):
+        check(f"{marker} 가 프롬프트에 포함", marker in joined)
+
+    # 파일명 구분선 — 여러 개일 때만 붙는다
+    check("파일명 구분선이 들어간다", "===== 골학2.pdf =====" in joined)
+
+    # 세션 이름에 파일 개수가 드러나는가
+    check("세션 이름에 '외 1개'", "외 1개" in (session_name or ""), session_name)
+
+    src = done.get("source_info") or {}
+    check("강의 반영 범위가 두 파일 합산",
+          (src.get("lecture") or {}).get("chars", 0) > 0, src.get("lecture"))
+    check("잘린 것 없음 (짧은 파일)",
+          (src.get("lecture") or {}).get("truncated") is False, src.get("lecture"))
+
+    if done.get("session_id"):
+        delete_session(done["session_id"], owner)
+
+
 if __name__ == "__main__":
     test_flow()
+    test_upload_flow()
     print()
     if _failures:
         print(f"실패 {len(_failures)}건: " + ", ".join(_failures))
