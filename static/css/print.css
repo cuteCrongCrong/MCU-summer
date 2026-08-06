@@ -36,11 +36,11 @@
   font-size: 0.88rem; font-weight: 700; font-family: inherit; cursor: pointer;
   min-height: 40px;
 }
-.p-btn-main { border: none; background: #2563eb; color: #fff; }
-.p-btn-main:hover { background: #1d4ed8; }
+.p-btn-main { border: none; background: #2f5c50; color: #fff; }
+.p-btn-main:hover { background: #244b40; }
 .p-btn { border: 1.5px solid #cbd5e1; background: #fff; color: #475569; }
-.p-btn:hover { border-color: #2563eb; color: #2563eb; }
-.p-btn-main:focus-visible, .p-btn:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.p-btn:hover { border-color: #2f5c50; color: #2f5c50; }
+.p-btn-main:focus-visible, .p-btn:focus-visible { outline: 2px solid #2f5c50; outline-offset: 2px; }
 .p-hint {
   flex-basis: 100%; font-size: 0.74rem; color: #64748b; line-height: 1.6; margin-top: 2px;
 }

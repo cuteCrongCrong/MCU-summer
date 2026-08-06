@@ -5,11 +5,12 @@
 동작이 깨지는 게 아니라 **요금만 다시 오르기** 때문에, 화면으로는 티가 안 난다.
 그래서 테스트로 고정해둔다.
 
-  ① 이미지 설명 대상 선별 — 로고 한 점 때문에 본문 페이지를 Vision에 보내지 않는다
-  ② 이미지 설명 캐시    — 같은 PDF를 다시 올리면 Vision 호출이 0이 된다
-  ③ 이미지 예산         — 기출 여러 개를 올려도 '파일당'이 아니라 '전체' 상한이 걸린다
-  ④ 기출 분석 1회 병합  — 기출 전문을 두 번 보내지 않는다
-  ⑤ 생성 프롬프트 분리  — 배치가 달라도 캐시 접두부는 글자 하나까지 같다
+  ① 이미지 처리 대상 선별 — 로고 한 점 때문에 본문 페이지를 Vision에 보내지 않는다
+  ② 이미지 결과 캐시     — 같은 PDF를 다시 올리면 Vision 호출이 0이 된다
+  ②-c 모드 분리         — 같은 페이지라도 '그림 설명'과 '글자 전사'는 캐시를 공유하면 안 된다
+  ③ 이미지 예산          — 기출 여러 개를 올려도 '파일당'이 아니라 '전체' 상한이 걸린다
+  ④ 기출 분석 1회 병합   — 기출 전문을 두 번 보내지 않는다
+  ⑤ 생성 프롬프트 분리   — 배치가 달라도 캐시 접두부는 글자 하나까지 같다
 
 LLM 호출 없이 가짜 프로바이더로 돈다. API 키도 요금도 필요 없다:
 
@@ -112,9 +113,10 @@ class CountingProvider:
                         cache_prefix=None):
         yield self.complete(prompt, api_key, model, max_tokens, usage, cache_prefix)
 
-    def describe_image(self, png_bytes, api_key, model, usage=None):
+    def describe_image(self, png_bytes, api_key, model, usage=None, prompt=None):
         self.image_calls += 1
-        return f"그림 설명 {self.image_calls}"
+        self.last_image_prompt = prompt
+        return f"그림 결과 {self.image_calls}"
 
     def list_models(self, api_key):
         return [self.default_model]
@@ -131,9 +133,10 @@ class FakeUpload:
         return self._data
 
 
-def describe_all(img_jobs, provider, model="fake-model"):
+def describe_all(img_jobs, provider, model="fake-model", mode=None):
     """진행률 제너레이터를 끝까지 돌린다."""
-    for _ in llm.describe_images_progressively(img_jobs, "key", model, provider):
+    for _ in llm.describe_images_progressively(img_jobs, "key", model, provider,
+                                               None, mode or llm.IMAGE_DESCRIBE):
         pass
 
 
@@ -142,23 +145,29 @@ def describe_all(img_jobs, provider, model="fake-model"):
 # ──────────────────────────────────────────────
 
 def test_image_selection():
-    print("[① 이미지 설명 대상 선별]")
+    print("[① 이미지 처리 대상 선별]")
     pdf = build_pdf()
 
-    pages, img_jobs = llm.read_pdf_pages(pdf, "key", describe_images=True)
+    pages, img_jobs = llm.read_pdf_pages(pdf, "key", llm.IMAGE_DESCRIBE)
     picked = sorted(e["idx"] for e in img_jobs)
 
     check("로고만 있는 본문 페이지는 제외", 0 not in picked, f"선택={picked}")
     check("큰 그림이 있는 페이지는 포함", 1 in picked, f"선택={picked}")
     check("텍스트 없는 페이지는 포함", 2 in picked, f"선택={picked}")
 
-    # 끄면 하나도 안 고른다
-    _, none_jobs = llm.read_pdf_pages(pdf, "key", describe_images=False)
-    check("describe_images=False 면 0개", len(none_jobs) == 0, str(len(none_jobs)))
+    # 모드를 안 주면 하나도 안 고른다 (텍스트 레이어만)
+    _, none_jobs = llm.read_pdf_pages(pdf, "key", None)
+    check("image_mode=None 이면 0개", len(none_jobs) == 0, str(len(none_jobs)))
 
     # 상한을 1로 주면 1개만
-    _, one_job = llm.read_pdf_pages(pdf, "key", describe_images=True, max_images=1)
+    _, one_job = llm.read_pdf_pages(pdf, "key", llm.IMAGE_DESCRIBE, max_images=1)
     check("max_images 상한이 걸린다", len(one_job) == 1, str(len(one_job)))
+
+    # 전사 모드는 손글씨를 놓치면 안 되므로 더 헐겁게 잡는다 (기준값이 반대 방향)
+    check("전사 모드 면적 기준이 설명보다 헐겁다",
+          llm.TRANSCRIBE_MIN_AREA_RATIO < llm.DESCRIBE_MIN_AREA_RATIO)
+    check("전사 모드 해상도가 설명보다 높다 (손글씨 판독)",
+          llm.TRANSCRIBE_RENDER_DPI > llm.DESCRIBE_RENDER_DPI)
 
 
 # ──────────────────────────────────────────────
@@ -166,38 +175,78 @@ def test_image_selection():
 # ──────────────────────────────────────────────
 
 def test_image_cache():
-    print("[② 이미지 설명 캐시]")
+    print("[② 이미지 결과 캐시]")
     pdf = build_pdf()
 
     prov = CountingProvider()
-    _, jobs1 = llm.read_pdf_pages(pdf, "key", describe_images=True)
+    _, jobs1 = llm.read_pdf_pages(pdf, "key", llm.IMAGE_DESCRIBE)
     describe_all(jobs1, prov)
     first_calls = prov.image_calls
     check("첫 실행은 실제로 호출한다", first_calls == len(jobs1),
           f"{first_calls} != {len(jobs1)}")
-    check("설명이 채워진다", all(e.get("desc") for e in jobs1))
+    check("결과가 채워진다", all(e.get("desc") for e in jobs1))
 
     # 같은 PDF를 다시 올린 상황
     prov2 = CountingProvider()
-    _, jobs2 = llm.read_pdf_pages(pdf, "key", describe_images=True)
+    _, jobs2 = llm.read_pdf_pages(pdf, "key", llm.IMAGE_DESCRIBE)
     describe_all(jobs2, prov2)
     check("두 번째 실행은 호출 0회", prov2.image_calls == 0, str(prov2.image_calls))
-    check("캐시에서 같은 설명이 나온다",
+    check("캐시에서 같은 결과가 나온다",
           [e["desc"] for e in jobs2] == [e["desc"] for e in jobs1])
 
     # 모델이 다르면 캐시를 공유하지 않는다 (싼 모델 설명을 비싼 회차에 물려주지 않게)
     prov3 = CountingProvider()
-    _, jobs3 = llm.read_pdf_pages(pdf, "key", describe_images=True)
+    _, jobs3 = llm.read_pdf_pages(pdf, "key", llm.IMAGE_DESCRIBE)
     describe_all(jobs3, prov3, model="other-model")
     check("모델이 다르면 다시 호출", prov3.image_calls == len(jobs3),
           f"{prov3.image_calls} != {len(jobs3)}")
+
+
+def test_cache_modes_do_not_collide():
+    """
+    같은 페이지를 기출(그림 설명)과 강의록(글자 전사)으로 각각 올리는 상황.
+    키에 프롬프트가 안 들어가면 먼저 넣은 쪽 결과가 반대쪽에 그대로 돌아가고,
+    강의록 원문 자리에 모델이 지어낸 설명 문장이 조용히 들어간다.
+    """
+    print("[②-c 설명/전사 캐시가 섞이지 않는다]")
+
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((50, 60), "7", fontsize=9)     # 텍스트 거의 없음 → 무조건 대상
+    pdf = doc.tobytes()
+    doc.close()
+
+    # 먼저 '그림 설명'으로 캐시를 채운다
+    a = CountingProvider()
+    _, jobs_a = llm.read_pdf_pages(pdf, "key", llm.IMAGE_DESCRIBE)
+    describe_all(jobs_a, a, mode=llm.IMAGE_DESCRIBE)
+    check("설명 모드가 호출됨", a.image_calls == len(jobs_a))
+    check("설명 프롬프트가 전달됨", a.last_image_prompt == llm.IMAGE_DESC_PROMPT)
+
+    # 같은 페이지를 '글자 전사'로 요청 — 캐시가 가로채면 안 된다
+    b = CountingProvider()
+    _, jobs_b = llm.read_pdf_pages(pdf, "key", llm.IMAGE_TRANSCRIBE)
+    describe_all(jobs_b, b, mode=llm.IMAGE_TRANSCRIBE)
+    check("전사 모드는 캐시를 쓰지 않고 다시 호출", b.image_calls == len(jobs_b),
+          f"{b.image_calls} — 설명 결과가 전사 자리에 재사용됐다")
+    check("전사 프롬프트가 전달됨", b.last_image_prompt == llm.IMAGE_TEXT_PROMPT)
+
+    # 각 모드는 자기 캐시를 제대로 재사용한다
+    c = CountingProvider()
+    _, jobs_c = llm.read_pdf_pages(pdf, "key", llm.IMAGE_TRANSCRIBE)
+    describe_all(jobs_c, c, mode=llm.IMAGE_TRANSCRIBE)
+    check("전사 재실행은 호출 0회", c.image_calls == 0, str(c.image_calls))
+
+    key_d = llm.image_cache_key(llm.IMAGE_DESC_PROMPT, b"png")
+    key_t = llm.image_cache_key(llm.IMAGE_TEXT_PROMPT, b"png")
+    check("같은 이미지라도 모드가 다르면 키가 다르다", key_d != key_t)
 
 
 def test_failure_not_cached():
     print("[②-b 실패는 캐시하지 않는다]")
 
     class FailingProvider(CountingProvider):
-        def describe_image(self, png_bytes, api_key, model, usage=None):
+        def describe_image(self, png_bytes, api_key, model, usage=None, prompt=None):
             self.image_calls += 1
             raise RuntimeError("이미지 미지원")
 
@@ -209,12 +258,12 @@ def test_failure_not_cached():
     doc.close()
 
     fail = FailingProvider()
-    _, jobs = llm.read_pdf_pages(pdf, "key", describe_images=True)
+    _, jobs = llm.read_pdf_pages(pdf, "key", llm.IMAGE_DESCRIBE)
     describe_all(jobs, fail)
     check("실패 시 폴백 문구", "실패" in (jobs[0].get("desc") or ""))
 
     retry = CountingProvider()
-    _, jobs2 = llm.read_pdf_pages(pdf, "key", describe_images=True)
+    _, jobs2 = llm.read_pdf_pages(pdf, "key", llm.IMAGE_DESCRIBE)
     describe_all(jobs2, retry)
     check("다음 회차에 다시 시도한다", retry.image_calls == len(jobs2),
           f"{retry.image_calls} != {len(jobs2)} (폴백 문구가 캐시에 굳었다)")
@@ -231,16 +280,25 @@ def test_image_budget():
 
     prov = CountingProvider()
     llm.extract_labeled_docs(files, "기출", "key", "budget-model",
-                             describe_images=True, provider=prov, img_budget=4)
+                             image_mode=llm.IMAGE_DESCRIBE, provider=prov,
+                             img_budget=4)
     check("전체 예산을 넘지 않는다", prov.image_calls <= 4, str(prov.image_calls))
 
     # 예전 동작(파일당 상한)이었다면 5 × 2 = 10회가 나갔을 것
     check("파일당 상한이 아니다", prov.image_calls < 10, str(prov.image_calls))
 
+    # 예산을 생략하면 모드의 max_pages 를 '이쪽 전체'에 쓴다 (파일당이 아니라)
+    prov_d = CountingProvider()
+    llm.extract_labeled_docs(files, "기출", "key", "budget-default",
+                             image_mode=llm.IMAGE_DESCRIBE, provider=prov_d)
+    check("생략 시 모드 상한이 전체에 걸린다",
+          prov_d.image_calls <= llm.IMAGE_DESCRIBE["max_pages"],
+          f"{prov_d.image_calls} > {llm.IMAGE_DESCRIBE['max_pages']}")
+
     prov0 = CountingProvider()
     llm.extract_labeled_docs(files, "강의록", "key", "budget-model",
-                             describe_images=False, provider=prov0)
-    check("강의록은 이미지 설명을 하지 않는다", prov0.image_calls == 0,
+                             image_mode=None, provider=prov0)
+    check("모드가 없으면 이미지 처리를 하지 않는다", prov0.image_calls == 0,
           str(prov0.image_calls))
 
 
@@ -332,6 +390,7 @@ if __name__ == "__main__":
     try:
         test_image_selection()
         test_image_cache()
+        test_cache_modes_do_not_collide()
         test_failure_not_cached()
         test_image_budget()
         test_exam_merge()

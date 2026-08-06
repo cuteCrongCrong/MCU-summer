@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import fitz  # pymupdf
 
 from db import get_cached_image_desc, put_cached_image_desc
-from providers.base import ProviderError
+from providers.base import ProviderError, IMAGE_DESC_PROMPT, IMAGE_TEXT_PROMPT
 from providers.factory import get_provider
 
 # ──────────────────────────────────────────────
@@ -25,18 +25,65 @@ _default_provider = get_provider()
 # 강의/기출 텍스트를 LLM에 넣기 전 문서당 최대 글자 수.
 MAX_TEXT_CHARS = 1000000
 
-# 이미지/스캔 페이지 → Vision LLM으로 '무슨 이미지인지' 설명 생성 (토큰 비용 상한용)
-IMAGE_DESC_MAX = 15          # 설명할 이미지 페이지 최대 개수 (PDF 1개당 기본값)
+# 한쪽(강의록/기출)당 업로드 파일 개수 상한 — 주제 분석·문제 생성 공통.
+# 프런트(static/js/topic_analysis.js · question_gen.js)도 같은 값을 들고 있으므로 함께 고친다.
+MAX_FILES_PER_SIDE = 7
+
+# 문제 생성: 한쪽(강의자료 전체 / 기출 전체)에 배정하는 글자 예산.
+# 파일이 1개면 예전 동작(문서 하나에 MAX_TEXT_CHARS)과 정확히 같아지도록 그 값을 그대로 쓴다.
+GEN_SIDE_CHAR_BUDGET = MAX_TEXT_CHARS
+# 파일을 여러 개 올려도 문서당 이만큼은 보장. 상한까지 채웠을 때의 몫으로 잡아
+# '문서당 몫 × 파일수 ≤ 예산'이 허용 개수 전 구간에서 성립하게 한다. (주제 분석과 같은 방식)
+GEN_DOC_MIN_CHARS = GEN_SIDE_CHAR_BUDGET // MAX_FILES_PER_SIDE
+
+# 이미지/스캔 페이지 → Vision LLM으로 텍스트를 남긴다 (토큰 비용 상한용)
+IMAGE_DESC_MAX = 15          # 기출: 설명할 이미지 페이지 최대 개수
+LECTURE_IMAGE_MAX = 40       # 강의록: 손글씨·판서 페이지가 많아 기출보다 넉넉히 잡는다
 SPARSE_TEXT_THRESHOLD = 20   # 페이지 텍스트가 이보다 짧으면 이미지 페이지로 간주
-# 페이지 렌더 해상도. 150이었는데 낮췄다 — 구세대 모델은 긴 변 1568px에서 서버가
-# 자동 축소하므로, A4를 150DPI(1754px)로 구우면 초과분이 그대로 버려졌다.
-# 110DPI는 A4 긴 변 약 1286px로 어느 모델에서도 축소되지 않으면서 이미지 토큰이 줄어든다.
-# ("이 그림이 무엇인가"를 설명하는 용도라 이 해상도로 충분하다)
-IMAGE_RENDER_DPI = 110
-# 이 비율 이상을 차지하는 그림이 있어야 설명 대상으로 본다.
-# 예전에는 page.get_images()가 참이기만 하면 대상이라, 머리글 로고 한 점 때문에
-# 본문이 멀쩡히 추출된 페이지까지 Vision에 보내 텍스트와 설명을 이중으로 결제했다.
-IMAGE_MIN_AREA_RATIO = 0.12
+
+# 페이지 렌더 해상도 — 모드마다 다르다.
+#   설명(기출): 그림이 무엇인지만 알면 되므로 낮춰도 된다. 구세대 모델은 긴 변
+#     1568px에서 서버가 자동 축소하는데, A4를 150DPI로 구우면 1754px이라 초과분이
+#     그대로 버려졌다. 110DPI는 약 1286px로 어느 모델에서도 축소되지 않는다.
+#   전사(강의록): 손글씨를 판독해야 하므로 해상도가 정확도에 직결된다. 낮추지 않는다.
+DESCRIBE_RENDER_DPI   = 110
+TRANSCRIBE_RENDER_DPI = 150
+
+# '처리할 가치가 있는 그림'의 최소 면적 비율 (페이지 대비).
+#   page.get_images()는 머리글 로고 한 점만 있어도 참이라, 본문이 멀쩡히 추출된
+#   페이지까지 Vision에 보내 텍스트와 설명을 이중으로 결제했다.
+#   전사(강의록)는 손글씨를 하나라도 놓치면 기능 자체가 무의미하므로 훨씬 헐겁게 잡는다
+#   — 여백에 적은 짧은 메모도 페이지 면적으로는 작다.
+DESCRIBE_MIN_AREA_RATIO   = 0.12
+TRANSCRIBE_MIN_AREA_RATIO = 0.03
+
+# 태블릿 벡터 필기(굿노트 등) 감지 임계값 — 페이지의 '곡선' 세그먼트 개수.
+# 인쇄 슬라이드 위에 펜으로 쓴 페이지는 텍스트 레이어가 멀쩡하고 래스터 이미지도 없어서
+# 위 두 조건에 안 걸린다. 그렇다고 벡터 도형이 있다고 다 잡으면 표·밑줄까지 걸린다.
+# 곡선만 세면 갈린다 — 표 테두리·밑줄은 직선이라 곡선이 0개다.
+# 실측(21쪽짜리 아이패드 필기 강의록): 표만 있는 쪽 0 · 인쇄만 있는 쪽 0 ·
+#                                   짧은 메모 몇 줄 757 · 필기로 채운 쪽 16,703
+INK_CURVE_MIN = 150
+
+# 이미지 페이지를 텍스트로 남기는 두 가지 방식. 아래 PDF 함수들에 그대로 넘긴다.
+#   IMAGE_DESCRIBE   — 그림이 무엇인지 설명. 기출용 (그림 문제를 살리려면 해석이 필요)
+#   IMAGE_TRANSCRIBE — 그림 속 글자만 그대로. 강의록용 (손글씨는 살리되 지어낸 문장은 금지)
+# 라벨이 다른 이유: 프롬프트에 [페이지 N 이미지 설명]으로 들어가면 LLM이 '모델이 쓴 문장'
+# 으로 읽는다. 전사한 글자는 강의록 원문이므로 그렇게 보이면 안 된다.
+# detect_ink: 벡터 필기가 있는 페이지도 대상에 넣을지. 강의록만 켠다 —
+#   기출은 손글씨를 찾을 일이 없고, 켜면 페이지 선정이 늘어 비용만 는다.
+# dpi·min_area_ratio: 위 상수 참고. 두 모드가 목적이 반대라 값도 반대 방향이다
+#   (설명은 싸게, 전사는 놓치지 않게).
+IMAGE_DESCRIBE = {
+    "prompt": IMAGE_DESC_PROMPT, "label": "이미지 설명", "max_pages": IMAGE_DESC_MAX,
+    "detect_ink": False,
+    "dpi": DESCRIBE_RENDER_DPI, "min_area_ratio": DESCRIBE_MIN_AREA_RATIO,
+}
+IMAGE_TRANSCRIBE = {
+    "prompt": IMAGE_TEXT_PROMPT, "label": "그림 속 글자", "max_pages": LECTURE_IMAGE_MAX,
+    "detect_ink": True,
+    "dpi": TRANSCRIBE_RENDER_DPI, "min_area_ratio": TRANSCRIBE_MIN_AREA_RATIO,
+}
 
 # 문제 유형 4분류 (집계·few-shot·생성에서 공통 사용)
 QUESTION_TYPES = ["객관식", "빈칸채우기", "단답형", "서술형"]
@@ -53,13 +100,14 @@ TYPE_DEFINITIONS = (
 # LLM / PDF 유틸
 # ──────────────────────────────────────────────
 
-def _has_meaningful_image(page) -> bool:
+def has_meaningful_image(page, min_area_ratio: float) -> bool:
     """
-    이 페이지에 '설명할 가치가 있는' 그림이 있는가.
+    이 페이지에 '처리할 가치가 있는' 그림이 있는가.
 
     page.get_images()는 머리글 로고·장식 한 점만 있어도 참이라 판별에 쓸 수 없다.
-    페이지 면적 대비 IMAGE_MIN_AREA_RATIO 이상인 그림이 하나라도 있어야 참으로 본다.
-    (해부도·그래프·표 같은 진짜 그림 문제는 페이지의 상당 부분을 차지한다)
+    페이지 면적 대비 min_area_ratio 이상인 그림이 하나라도 있어야 참으로 본다.
+    기준값은 모드마다 다르다 — 설명(기출)은 로고를 걸러내려고 빡빡하게,
+    전사(강의록)는 여백의 짧은 메모도 놓치지 않으려고 헐겁게 잡는다.
     """
     try:
         infos = page.get_image_info()
@@ -77,39 +125,78 @@ def _has_meaningful_image(page) -> bool:
         if not bbox or len(bbox) < 4:
             continue
         area = abs(bbox[2] - bbox[0]) * abs(bbox[3] - bbox[1])
-        if area / page_area >= IMAGE_MIN_AREA_RATIO:
+        if area / page_area >= min_area_ratio:
             return True
     return False
 
 
-def read_pdf_pages(pdf, api_key: str = None, describe_images: bool = True,
-                   max_images: int = IMAGE_DESC_MAX):
+def image_cache_key(prompt: str, png_bytes: bytes) -> str:
     """
-    PDF에서 텍스트 레이어를 뽑고, 이미지 설명이 필요한 페이지를 고른다. (LLM 호출 없음)
-    반환: (pages, img_jobs) — img_jobs는 pages 안 엔트리를 그대로 참조한다.
+    이미지 설명 캐시의 키 — **프롬프트까지 넣어서** 해싱한다.
 
-    max_images: 이 PDF에서 설명할 페이지 수 상한. 호출부가 여러 PDF에 예산을
-                나눠 쓰는 경우(기출 주제 분석) 그 몫을 넘긴다.
+    같은 페이지라도 기출로 올리면 '그림 설명'을, 강의록으로 올리면 '그림 속 글자
+    전사'를 받아야 한다. PNG만 해싱하면 먼저 넣은 쪽이 반대쪽 요청에 그대로
+    돌아와서, 강의록 원문 자리에 모델이 지어낸 설명 문장이 조용히 들어간다.
+    (주제 분석의 "주제명은 강의록에 있는 표현만" 규칙이 무력해진다)
+
+    PNG 바이트를 그대로 해싱하므로 렌더 해상도가 바뀌면 키도 바뀐다 — 옛 해상도로
+    만든 설명이 새 설정에 재사용되지 않는다.
+    """
+    return hashlib.sha256(prompt.encode("utf-8") + b"\x00" + png_bytes).hexdigest()
+
+
+def has_vector_ink(page) -> bool:
+    """
+    페이지에 태블릿 펜 필기로 보이는 벡터 획이 있는지. (곡선 세그먼트 개수로 판단)
+    표 테두리·밑줄은 직선이라 곡선이 0개이므로 필기와 깔끔하게 갈린다.
+    """
+    curves = 0
+    for path in page.get_drawings():
+        for item in path["items"]:
+            if item[0] == "c":
+                curves += 1
+                if curves >= INK_CURVE_MIN:   # 넘으면 더 셀 필요 없다
+                    return True
+    return False
+
+
+def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None,
+                   max_images: int = None):
+    """
+    PDF에서 텍스트 레이어를 뽑고, 이미지 처리가 필요한 페이지를 고른다. (LLM 호출 없음)
+
+    image_mode: None이면 이미지 페이지를 건너뛴다 (텍스트 레이어만).
+                IMAGE_DESCRIBE(기출) / IMAGE_TRANSCRIBE(강의록) 중 하나를 넘긴다.
+    max_images: 이 PDF에서 처리할 페이지 수 상한. 생략하면 모드의 max_pages.
+                호출부가 여러 PDF에 예산을 나눠 쓸 때(주제 분석) 그 몫을 넘긴다.
+    반환: (pages, img_jobs) — img_jobs는 pages 안 엔트리를 그대로 참조한다.
     """
     # 업로드 객체(FileStorage)와 bytes 모두 허용 — 스트리밍 경로는 요청 컨텍스트가
     # 닫힌 뒤에 실행되므로 라우트에서 미리 읽어둔 bytes를 넘긴다.
     pdf_bytes = pdf.read() if hasattr(pdf, "read") else pdf
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    mode = image_mode or {}
+    max_pages = mode.get("max_pages", 0) if max_images is None else max_images
+    detect_ink = mode.get("detect_ink", False)
+    min_area = mode.get("min_area_ratio", DESCRIBE_MIN_AREA_RATIO)
+    dpi = mode.get("dpi", DESCRIBE_RENDER_DPI)
 
     pages = []       # {idx, text, png(optional), desc}
-    img_jobs = []    # 설명 대상 페이지 (엔트리 참조)
+    img_jobs = []    # 이미지 처리 대상 페이지 (엔트리 참조)
     for i, page in enumerate(doc):
         text = page.get_text()
         entry = {"idx": i, "text": text if text.strip() else "", "desc": None}
+        # or가 왼쪽부터 끊기므로 비싼 has_vector_ink는 앞의 두 조건이 다 빗나갈 때만 돈다
         want_img = (
-            describe_images and api_key
-            and len(img_jobs) < max_images
+            image_mode and api_key
+            and len(img_jobs) < max_pages
             and (len(text.strip()) < SPARSE_TEXT_THRESHOLD
-                 or _has_meaningful_image(page))
+                 or has_meaningful_image(page, min_area)
+                 or (detect_ink and has_vector_ink(page)))
         )
         if want_img:
             try:
-                pix = page.get_pixmap(dpi=IMAGE_RENDER_DPI)
+                pix = page.get_pixmap(dpi=dpi)
                 entry["png"] = pix.tobytes("png")
                 img_jobs.append(entry)
             except Exception:
@@ -120,10 +207,11 @@ def read_pdf_pages(pdf, api_key: str = None, describe_images: bool = True,
 
 
 def describe_images_progressively(img_jobs, api_key: str, model: str, provider=None,
-                                  usage=None):
+                                  usage=None, image_mode: dict = None):
     """
-    이미지 설명을 병렬로 만들되, 하나 끝날 때마다 완료 개수를 yield한다.
+    이미지 페이지를 병렬로 텍스트화하되, 하나 끝날 때마다 완료 개수를 yield한다.
     (진행률 표시용 — 호출부가 제너레이터를 돌리면서 이벤트를 낼 수 있게)
+    image_mode를 생략하면 IMAGE_DESCRIBE(그림 설명)로 동작한다.
     게이트웨이가 이미지를 지원하지 않으면 폴백 문구를 채운다.
 
     캐시(image_desc_cache)를 먼저 뒤진다 — 같은 PDF를 다시 올리는 경우가 흔한데,
@@ -134,12 +222,13 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
         return
     prov = provider or _default_provider
     prov_name = getattr(prov, "name", "") or ""
+    prompt = (image_mode or IMAGE_DESCRIBE)["prompt"]
 
     done = 0
     pending = []
     for e in img_jobs:
-        e["sha"] = hashlib.sha256(e["png"]).hexdigest()
-        cached = get_cached_image_desc(e["sha"], prov_name, model)
+        e["cache_key"] = image_cache_key(prompt, e["png"])
+        cached = get_cached_image_desc(e["cache_key"], prov_name, model)
         if cached:
             e["desc"] = cached
             done += 1
@@ -152,61 +241,73 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
 
     with ThreadPoolExecutor(max_workers=4) as ex:
         futs = {ex.submit(prov.describe_image, e["png"], api_key, model,
-                          usage=usage): e for e in pending}
+                          usage=usage, prompt=prompt): e for e in pending}
         for fut in as_completed(futs):
             entry = futs[fut]
             try:
                 entry["desc"] = fut.result()
             except Exception:
-                entry["desc"] = "(이미지 설명 생성 실패 — 게이트웨이 이미지 미지원일 수 있음)"
+                entry["desc"] = "(이미지 처리 실패 — 게이트웨이 이미지 미지원일 수 있음)"
             else:
                 # 성공한 것만 남긴다. 실패 폴백 문구를 캐시하면 일시적 오류가
                 # 영구히 굳어서, 다음 회차부터 그 페이지는 영영 설명 없이 돈다.
                 # (쓰기는 메인 스레드에서만 — 워커 4개가 동시에 쓰지 않게)
-                put_cached_image_desc(entry["sha"], prov_name, model, entry["desc"])
+                put_cached_image_desc(entry["cache_key"], prov_name, model,
+                                      entry["desc"])
             done += 1
             yield done
 
 
-def assemble_pdf_text(pages, img_job_count: int = 0,
-                      max_images: int = IMAGE_DESC_MAX) -> str:
+def assemble_pdf_text(pages, img_job_count: int = 0, image_mode: dict = None,
+                      max_images: int = None) -> str:
     """
-    페이지 텍스트 + 이미지 설명을 하나의 텍스트로 합친다.
+    페이지 텍스트 + 이미지에서 뽑은 텍스트를 하나로 합친다.
+    image_mode의 label이 마커에 들어간다 ([페이지 3 그림 속 글자] 등) — 생략하면 그림 설명.
 
-    max_images: 이 PDF에 적용한 상한. 상한에 걸려 뒤쪽 그림을 못 봤다는 사실을
-                본문에 남겨야 하므로, 예산을 나눠 쓴 호출부는 그 몫을 넘긴다.
+    max_images: 이 PDF에 실제로 적용한 상한. 생략하면 모드의 max_pages.
+                상한에 걸려 뒤쪽 그림을 못 봤다는 사실을 본문에 남겨야 하므로,
+                예산을 나눠 쓴 호출부는 그 몫을 넘긴다.
     """
+    mode = image_mode or IMAGE_DESCRIBE
+    cap = mode["max_pages"] if max_images is None else max_images
     parts = []
     for e in pages:
         block = []
         if e["text"]:
             block.append(f"[페이지 {e['idx']+1}]\n{e['text']}")
         if e.get("desc"):
-            block.append(f"[페이지 {e['idx']+1} 이미지 설명]\n{e['desc']}")
+            block.append(f"[페이지 {e['idx']+1} {mode['label']}]\n{e['desc']}")
         if block:
             parts.append("\n".join(block))
 
-    if max_images > 0 and img_job_count >= max_images:
-        parts.append(f"...(이미지 설명은 최대 {max_images}개까지만 생성됨)")
+    if cap > 0 and img_job_count >= cap:
+        parts.append(f"...(이미지 페이지는 최대 {cap}개까지만 처리됨)")
 
     return "\n\n".join(parts)
 
 
 def extract_text_from_pdf(pdf, api_key: str = None, model: str = None,
-                          describe_images: bool = True, provider=None,
-                          usage=None, max_images: int = IMAGE_DESC_MAX) -> str:
+                          image_mode: dict = None, provider=None,
+                          usage=None, max_images: int = None) -> str:
     """
-    PDF에서 텍스트 레이어를 추출하고, 이미지/스캔 페이지는 Vision LLM으로
-    '무슨 이미지인지' 설명을 생성해 텍스트로 함께 남긴다.
-    - 텍스트가 거의 없는 페이지(스캔·사진) 또는 **큰 그림이 있는** 페이지를 설명 대상으로 선정
-    - 비용 상한: 최대 max_images개 페이지만 설명, 이미지 설명은 병렬 처리 + 캐시
+    PDF에서 텍스트 레이어를 추출하고, image_mode를 주면 이미지/스캔 페이지도
+    Vision LLM으로 텍스트화해 함께 남긴다.
+    - 텍스트가 거의 없는 페이지(스캔·사진) 또는 큰 그림·필기가 있는 페이지를 대상으로 선정
+    - 비용 상한: max_images(생략 시 모드의 max_pages)개까지만, 병렬 처리 + 캐시
 
     진행률이 필요한 곳(스트리밍)은 위 세 함수를 직접 조합한다. 결과는 동일하다.
     """
-    pages, img_jobs = read_pdf_pages(pdf, api_key, describe_images, max_images)
-    for _ in describe_images_progressively(img_jobs, api_key, model, provider, usage):
+    pages, img_jobs = read_pdf_pages(pdf, api_key, image_mode, max_images)
+    for _ in describe_images_progressively(img_jobs, api_key, model, provider, usage,
+                                           image_mode):
         pass
-    return assemble_pdf_text(pages, len(img_jobs), max_images)
+    return assemble_pdf_text(pages, len(img_jobs), image_mode, max_images)
+
+
+def _truncate_split(max_chars: int):
+    """truncate()가 남기는 (앞, 뒤) 길이. 실제 자르기와 경고용 계산이 어긋나지 않게 공유한다."""
+    head = int(max_chars * 0.7)
+    return head, max_chars - head
 
 
 def truncate(text: str, max_chars: int = MAX_TEXT_CHARS) -> str:
@@ -216,9 +317,86 @@ def truncate(text: str, max_chars: int = MAX_TEXT_CHARS) -> str:
     """
     if len(text) <= max_chars:
         return text
-    head = int(max_chars * 0.7)
-    tail = max_chars - head
+    head, tail = _truncate_split(max_chars)
     return text[:head] + "\n\n...(중략: 분량 초과로 일부 생략)...\n\n" + text[-tail:]
+
+
+# 추출 텍스트에 박아둔 쪽 표시 — assemble_pdf_text가 넣는다 ([페이지 3], [페이지 3 그림 속 글자])
+_PAGE_MARKER = re.compile(r"\[페이지 (\d+)[^\]]*\]")
+_WORD = re.compile(r"\S+")
+
+
+def _page_at(raw: str, pos: int):
+    """pos 앞쪽에서 가장 가까운 쪽 번호. 마커가 없으면 None."""
+    page = None
+    for m in _PAGE_MARKER.finditer(raw, 0, pos + 1):
+        page = int(m.group(1))
+    return page
+
+
+def _word_start_after(raw: str, pos: int) -> int:
+    """
+    pos가 어절 한가운데면 그 어절 끝으로 민다.
+    경계에 걸린 어절은 앞부분이 남으므로 '온전히 버려지는' 첫 어절이 아니다.
+    """
+    n = len(raw)
+    if 0 < pos < n and not raw[pos - 1].isspace():
+        while pos < n and not raw[pos].isspace():
+            pos += 1
+    return pos
+
+
+def _word_end_before(raw: str, pos: int) -> int:
+    """pos가 어절 한가운데면 그 어절 앞으로 당긴다. (뒷부분이 남는 어절을 제외)"""
+    if pos < len(raw) and not raw[pos].isspace():
+        while pos > 0 and not raw[pos - 1].isspace():
+            pos -= 1
+    return pos
+
+
+def _words_near(raw: str, start: int, end: int, count: int, take_last: bool) -> str:
+    """
+    [start, end) 구간에서 어절 count개를 뽑는다. take_last면 뒤에서, 아니면 앞에서.
+    쪽 표시([페이지 N])는 원문이 아니라 우리가 넣은 것이므로 건너뛴다.
+    """
+    spans = [(m.start(), m.end()) for m in _PAGE_MARKER.finditer(raw, start, end)]
+    words = []
+    for m in _WORD.finditer(raw, start, end):
+        if any(s < m.end() and m.start() < e for s, e in spans):
+            continue                       # 쪽 표시의 조각
+        words.append(m.group())
+        if not take_last and len(words) >= count:
+            break
+    picked = words[-count:] if take_last else words[:count]
+    return " ".join(picked)
+
+
+def truncation_report(raw: str, limit: int) -> dict:
+    """
+    limit을 넘는 문서에서 **어디부터 어디까지 버려지는지**를 쪽·어절로 알려준다.
+    넘지 않으면 None.
+
+    줄 번호 대신 쪽과 어절을 쓰는 이유: 추출 텍스트의 줄 번호는 원본 PDF에서 눈으로
+    찾을 수가 없다. "12쪽 'superior orbital'부터"라야 사용자가 실제로 확인할 수 있다.
+    truncate()와 같은 분할(_truncate_split)을 쓰므로 실제로 잘리는 구간과 일치한다.
+    """
+    if len(raw) <= limit:
+        return None
+    head, tail = _truncate_split(limit)
+    # 경계에 걸친 어절은 절반이 남으므로 온전히 버려지는 구간으로 좁힌다
+    start = _word_start_after(raw, head)            # 여기서부터 버려진다
+    end = _word_end_before(raw, len(raw) - tail)    # 여기부터 다시 남는다
+
+    return {
+        "chars": len(raw),
+        "limit": limit,
+        "coverage": round(limit / len(raw) * 100),
+        # 버려지는 첫 어절 두 개 / 마지막 어절 두 개와 그 쪽 번호
+        "from_page": _page_at(raw, start),
+        "from_words": _words_near(raw, start, min(start + 400, end), 2, False),
+        "to_page": _page_at(raw, end),
+        "to_words": _words_near(raw, max(start, end - 400), end, 2, True),
+    }
 
 
 def build_source_info(raw_text: str, limit: int = MAX_TEXT_CHARS) -> dict:
@@ -1038,21 +1216,20 @@ def run_analysis(lecture_text: str, exam_text: str, api_key: str, model: str,
 # 문제 생성은 문서 1개당 MAX_TEXT_CHARS(100000)를 쓰는데, 여기서도 그만큼 여유를 주되
 # 강의+기출을 한 프롬프트에 함께 넣는 점을 감안해 살짝 보수적으로 잡는다.
 TOPIC_SIDE_CHAR_BUDGET = 120000
-# 파일을 여러 개 올려도 문서당 이만큼은 보장 (예산 ÷ 파일수가 너무 작아지는 것 방지)
-TOPIC_DOC_MIN_CHARS = 20000
-# 이미지 설명 예산 — **한쪽(강의록 전체 / 기출 전체) 기준**.
-# 예전에는 상한이 PDF 1개당이라, 기출을 5개 올리면 15×5=75번까지 Vision을 불렀다.
-# 문제 생성(기출 1개당 15)과 같은 수준으로 맞춘다.
-TOPIC_IMAGE_BUDGET = IMAGE_DESC_MAX
+# 파일을 여러 개 올려도 문서당 이만큼은 보장 (예산 ÷ 파일수가 너무 작아지는 것 방지).
+# 상한(MAX_FILES_PER_SIDE)까지 채웠을 때의 몫으로 잡아 둔다 — 이래야 '문서당 몫 × 파일수
+# ≤ 예산'이 허용 개수 전 구간에서 성립한다. 손으로 따로 잡으면 파일 상한을 올렸을 때 이
+# 최소치가 예산을 덮어써서(max가 최소치를 고름) 프롬프트가 조용히 예산을 넘긴다.
+TOPIC_DOC_MIN_CHARS = TOPIC_SIDE_CHAR_BUDGET // MAX_FILES_PER_SIDE
 # 주제 목록이 길어져도 JSON이 잘리지 않도록.
 # 주제마다 강의록발췌·기출 원문이 붙어 항목당 분량이 늘었으므로 기존(8000)보다 넉넉히 잡는다.
 TOPIC_MAX_TOKENS = 16000
 
 
 def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
-                         describe_images: bool = False, provider=None,
+                         image_mode: dict = None, provider=None,
                          side_budget: int = TOPIC_SIDE_CHAR_BUDGET,
-                         img_budget: int = TOPIC_IMAGE_BUDGET,
+                         img_budget: int = None,
                          usage=None) -> list:
     """
     업로드된 PDF 여러 개를 '라벨 + 페이지 마커가 붙은 텍스트'로 추출한다.
@@ -1060,7 +1237,10 @@ def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
     label_prefix: '강의록' / '기출' → 라벨은 강의록1, 강의록2 … (LLM이 출처를 가리킬 때 사용.
                   긴 한글 파일명을 그대로 되풀이하게 하면 오타가 나므로 짧은 라벨을 쓰고
                   파일명 복원은 파싱 단계에서 우리가 한다)
-    img_budget:   이미지 설명 호출 수 상한 — **파일당이 아니라 이쪽 전체 기준**.
+    img_budget:   이미지 처리 호출 수 상한 — **파일당이 아니라 이쪽 전체 기준**.
+                  생략하면 모드의 max_pages(기출 15 / 강의록 40)를 이쪽 전체에 쓴다.
+                  예전에는 이 상한이 PDF 1개당이라, 기출 7개를 올리면 15×7=105번까지
+                  Vision을 불렀다.
     반환: [{label, name, text, pages, source}]  (text에는 [페이지 N] 마커가 들어 있다)
     """
     files = list(files or [])
@@ -1072,23 +1252,28 @@ def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
 
     # 이미지 예산은 '남은 예산 ÷ 남은 파일 수'로 배정한다. 앞 파일이 몫을 다 안 쓰면
     # 남은 만큼이 뒤 파일로 넘어가므로, 그림이 한 파일에 몰려 있어도 낭비가 없다.
-    remaining_imgs = img_budget if describe_images else 0
+    if not image_mode:
+        remaining_imgs = 0
+    elif img_budget is None:
+        remaining_imgs = image_mode.get("max_pages", 0)
+    else:
+        remaining_imgs = img_budget
 
     docs = []
     for i, f in enumerate(files, start=1):
         name = f.filename or f"{label_prefix}{i}"
         files_left = len(files) - i + 1
         quota = max(1, remaining_imgs // files_left) if remaining_imgs > 0 else 0
+        img_jobs = []
         try:
-            # extract_text_from_pdf를 쓰지 않고 풀어 쓴 이유 — 이 파일이 이미지 설명을
+            # extract_text_from_pdf를 쓰지 않고 풀어 쓴 이유 — 이 파일이 이미지 처리를
             # 실제로 몇 개 썼는지 알아야 남은 예산을 다음 파일로 넘길 수 있다.
-            pages, img_jobs = read_pdf_pages(f, api_key,
-                                             describe_images and quota > 0,
-                                             max_images=quota)
+            mode = image_mode if quota > 0 else None
+            pages, img_jobs = read_pdf_pages(f, api_key, mode, max_images=quota)
             for _ in describe_images_progressively(img_jobs, api_key, model,
-                                                   provider, usage):
+                                                   provider, usage, mode):
                 pass
-            raw = assemble_pdf_text(pages, len(img_jobs), quota)
+            raw = assemble_pdf_text(pages, len(img_jobs), mode, quota)
         except ProviderError:
             raise                      # 키·한도 오류는 라우트가 상태코드로 구분하므로 그대로
         except Exception as e:
@@ -1100,6 +1285,9 @@ def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
         remaining_imgs -= len(img_jobs)
         text = truncate(raw, per_doc)
         docs.append({
+            # 상한을 넘겼다면 몇 번째 줄이 버려지는지 (안 넘으면 None).
+            # 진행 전에 사용자에게 보여주고 확인받는 데 쓴다 — DB에는 저장하지 않는다.
+            "cut": truncation_report(raw, per_doc),
             "label": f"{label_prefix}{i}",
             "name": name,
             "text": text,

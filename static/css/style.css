@@ -3,9 +3,12 @@
 :root {
   --bg: #f0f4f8;
   --surface: #ffffff;
-  --primary: #2563eb;
-  --primary-dark: #1d4ed8;
-  --accent: #0ea5e9;
+  /* 2026-08 리디자인: 전역 강조색을 파랑에서 세이지그린으로 통일했다.
+     버튼·링크·포커스링·슬라이더 등 앱 전체가 --primary 를 참조하므로
+     여기 값만 바꾸면 세부 페이지까지 한 번에 같은 톤이 된다. */
+  --primary: #2f5c50;
+  --primary-dark: #244b40;
+  --accent: #4f8a76;
   --success: #16a34a;
   --warning: #d97706;
   --danger: #dc2626;
@@ -16,18 +19,34 @@
   --shadow: 0 4px 24px rgba(0,0,0,0.08);
 
   /* ── 아래는 새로 만든 색이 아니라, 이미 파일 곳곳에 하드코딩돼 있던 값에
-        이름만 붙인 것이다. (#eff6ff=.file-drop:hover, #bfdbfe=#status-box,
-        #94a3b8=.paper-meta, 헤더 그라디언트=header) ── */
-  --primary-soft: #eff6ff;
-  --border-soft:  #bfdbfe;
+        이름만 붙인 것이다. (.file-drop:hover, #status-box,
+        #94a3b8=.paper-meta) ── */
+  --primary-soft: #eaf1ed;
+  --border-soft:  #cfe0d5;
   --text-faint:   #94a3b8;   /* 장식 전용(화살표 등). 읽어야 하는 글자엔 쓰지 않는다 */
-  --header-from:  #1e40af;
-  --header-to:    #0369a1;
 
   /* 그림자 3단 — 홈에서 '떠 있는' 요소를 하나로 줄이기 위해.
      기능 카드는 sm, 이어서 하기 카드만 key. */
   --shadow-sm:  0 1px 3px rgba(15,23,42,0.05);
   --shadow-key: 0 6px 20px rgba(37,99,235,0.14);
+
+  /* ── 헤더 + 홈 카드 팔레트 (2026-08 리디자인) ──
+     세이지그린(#2f5c50)을 유일한 강조색으로 쓰고, 기능 카드 5장만 각자
+     색을 가진다. 카드 색은 전부 같은 채도·명도 공식(hue만 다름)이라
+     따로 놀지 않고 세트처럼 보인다. */
+  --header-bg:    #eef1e9;
+  --header-ink:   #20302a;
+  --header-muted: #6f7d73;
+  --header-line:  #dde3d6;
+  --header-chip:       #dfe9e2;
+  --header-chip-hover: #cfe0d5;
+  --accent-ink:   #2f5c50;   /* 세이지그린 — 버튼·포인트 아이콘 전용 */
+
+  --card-gen-bg:     hsl(252 65% 95%); --card-gen-ink:     hsl(252 45% 32%); --card-gen-sub:     hsl(252 30% 48%);
+  --card-topic-bg:   hsl(206 70% 94%); --card-topic-ink:   hsl(206 55% 28%); --card-topic-sub:   hsl(206 35% 44%);
+  --card-archive-bg: hsl(36 75% 90%);  --card-archive-ink: hsl(28 60% 28%);  --card-archive-sub: hsl(30 40% 44%);
+  --card-wrong-bg:   hsl(346 65% 95%); --card-wrong-ink:   hsl(346 50% 36%); --card-wrong-sub:   hsl(346 30% 52%);
+  --card-bone-bg:    hsl(168 45% 90%); --card-bone-ink:    hsl(168 45% 22%); --card-bone-sub:    hsl(168 25% 36%);
 }
 body {
   /* Pretendard Variable 은 45~920 전 구간을 낸다. 이전 스택(system-ui)은 Windows 에서
@@ -38,23 +57,39 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  accent-color: var(--primary);   /* 체크박스·라디오·슬라이더 등 브라우저 기본 컨트롤도 테마색으로 */
 }
 
 /* ── 레이아웃 ── */
+/* 예전엔 진한 파랑 그라데이션 + 가운데 정렬 h1/p 였다. 은은한 종이색 배경에
+   좌측 정렬로 바꾸고, 상단 라벨/부제 아래에 매일 바뀌는 응원 문구를 넣는다
+   (문구 목록·교체 로직은 home.js 의 HOME_QUOTES/rerollHomeQuote). */
 header {
-  background: linear-gradient(135deg, var(--header-from) 0%, var(--header-to) 100%);
-  color: white;
-  padding: 28px 24px;
-  text-align: center;
-  box-shadow: 0 2px 12px rgba(30,64,175,0.3);
+  background: var(--header-bg);
+  color: var(--header-ink);
+  padding: 18px 20px 20px;
+  text-align: left;
+  border-bottom: 1px solid var(--header-line);
 }
-/* 제목은 위젯(#auth-widget) 아래로 내려 앉힌다 — 위젯이 position:absolute 라
-   문서 흐름에서 빠져 있어, 제목이 스스로 비켜 갈 방법이 이것뿐이다.
-   margin-top 24px = 위젯 높이(top 10 + 약 34) + 여유 8px.
-   폭이 좁을수록 가운데 정렬된 제목이 양옆으로 자라 위젯 밑으로 파고들므로
-   글자 크기도 함께 줄였다 (1.7rem → 1.45rem: 320px에서도 한 줄에 들어간다). */
-header h1 { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.5px; margin-top: 24px; }
-header p  { margin-top: 6px; font-size: 0.95rem; opacity: 0.85; }
+/* 위젯(#auth-widget)이 position:absolute 로 우측에 뜨므로, 라벨 줄에
+   여유 폭을 남겨 좁은 화면에서 로그인 버튼과 겹치지 않게 한다. */
+.hdr-eyebrow {
+  font-size: 0.68rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--header-muted); margin: 0; padding-right: 92px;
+}
+.hdr-tagline { font-size: 0.86rem; font-weight: 800; color: var(--header-muted); margin: 3px 0 0; }
+.hdr-quote-row { display: flex; align-items: center; gap: 8px; margin-top: 15px; }
+.hdr-quote { font-size: 0.86rem; font-weight: 800; color: var(--header-ink); margin: 0; line-height: 1.4; flex: 1; min-width: 0; }
+.hdr-quote .src { font-size: 0.68rem; font-weight: 700; color: var(--header-muted); margin-left: 2px; }
+.hdr-quote-refresh {
+  flex: none; width: 26px; height: 26px; border-radius: 50%; border: none;
+  background: var(--header-chip); color: var(--accent-ink);
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: background 0.15s ease;
+}
+.hdr-quote-refresh:hover { background: var(--header-chip-hover); }
+.hdr-quote-refresh svg { transition: transform 0.4s ease; }
+.hdr-quote-refresh:active svg { transform: rotate(180deg); }
 
 /* 헤더 위젯의 사용자 이름 — 구글 계정에 이름이 없으면 auth.js 가 이메일을 그대로 넣는다.
    위젯은 position:absolute + right 고정이라 내용이 길어지면 왼쪽으로 자라고,
@@ -157,7 +192,7 @@ label {
 }
 .file-drop:hover, .file-drop.drag-over {
   border-color: var(--primary);
-  background: #eff6ff;
+  background: #eaf1ed;
 }
 .file-drop input[type="file"] {
   position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
@@ -221,23 +256,23 @@ input:focus { outline: none; border-color: var(--primary); }
 .key-help > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .key-help-body {
   margin-top: 8px;
-  background: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 10px;
+  background: var(--primary-soft); border: 1.5px solid var(--border-soft); border-radius: 10px;
   padding: 12px 16px;
-  font-size: 0.8rem; line-height: 1.75; color: #1e40af;
+  font-size: 0.8rem; line-height: 1.75; color: #1f4438;
 }
 .key-help-body ol { margin: 0; padding-left: 18px; }
 .key-help-body li { margin-bottom: 2px; }
 .key-help-note {
   margin-top: 8px; padding-top: 8px;
-  border-top: 1px solid #bfdbfe; color: #1d4ed8;
+  border-top: 1px solid var(--border-soft); color: var(--primary-dark);
 }
 .key-help-link {
   display: inline-block; margin-top: 10px;
-  padding: 6px 12px; border: 1.5px solid #93c5fd; border-radius: 8px;
+  padding: 6px 12px; border: 1.5px solid #9dbdae; border-radius: 8px;
   background: var(--surface); color: var(--primary);
   font-size: 0.78rem; font-weight: 700; text-decoration: none;
 }
-.key-help-link:hover { background: #dbeafe; }
+.key-help-link:hover { background: var(--primary-soft); }
 
 .count-row {
   display: flex;
@@ -271,8 +306,8 @@ input:focus { outline: none; border-color: var(--primary); }
   display: none;
   border-radius: 10px;
   padding: 20px 24px;
-  background: #eff6ff;
-  border: 1.5px solid #bfdbfe;
+  background: #eaf1ed;
+  border: 1.5px solid #cfe0d5;
 }
 .step-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
 .step-item {
@@ -389,8 +424,8 @@ input:focus { outline: none; border-color: var(--primary); }
   font-size: 0.92rem; cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
-.choices li:hover { background: #eff6ff; border-color: var(--accent); }
-.choices li.selected { background: #dbeafe; border-color: var(--primary); }
+.choices li:hover { background: var(--primary-soft); border-color: var(--accent); }
+.choices li.selected { background: var(--primary-soft); border-color: var(--primary); }
 .choices li.correct  { background: #dcfce7; border-color: var(--success); color: var(--success); font-weight: 700; }
 .choices li.wrong    { background: #fee2e2; border-color: var(--danger); color: var(--danger); }
 
@@ -407,7 +442,7 @@ input:focus { outline: none; border-color: var(--primary); }
   transition: border-color 0.15s, background 0.15s, transform 0.1s;
 }
 .bone-cat-tile:not([style*="cursor:not-allowed"]):hover {
-  border-color: var(--primary); background: #eff6ff; transform: translateY(-2px);
+  border-color: var(--primary); background: #eaf1ed; transform: translateY(-2px);
 }
 
 /* 출제 모드 선택 (한 문제씩 / 클릭형 매칭 / 빈칸 한번에 쓰기) */
@@ -426,7 +461,7 @@ input:focus { outline: none; border-color: var(--primary); }
   transition: border-color 0.15s, background 0.15s, transform 0.1s;
 }
 .bone-mode-tile:hover {
-  border-color: var(--primary); background: #eff6ff; transform: translateY(-2px);
+  border-color: var(--primary); background: #eaf1ed; transform: translateY(-2px);
 }
 
 /* 클릭형 매칭 — 번호 슬롯 목록 */
@@ -442,7 +477,7 @@ input:focus { outline: none; border-color: var(--primary); }
   transition: border-color 0.15s, background 0.15s;
 }
 .bone-slot:hover { border-color: var(--primary); }
-.bone-slot-selected { border-color: var(--primary); background: #eff6ff; }
+.bone-slot-selected { border-color: var(--primary); background: #eaf1ed; }
 .bone-slot-correct  { border-color: var(--success); background: #f0fdf4; cursor: default; }
 .bone-slot-wrong     { border-color: var(--danger); background: #fef2f2; cursor: default; }
 .bone-slot-num {
@@ -472,12 +507,12 @@ input:focus { outline: none; border-color: var(--primary); }
   padding: 6px 14px;
   border: 1.5px solid var(--primary);
   border-radius: 999px;
-  background: #eff6ff; color: var(--primary);
+  background: var(--primary-soft); color: var(--primary);
   font-size: 0.85rem; font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, transform 0.1s;
 }
-.bone-chip:hover { background: #dbeafe; transform: translateY(-1px); }
+.bone-chip:hover { background: var(--border-soft); transform: translateY(-1px); }
 
 /* 빈칸 한번에 쓰기 — 번호별 입력창 */
 .bone-write-row {
@@ -675,6 +710,7 @@ main { margin-top: 20px; }
 .resume-meta { margin-top: 4px; font-size: 0.83rem; color: var(--text-muted); }
 .resume-actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
 .resume-primary { flex: 1 1 220px; margin: 0; }
+/* 색은 .btn-primary가 이미 --primary(세이지그린)를 쓰므로 여기선 크기만 조정한다. */
 
 /* .btn-ghost 는 이름과 달리 solid 파랑이라(아래 정의) 주 버튼과 등급이 같았다.
    같은 클래스를 결과 화면·보관함·골학에서도 쓰므로 전역은 그대로 두고
@@ -722,24 +758,32 @@ main { margin-top: 20px; }
      :only-child 라 그 묶음에 카드가 하나 더 생기면 이 규칙은 저절로 풀린다. */
   #tab-home .home-group .home-card:only-child { min-height: 120px; }
 }
+/* 기능 카드 5장은 각자 색을 갖는다(.c-gen 등, index.html에서 부여) —
+   전부 같은 채도·명도 공식(:root의 --card-*)이라 세트로 디자인된 느낌을 준다. */
 .home-card {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 8px; min-height: 190px; padding: 22px 16px;
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+  background: var(--card-bg, var(--surface)); border: none;
+  border-radius: 16px; box-shadow: 0 1px 2px rgba(20,15,5,0.05);
   font-family: inherit; text-align: center; cursor: pointer;
-  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+  transition: transform 0.15s, box-shadow 0.15s;
 }
-.home-card:hover {
-  border-color: var(--primary);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-key);
-}
-.home-card:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.home-card:hover { transform: translateY(-2px); box-shadow: 0 14px 26px -14px rgba(20,15,5,0.28); }
+.home-card:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 .home-card:active { transform: translateY(0); }
-.home-card-icon { font-size: 2.3rem; line-height: 1; }
-.home-card-title { font-size: 1.05rem; font-weight: 700; color: var(--text); }
-.home-card-desc { font-size: 0.82rem; color: var(--text-muted); line-height: 1.55; }
+.home-card-icon {
+  font-size: 1.7rem; line-height: 1; width: 46px; height: 46px; border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.6); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.5);
+}
+.home-card-title { font-size: 1.05rem; font-weight: 800; color: var(--card-ink, var(--text)); }
+.home-card-desc { font-size: 0.82rem; color: var(--card-sub, var(--text-muted)); line-height: 1.55; }
+
+.home-card.c-gen     { --card-bg: var(--card-gen-bg);     --card-ink: var(--card-gen-ink);     --card-sub: var(--card-gen-sub); }
+.home-card.c-topic   { --card-bg: var(--card-topic-bg);   --card-ink: var(--card-topic-ink);   --card-sub: var(--card-topic-sub); }
+.home-card.c-archive { --card-bg: var(--card-archive-bg); --card-ink: var(--card-archive-ink); --card-sub: var(--card-archive-sub); }
+.home-card.c-wrong   { --card-bg: var(--card-wrong-bg);   --card-ink: var(--card-wrong-ink);   --card-sub: var(--card-wrong-sub); }
+.home-card.c-bone    { --card-bg: var(--card-bone-bg);    --card-ink: var(--card-bone-ink);    --card-sub: var(--card-bone-sub); }
 /* 3열로 놓이는 넓은 화면에서만 정사각형에 가깝게 (좁은 화면에선 과하게 길어짐).
    그리드 아이템은 stretch로 높이가 정해져 aspect-ratio가 무시되므로 높이를 직접 준다.
    ⚠️ 홈은 묶음마다 2열이라 카드 폭이 400px 넘는다 — 240px를 그대로 두면
@@ -755,7 +799,7 @@ main { margin-top: 20px; }
    전에는 여기서 가로로 눕혀(높이 68px) 폭만 넓은 막대로 만들었는데,
    면적이 일반 카드 한 장보다도 작아져(0.92배) 각주처럼 읽혔다. */
 @media (prefers-reduced-motion: reduce) {
-  .home-card { transition: border-color 0.15s; }
+  .home-card { transition: box-shadow 0.15s; }
   .home-card:hover { transform: none; }
 }
 
@@ -1016,6 +1060,71 @@ main { margin-top: 20px; }
 }
 .modal .divider { text-align: center; font-size: 0.76rem; color: #94a3b8; margin: 14px 0 4px; }
 
+/* ── 분량 초과 경고 모달 ── */
+.modal .cut-row {
+  background: var(--bg); border-radius: 10px;
+  padding: 11px 13px; margin-bottom: 8px;
+}
+.modal .cut-file {
+  display: flex; align-items: baseline; gap: 6px;
+  font-size: 0.88rem; color: var(--text);
+}
+/* 좁은 화면에서 '강의록'이 한 글자씩 접히지 않도록 라벨은 줄이지 않는다.
+   대신 파일명이 줄어들며 말줄임된다. */
+.modal .cut-file > b { flex: none; white-space: nowrap; }
+.modal .cut-file .cut-name {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 반영률은 오른쪽 끝에 붙여 파일이 여러 개일 때 세로로 읽히게 한다 */
+.modal .cut-pct {
+  margin-left: auto; flex: none;
+  font-size: 0.78rem; font-weight: 700; color: #b45309;
+}
+.modal .cut-range {
+  margin-top: 6px; font-size: 0.82rem; color: #b45309; line-height: 1.6;
+}
+.modal .cut-range b { color: var(--text); }
+.modal .cut-range .cut-arrow { color: #94a3b8; margin: 0 4px; }
+
+/* 안내 문구와 '여기까지 쓴 양'을 한 줄 양끝에 둔다 */
+.modal .cut-note {
+  display: flex; align-items: baseline; gap: 10px; margin-top: 14px;
+  font-size: 0.78rem; color: var(--text-muted); line-height: 1.7;
+}
+.modal .cut-spend {
+  margin-left: auto; flex: none; white-space: nowrap;
+  font-weight: 700; color: var(--text-muted);
+}
+/* 좁은 화면에서는 한 줄에 둘 다 들어가지 않는다 → 아래로 내리고 오른쪽 정렬 유지 */
+@media (max-width: 480px) {
+  .modal .cut-note { flex-wrap: wrap; }
+  .modal .cut-spend { margin-left: auto; }
+}
+
+/* ── 분량 초과 경고 모달의 선택 버튼 ── */
+.modal .cut-actions {
+  display: flex; gap: 8px; justify-content: flex-end; align-items: center;
+  margin-top: 18px;
+}
+/* .btn 은 폼에서 가로를 꽉 채우도록 정의돼 있어 그대로 두면 '이대로 진행'만 늘어난다.
+   두 버튼은 글자 크기·여백이 서로 달라 높이도 어긋나므로 여기서 맞춰준다. */
+.modal .cut-actions button {
+  white-space: nowrap; width: auto; flex: 0 0 auto;
+  margin: 0;                       /* .btn 의 상단 여백이 두 버튼을 어긋나게 한다 */
+  min-height: 45px; padding: 10px 22px; font-size: 0.95rem;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+/* .btn-ghost 는 이름과 달리 solid 파랑이라(위 정의) 주 버튼과 등급이 같아진다.
+   여기서는 '이대로 진행'이 주 버튼이어야 하므로 취소만 진짜 ghost 로 덮어쓴다.
+   (홈의 '이어서 하기'에서 같은 이유로 쓰는 방식과 동일) */
+.modal .cut-actions .btn-ghost {
+  border: 1.5px solid var(--border-soft);
+  background: var(--surface); color: var(--text-muted);
+}
+.modal .cut-actions .btn-ghost:hover {
+  background: var(--primary-soft); color: var(--primary-dark); border-color: var(--primary);
+}
+
 /* ══════════════════════════════════════════════
    기출 주제 분석 탭 (topic_analysis.js)
    ══════════════════════════════════════════════ */
@@ -1023,7 +1132,7 @@ main { margin-top: 20px; }
 /* 진행 상태 박스 — #status-box와 같은 모양이지만 표시/숨김은 .hidden으로 제어 */
 .status-panel {
   border-radius: 10px; padding: 20px 24px;
-  background: #eff6ff; border: 1.5px solid #bfdbfe;
+  background: #eaf1ed; border: 1.5px solid #cfe0d5;
   box-shadow: none;
 }
 
@@ -1044,7 +1153,7 @@ main { margin-top: 20px; }
   padding: 14px 16px; margin-bottom: 10px; background: var(--surface);
   transition: border-color 0.15s;
 }
-.topic-item:hover { border-color: #bfdbfe; }
+.topic-item:hover { border-color: #cfe0d5; }
 .topic-head {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   margin-bottom: 10px;

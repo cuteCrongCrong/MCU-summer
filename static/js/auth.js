@@ -28,8 +28,8 @@ const GOOGLE_G_HTML =
 function renderAuth(d) {
   const el = document.getElementById('auth-widget');
   if (!el) return;
-  const btn = 'padding:6px 12px;border:1px solid rgba(255,255,255,0.6);border-radius:8px;' +
-              'background:rgba(255,255,255,0.15);color:#fff;font-size:0.8rem;font-weight:700;' +
+  const btn = 'padding:6px 12px;border:1px solid #cfd6c9;border-radius:8px;' +
+              'background:#ffffff;color:#2f5c50;font-size:0.8rem;font-weight:700;' +
               'font-family:inherit;cursor:pointer;';
   if (d && d.user) {
     const u = d.user;

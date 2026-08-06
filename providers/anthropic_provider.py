@@ -15,8 +15,8 @@ import anthropic
 
 from providers.base import (
     Provider, ProviderError, ProviderAuthError, ProviderRateLimitError,
+    IMAGE_DESC_PROMPT,
 )
-from providers.openai_compatible import IMAGE_DESC_PROMPT
 
 DEFAULT_MODEL = "claude-opus-5"
 
@@ -142,7 +142,7 @@ class AnthropicProvider(Provider):
                 _check_refusal(final)
 
     def describe_image(self, png_bytes: bytes, api_key: str, model: str,
-                       usage=None) -> str:
+                       usage=None, prompt: str = None) -> str:
         b64 = base64.b64encode(png_bytes).decode()
         with _translate_errors():
             response = self._client(api_key).messages.create(
@@ -156,7 +156,7 @@ class AnthropicProvider(Provider):
                             "media_type": "image/png",
                             "data": b64,
                         }},
-                        {"type": "text", "text": IMAGE_DESC_PROMPT},
+                        {"type": "text", "text": prompt or IMAGE_DESC_PROMPT},
                     ],
                 }],
             )
