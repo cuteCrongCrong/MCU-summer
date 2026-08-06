@@ -1031,6 +1031,71 @@ main { margin-top: 20px; }
 }
 .modal .divider { text-align: center; font-size: 0.76rem; color: #94a3b8; margin: 14px 0 4px; }
 
+/* ── 분량 초과 경고 모달 ── */
+.modal .cut-row {
+  background: var(--bg); border-radius: 10px;
+  padding: 11px 13px; margin-bottom: 8px;
+}
+.modal .cut-file {
+  display: flex; align-items: baseline; gap: 6px;
+  font-size: 0.88rem; color: var(--text);
+}
+/* 좁은 화면에서 '강의록'이 한 글자씩 접히지 않도록 라벨은 줄이지 않는다.
+   대신 파일명이 줄어들며 말줄임된다. */
+.modal .cut-file > b { flex: none; white-space: nowrap; }
+.modal .cut-file .cut-name {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 반영률은 오른쪽 끝에 붙여 파일이 여러 개일 때 세로로 읽히게 한다 */
+.modal .cut-pct {
+  margin-left: auto; flex: none;
+  font-size: 0.78rem; font-weight: 700; color: #b45309;
+}
+.modal .cut-range {
+  margin-top: 6px; font-size: 0.82rem; color: #b45309; line-height: 1.6;
+}
+.modal .cut-range b { color: var(--text); }
+.modal .cut-range .cut-arrow { color: #94a3b8; margin: 0 4px; }
+
+/* 안내 문구와 '여기까지 쓴 양'을 한 줄 양끝에 둔다 */
+.modal .cut-note {
+  display: flex; align-items: baseline; gap: 10px; margin-top: 14px;
+  font-size: 0.78rem; color: var(--text-muted); line-height: 1.7;
+}
+.modal .cut-spend {
+  margin-left: auto; flex: none; white-space: nowrap;
+  font-weight: 700; color: var(--text-muted);
+}
+/* 좁은 화면에서는 한 줄에 둘 다 들어가지 않는다 → 아래로 내리고 오른쪽 정렬 유지 */
+@media (max-width: 480px) {
+  .modal .cut-note { flex-wrap: wrap; }
+  .modal .cut-spend { margin-left: auto; }
+}
+
+/* ── 분량 초과 경고 모달의 선택 버튼 ── */
+.modal .cut-actions {
+  display: flex; gap: 8px; justify-content: flex-end; align-items: center;
+  margin-top: 18px;
+}
+/* .btn 은 폼에서 가로를 꽉 채우도록 정의돼 있어 그대로 두면 '이대로 진행'만 늘어난다.
+   두 버튼은 글자 크기·여백이 서로 달라 높이도 어긋나므로 여기서 맞춰준다. */
+.modal .cut-actions button {
+  white-space: nowrap; width: auto; flex: 0 0 auto;
+  margin: 0;                       /* .btn 의 상단 여백이 두 버튼을 어긋나게 한다 */
+  min-height: 45px; padding: 10px 22px; font-size: 0.95rem;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+/* .btn-ghost 는 이름과 달리 solid 파랑이라(위 정의) 주 버튼과 등급이 같아진다.
+   여기서는 '이대로 진행'이 주 버튼이어야 하므로 취소만 진짜 ghost 로 덮어쓴다.
+   (홈의 '이어서 하기'에서 같은 이유로 쓰는 방식과 동일) */
+.modal .cut-actions .btn-ghost {
+  border: 1.5px solid var(--border-soft);
+  background: var(--surface); color: var(--text-muted);
+}
+.modal .cut-actions .btn-ghost:hover {
+  background: var(--primary-soft); color: var(--primary-dark); border-color: var(--primary);
+}
+
 /* ══════════════════════════════════════════════
    기출 주제 분석 탭 (topic_analysis.js)
    ══════════════════════════════════════════════ */

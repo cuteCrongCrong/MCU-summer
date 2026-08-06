@@ -283,7 +283,9 @@ python tests/test_generation_flow.py
 | 파일 | 무엇을 지키는가 |
 |---|---|
 | `tests/test_usage.py` | LLM 토큰 사용량 수집 (`providers/usage.py`) |
-| `tests/test_generation_flow.py` | 문제 생성 파이프라인이 끝까지 도는지 (`run_generation_events`) |
+| `tests/test_generation_flow.py` | 문제 생성 파이프라인이 끝까지 도는지 (`run_generation_events`) — 세션 재사용·파일 업로드(여러 개)·분량 초과 확인 세 경로 |
+| `tests/test_topic_confirm.py` | 주제 분석의 '분량 초과 → 확인 → 진행' 경로 (라우트째로) |
+| `tests/test_question_parse.py` | LLM 응답에서 문제를 뽑아내는 파서 |
 
 **`providers/` 나 `features/question_gen.py` 를 건드렸으면 push 전에 한 번 돌려보자.** API 키 없이도 돌아간다 — LLM SDK·프로바이더를 가짜로 바꿔서 확인하기 때문에 토큰도 0원도 안 든다.
 

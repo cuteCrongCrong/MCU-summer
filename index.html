@@ -171,23 +171,23 @@
     <div class="form-grid">
       <!-- 강의자료 -->
       <div>
-        <label>📄 강의자료 (PDF)</label>
+        <label>📄 강의자료 (PDF · 여러 개 선택 가능)</label>
         <div class="file-drop" id="drop-lecture">
-          <input type="file" id="lecture-file" accept=".pdf" />
+          <input type="file" id="lecture-file" accept=".pdf" multiple />
           <div class="icon">📂</div>
           <div>파일을 끌어다 놓거나 클릭하세요</div>
-          <div class="hint">PDF 파일만 지원</div>
+          <div class="hint">PDF만 · 최대 7개</div>
           <div class="filename" id="lecture-name"></div>
         </div>
       </div>
       <!-- 기출문제 -->
       <div>
-        <label>📝 기출문제 (PDF)</label>
+        <label>📝 기출문제 (PDF · 여러 개 선택 가능)</label>
         <div class="file-drop" id="drop-exam">
-          <input type="file" id="exam-file" accept=".pdf" />
+          <input type="file" id="exam-file" accept=".pdf" multiple />
           <div class="icon">📂</div>
           <div>파일을 끌어다 놓거나 클릭하세요</div>
-          <div class="hint">PDF 파일만 지원</div>
+          <div class="hint">PDF만 · 최대 7개</div>
           <div class="filename" id="exam-name"></div>
         </div>
       </div>
@@ -679,7 +679,7 @@
             <input type="file" id="topic-lecture-file" accept=".pdf" multiple />
             <div class="icon">📂</div>
             <div>파일을 끌어다 놓거나 클릭하세요</div>
-            <div class="hint">PDF만 · 최대 5개</div>
+            <div class="hint">PDF만 · 최대 7개</div>
             <div class="filename" id="topic-lecture-name"></div>
           </div>
         </div>
@@ -690,7 +690,7 @@
             <input type="file" id="topic-exam-file" accept=".pdf" multiple />
             <div class="icon">📂</div>
             <div>파일을 끌어다 놓거나 클릭하세요</div>
-            <div class="hint">PDF만 · 최대 5개</div>
+            <div class="hint">PDF만 · 최대 7개</div>
             <div class="filename" id="topic-exam-name"></div>
           </div>
         </div>
@@ -813,6 +813,24 @@
       <button class="btn-danger" onclick="createFolderAndSave()">만들어 저장</button>
     </div>
     <button class="modal-close" onclick="closeWrongModal()">닫기</button>
+  </div>
+</div>
+
+<!-- 분량 초과 경고 모달 (주제 분석·문제 생성 공용 — common.js의 confirmTruncation이 연다) -->
+<div class="modal-overlay" id="cut-modal" onclick="if(event.target===this)resolveCutModal(false)">
+  <div class="modal" style="max-width:640px;">
+    <h3>⚠️ 일부 파일이 분량 상한을 넘습니다</h3>
+    <div class="modal-sub" id="cut-modal-sub"></div>
+    <div id="cut-modal-list"></div>
+    <div class="cut-note">
+      <span>※ 파일 수를 줄이면 파일당 글자수 배정량이 늘어 덜 잘립니다.</span>
+      <!-- 여기까지(추출) 쓴 양 — 취소해도 이미 소모된 값이라 숨기지 않는다 -->
+      <span class="cut-spend" id="cut-modal-spend"></span>
+    </div>
+    <div class="cut-actions">
+      <button class="btn-ghost" onclick="resolveCutModal(false)">취소</button>
+      <button class="btn btn-primary" onclick="resolveCutModal(true)">이대로 진행</button>
+    </div>
   </div>
 </div>
 
