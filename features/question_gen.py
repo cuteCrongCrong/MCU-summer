@@ -31,7 +31,7 @@ from llm import (
     QUESTION_TYPES, StreamingQuestionParser,
     read_pdf_pages, describe_images_progressively, assemble_pdf_text,
     truncate, build_source_info,
-    analyze_concepts_progressively, analyze_exam_format_progressively,
+    analyze_concepts_progressively, analyze_format_progressively,
     compute_type_targets, build_question_generation_prompt, call_llm_stream,
 )
 
@@ -511,10 +511,17 @@ def read_generate_params() -> dict:
         exam_bytes    = exam_file.read()
         lecture_name  = lecture_file.filename or "강의자료"
 
+    model = request.form.get("model", "").strip() or provider.default_model
+    # 분석·이미지 설명 전용 모델(선택). 입력 토큰의 대부분이 이 단계에서 나가는데
+    # 하는 일은 '읽고 추리기'라, 저렴한 모델로 내려도 문제 품질은 거의 그대로다.
+    # 비워두면 생성 모델을 그대로 써서 예전과 동작이 같다.
+    analysis_model = request.form.get("analysis_model", "").strip() or model
+
     return {
         "api_key":        api_key,
         "provider":       provider,
-        "model":          request.form.get("model", "").strip() or provider.default_model,
+        "model":          model,
+        "analysis_model": analysis_model,
         "count":          count,
         "weight":         weight,
         "manual_targets": manual_targets,
@@ -569,6 +576,9 @@ def run_generation_events(p: dict):
     """
     api_key, provider = p["api_key"], p["provider"]
     model, count, weight = p["model"], p["count"], p["weight"]
+    # 분석·이미지 설명용 모델. 지정하지 않았으면 생성 모델과 같다.
+    # (.get 으로 읽는 이유 — 이 키가 없던 시절의 호출부/테스트도 그대로 돌게)
+    analysis_model = p.get("analysis_model") or model
     session_id, owner = p["session_id"], p["owner"]
 
     # 이번 생성에서 쓴 토큰을 단계별로 모은다. 오류·취소로 끝나도 그 시점까지의
@@ -602,7 +612,8 @@ def run_generation_events(p: dict):
                                                   describe_images=True)
             total_imgs = len(img_jobs)
             yield {"type": "progress", "key": "extract", "done": 0, "total": total_imgs}
-            for done_imgs in describe_images_progressively(img_jobs, api_key, model,
+            for done_imgs in describe_images_progressively(img_jobs, api_key,
+                                                          analysis_model,
                                                           provider, usage):
                 yield {"type": "progress", "key": "extract",
                        "done": done_imgs, "total": total_imgs}
@@ -621,16 +632,20 @@ def run_generation_events(p: dict):
             yield {"type": "stage", "key": "concepts", "status": "active"}
             yield {"type": "progress", "key": "concepts", "done": 0, "total": 2}
             gen1 = analyze_concepts_progressively(lecture_text, exam_text,
-                                                  api_key, model, provider, usage)
+                                                  api_key, analysis_model, provider,
+                                                  usage)
             part1 = yield from _forward_progress(gen1, "concepts", 2)
             yield {"type": "stage", "key": "concepts", "status": "done"}
 
             usage.set_stage("format")
             yield {"type": "stage", "key": "format", "status": "active"}
-            yield {"type": "progress", "key": "format", "done": 0, "total": 2}
-            gen2 = analyze_exam_format_progressively(exam_text, part1["type_stats"],
-                                                     api_key, model, provider, usage)
-            part2 = yield from _forward_progress(gen2, "format", 2)
+            # 예전에는 2회(예시 추출 → 형식 분석)였다. 예시 추출이 1단계로 합쳐지면서
+            # 여기는 형식 분석 1회만 남았다 — 기출 전문을 다시 보내지 않는다.
+            yield {"type": "progress", "key": "format", "done": 0, "total": 1}
+            gen2 = analyze_format_progressively(part1["sample_questions"],
+                                                api_key, analysis_model, provider,
+                                                usage)
+            part2 = yield from _forward_progress(gen2, "format", 1)
             yield {"type": "stage", "key": "format", "status": "done"}
 
             analysis = {**part1, **part2, "source_info": source_info}
@@ -682,7 +697,8 @@ def run_generation_events(p: dict):
         remaining, offset = count, 0
         while remaining > 0:
             batch_count = min(GEN_BATCH_SIZE, remaining)
-            batch_prompt = build_question_generation_prompt(
+            # (고정 접두부, 이번 배치 지시) — 접두부는 배치마다 동일해서 캐시가 걸린다
+            batch_head, batch_tail = build_question_generation_prompt(
                 analysis.get("concepts", {}),
                 analysis.get("sample_questions", ""),
                 analysis.get("format_analysis", ""),
@@ -697,9 +713,9 @@ def run_generation_events(p: dict):
             # 조각을 받는 즉시 파싱해, 완성된 문제부터 화면에 내보낸다
             parser = StreamingQuestionParser()
             batch_raw = []
-            for piece in call_llm_stream(batch_prompt, api_key, model,
+            for piece in call_llm_stream(batch_tail, api_key, model,
                                          provider=provider, max_tokens=GEN_MAX_TOKENS,
-                                         usage=usage):
+                                         usage=usage, cache_prefix=batch_head):
                 batch_raw.append(piece)
                 for q in parser.feed(piece):
                     questions.append(q)

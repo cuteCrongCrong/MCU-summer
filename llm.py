@@ -6,11 +6,13 @@ LLM 도메인 로직 — PDF 텍스트/이미지 추출, 프롬프트 설계, �
 라우트(HTTP)와 분리되어 있어 단위 테스트·재사용이 쉽습니다.
 """
 
+import hashlib
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import fitz  # pymupdf
 
+from db import get_cached_image_desc, put_cached_image_desc
 from providers.base import ProviderError
 from providers.factory import get_provider
 
@@ -21,12 +23,20 @@ from providers.factory import get_provider
 _default_provider = get_provider()
 
 # 강의/기출 텍스트를 LLM에 넣기 전 문서당 최대 글자 수.
-MAX_TEXT_CHARS = 100000
+MAX_TEXT_CHARS = 1000000
 
 # 이미지/스캔 페이지 → Vision LLM으로 '무슨 이미지인지' 설명 생성 (토큰 비용 상한용)
-IMAGE_DESC_MAX = 15          # 설명할 이미지 페이지 최대 개수
+IMAGE_DESC_MAX = 15          # 설명할 이미지 페이지 최대 개수 (PDF 1개당 기본값)
 SPARSE_TEXT_THRESHOLD = 20   # 페이지 텍스트가 이보다 짧으면 이미지 페이지로 간주
-IMAGE_RENDER_DPI = 150       # 페이지 렌더 해상도
+# 페이지 렌더 해상도. 150이었는데 낮췄다 — 구세대 모델은 긴 변 1568px에서 서버가
+# 자동 축소하므로, A4를 150DPI(1754px)로 구우면 초과분이 그대로 버려졌다.
+# 110DPI는 A4 긴 변 약 1286px로 어느 모델에서도 축소되지 않으면서 이미지 토큰이 줄어든다.
+# ("이 그림이 무엇인가"를 설명하는 용도라 이 해상도로 충분하다)
+IMAGE_RENDER_DPI = 110
+# 이 비율 이상을 차지하는 그림이 있어야 설명 대상으로 본다.
+# 예전에는 page.get_images()가 참이기만 하면 대상이라, 머리글 로고 한 점 때문에
+# 본문이 멀쩡히 추출된 페이지까지 Vision에 보내 텍스트와 설명을 이중으로 결제했다.
+IMAGE_MIN_AREA_RATIO = 0.12
 
 # 문제 유형 4분류 (집계·few-shot·생성에서 공통 사용)
 QUESTION_TYPES = ["객관식", "빈칸채우기", "단답형", "서술형"]
@@ -43,10 +53,43 @@ TYPE_DEFINITIONS = (
 # LLM / PDF 유틸
 # ──────────────────────────────────────────────
 
-def read_pdf_pages(pdf, api_key: str = None, describe_images: bool = True):
+def _has_meaningful_image(page) -> bool:
+    """
+    이 페이지에 '설명할 가치가 있는' 그림이 있는가.
+
+    page.get_images()는 머리글 로고·장식 한 점만 있어도 참이라 판별에 쓸 수 없다.
+    페이지 면적 대비 IMAGE_MIN_AREA_RATIO 이상인 그림이 하나라도 있어야 참으로 본다.
+    (해부도·그래프·표 같은 진짜 그림 문제는 페이지의 상당 부분을 차지한다)
+    """
+    try:
+        infos = page.get_image_info()
+    except Exception:
+        # 판별할 수 없는 PyMuPDF 버전 → 예전처럼 '있으면 대상'으로 두어 놓치지 않게 한다
+        return bool(page.get_images())
+    if not infos:
+        return False
+    rect = page.rect
+    page_area = float(rect.width) * float(rect.height)
+    if page_area <= 0:
+        return True                     # 면적을 못 재면 보수적으로 대상에 넣는다
+    for info in infos:
+        bbox = info.get("bbox")
+        if not bbox or len(bbox) < 4:
+            continue
+        area = abs(bbox[2] - bbox[0]) * abs(bbox[3] - bbox[1])
+        if area / page_area >= IMAGE_MIN_AREA_RATIO:
+            return True
+    return False
+
+
+def read_pdf_pages(pdf, api_key: str = None, describe_images: bool = True,
+                   max_images: int = IMAGE_DESC_MAX):
     """
     PDF에서 텍스트 레이어를 뽑고, 이미지 설명이 필요한 페이지를 고른다. (LLM 호출 없음)
     반환: (pages, img_jobs) — img_jobs는 pages 안 엔트리를 그대로 참조한다.
+
+    max_images: 이 PDF에서 설명할 페이지 수 상한. 호출부가 여러 PDF에 예산을
+                나눠 쓰는 경우(기출 주제 분석) 그 몫을 넘긴다.
     """
     # 업로드 객체(FileStorage)와 bytes 모두 허용 — 스트리밍 경로는 요청 컨텍스트가
     # 닫힌 뒤에 실행되므로 라우트에서 미리 읽어둔 bytes를 넘긴다.
@@ -60,8 +103,9 @@ def read_pdf_pages(pdf, api_key: str = None, describe_images: bool = True):
         entry = {"idx": i, "text": text if text.strip() else "", "desc": None}
         want_img = (
             describe_images and api_key
-            and len(img_jobs) < IMAGE_DESC_MAX
-            and (len(text.strip()) < SPARSE_TEXT_THRESHOLD or bool(page.get_images()))
+            and len(img_jobs) < max_images
+            and (len(text.strip()) < SPARSE_TEXT_THRESHOLD
+                 or _has_meaningful_image(page))
         )
         if want_img:
             try:
@@ -81,26 +125,57 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
     이미지 설명을 병렬로 만들되, 하나 끝날 때마다 완료 개수를 yield한다.
     (진행률 표시용 — 호출부가 제너레이터를 돌리면서 이벤트를 낼 수 있게)
     게이트웨이가 이미지를 지원하지 않으면 폴백 문구를 채운다.
+
+    캐시(image_desc_cache)를 먼저 뒤진다 — 같은 PDF를 다시 올리는 경우가 흔한데,
+    예전에는 그때마다 Vision 호출을 처음부터 다시 냈다. 캐시에서 나온 항목도
+    완료 개수에 포함해 진행률이 total까지 올라가게 한다.
     """
     if not img_jobs:
         return
     prov = provider or _default_provider
+    prov_name = getattr(prov, "name", "") or ""
+
+    done = 0
+    pending = []
+    for e in img_jobs:
+        e["sha"] = hashlib.sha256(e["png"]).hexdigest()
+        cached = get_cached_image_desc(e["sha"], prov_name, model)
+        if cached:
+            e["desc"] = cached
+            done += 1
+            yield done
+        else:
+            pending.append(e)
+
+    if not pending:
+        return
+
     with ThreadPoolExecutor(max_workers=4) as ex:
         futs = {ex.submit(prov.describe_image, e["png"], api_key, model,
-                          usage=usage): e for e in img_jobs}
-        done = 0
+                          usage=usage): e for e in pending}
         for fut in as_completed(futs):
             entry = futs[fut]
             try:
                 entry["desc"] = fut.result()
             except Exception:
                 entry["desc"] = "(이미지 설명 생성 실패 — 게이트웨이 이미지 미지원일 수 있음)"
+            else:
+                # 성공한 것만 남긴다. 실패 폴백 문구를 캐시하면 일시적 오류가
+                # 영구히 굳어서, 다음 회차부터 그 페이지는 영영 설명 없이 돈다.
+                # (쓰기는 메인 스레드에서만 — 워커 4개가 동시에 쓰지 않게)
+                put_cached_image_desc(entry["sha"], prov_name, model, entry["desc"])
             done += 1
             yield done
 
 
-def assemble_pdf_text(pages, img_job_count: int = 0) -> str:
-    """페이지 텍스트 + 이미지 설명을 하나의 텍스트로 합친다."""
+def assemble_pdf_text(pages, img_job_count: int = 0,
+                      max_images: int = IMAGE_DESC_MAX) -> str:
+    """
+    페이지 텍스트 + 이미지 설명을 하나의 텍스트로 합친다.
+
+    max_images: 이 PDF에 적용한 상한. 상한에 걸려 뒤쪽 그림을 못 봤다는 사실을
+                본문에 남겨야 하므로, 예산을 나눠 쓴 호출부는 그 몫을 넘긴다.
+    """
     parts = []
     for e in pages:
         block = []
@@ -111,27 +186,27 @@ def assemble_pdf_text(pages, img_job_count: int = 0) -> str:
         if block:
             parts.append("\n".join(block))
 
-    if img_job_count >= IMAGE_DESC_MAX:
-        parts.append(f"...(이미지 설명은 최대 {IMAGE_DESC_MAX}개까지만 생성됨)")
+    if max_images > 0 and img_job_count >= max_images:
+        parts.append(f"...(이미지 설명은 최대 {max_images}개까지만 생성됨)")
 
     return "\n\n".join(parts)
 
 
 def extract_text_from_pdf(pdf, api_key: str = None, model: str = None,
                           describe_images: bool = True, provider=None,
-                          usage=None) -> str:
+                          usage=None, max_images: int = IMAGE_DESC_MAX) -> str:
     """
     PDF에서 텍스트 레이어를 추출하고, 이미지/스캔 페이지는 Vision LLM으로
     '무슨 이미지인지' 설명을 생성해 텍스트로 함께 남긴다.
-    - 텍스트가 거의 없는 페이지(스캔·사진) 또는 그림이 포함된 페이지를 이미지 설명 대상으로 선정
-    - 비용 상한: 최대 IMAGE_DESC_MAX개 페이지만 설명, 이미지 설명은 병렬 처리
+    - 텍스트가 거의 없는 페이지(스캔·사진) 또는 **큰 그림이 있는** 페이지를 설명 대상으로 선정
+    - 비용 상한: 최대 max_images개 페이지만 설명, 이미지 설명은 병렬 처리 + 캐시
 
     진행률이 필요한 곳(스트리밍)은 위 세 함수를 직접 조합한다. 결과는 동일하다.
     """
-    pages, img_jobs = read_pdf_pages(pdf, api_key, describe_images)
+    pages, img_jobs = read_pdf_pages(pdf, api_key, describe_images, max_images)
     for _ in describe_images_progressively(img_jobs, api_key, model, provider, usage):
         pass
-    return assemble_pdf_text(pages, len(img_jobs))
+    return assemble_pdf_text(pages, len(img_jobs), max_images)
 
 
 def truncate(text: str, max_chars: int = MAX_TEXT_CHARS) -> str:
@@ -165,20 +240,24 @@ def build_source_info(raw_text: str, limit: int = MAX_TEXT_CHARS) -> dict:
 
 
 def call_llm(prompt: str, api_key: str, model: str, provider=None,
-             max_tokens: int = None, usage=None) -> str:
+             max_tokens: int = None, usage=None, cache_prefix: str = None) -> str:
     # provider 계층으로 위임 — max_tokens를 주면 프로바이더 기본값 대신 그 값을 쓴다
     # (문제 생성처럼 응답이 길어 잘림을 막아야 할 때 호출부가 넉넉히 지정).
     # usage를 주면 프로바이더가 토큰 사용량을 거기에 기록한다.
+    # cache_prefix: prompt 앞에 붙는 '반복되는 고정 부분'. 프롬프트 캐싱을 지원하는
+    #   제공사는 여기에 캐시 경계를 잡고, 아닌 곳은 그냥 이어붙인다(동작 동일).
     return (provider or _default_provider).complete(
-        prompt, api_key, model, max_tokens=max_tokens, usage=usage
+        prompt, api_key, model, max_tokens=max_tokens, usage=usage,
+        cache_prefix=cache_prefix,
     )
 
 
 def call_llm_stream(prompt: str, api_key: str, model: str, provider=None,
-                    max_tokens: int = None, usage=None):
+                    max_tokens: int = None, usage=None, cache_prefix: str = None):
     """응답을 조각으로 흘려받는다 (호출부에서 StreamingQuestionParser와 함께 사용)."""
     return (provider or _default_provider).complete_stream(
-        prompt, api_key, model, max_tokens=max_tokens, usage=usage
+        prompt, api_key, model, max_tokens=max_tokens, usage=usage,
+        cache_prefix=cache_prefix,
     )
 
 
@@ -275,75 +354,102 @@ def compute_type_targets(type_stats: dict, count: int,
 
 
 # ──────────────────────────────────────────────
-# 기출문제 예시 추출 (Few-shot용)
+# 기출 분석 (출제 개념 + 유형 통계 + Few-shot 예시를 한 호출로)
 # ──────────────────────────────────────────────
 
-def _strip_sample_preamble(text: str) -> str:
+def build_exam_analysis_prompt(exam_text: str) -> str:
     """
-    추출 응답 맨 앞에 붙은 모델의 머리말을 잘라낸다.
+    기출 전문 한 번으로 ①출제 개념 ②유형 통계 ③대표 문제(Few-shot)를 모두 뽑는다.
 
-    "문제 외 다른 설명 텍스트는 추가하지 말 것"이라고 지시해도 모델이
-    "제공해주신 기출문제 텍스트에서 … 추출하였습니다." 같은 문장을 앞에 붙이는 일이 있다.
-    이 결과물은 sessions.sample_questions 에 그대로 저장되고, 생성 프롬프트의
-    "[1] 기출문제 예시"로 다시 들어가므로, 머리말이 기출 문투의 일부처럼 학습된다.
+    예전에는 개념 추출(extract_exam_concepts)과 예시 추출(extract_sample_questions)이
+    별개 호출이었는데, **둘 다 기출 전문을 통째로 받아야 해서 같은 텍스트를 두 번
+    결제**하고 있었다. 분석 단계 입력의 약 1/3이 이 중복이었다.
 
-    첫 "[유형:" 마커 앞을 버린다. 단 **마커가 없으면 원문을 그대로 둔다** —
-    형식을 이탈한 응답(마커 없이 산문으로 답한 경우)에서 자르면 내용이 통째로 사라진다.
+    합쳐도 되는 이유 — 예시 추출은 유형 통계를 '참고 힌트'로만 받았지 결과에
+    의존하지 않았다. 오히려 같은 호출 안에서 세고 고르므로 통계와 예시의 근거가
+    일치하게 된다.
     """
-    marker = "[유형:"
-    i = (text or "").find(marker)
-    return text[i:] if i > 0 else (text or "")
+    return f"""아래는 의대 기출문제 PDF에서 추출한 전문입니다.
+이 기출을 분석해 ①출제 개념 ②유형 통계 ③대표 문제 세 가지를 한 번에 반환하세요.
 
-
-def extract_sample_questions(exam_text: str, api_key: str, model: str,
-                             type_stats: dict = None, provider=None,
-                             usage=None) -> str:
-    """
-    기출 PDF에서 **대표성 있는** 문제를 최대 5개까지 원문 그대로 추출 (4분류).
-    선택 기준:
-    - 존재하는 각 유형(객관식/빈칸채우기/단답형/서술형)마다 최소 1개씩 포함
-    - 총 최대 5개
-    - 앞쪽 순서가 아니라, 그 시험에서 '가장 전형적·대표적'인 문제를 판단해 선택
-    """
-    stats_hint = ""
-    if type_stats and type_stats.get("총문항"):
-        present = ", ".join(
-            f"{t} 약 {type_stats.get(t, 0)}문항"
-            for t in QUESTION_TYPES if type_stats.get(t, 0)
-        )
-        if present:
-            stats_hint = f"\n참고 — 이 기출의 대략적 유형 구성: {present}.\n"
-
-    prompt = f"""아래는 의대 기출문제 PDF에서 추출한 텍스트입니다.
-이 텍스트에서 **그 시험을 가장 잘 대표하는** 완전한 문제를 골라 원문 그대로 추출해주세요.
-{stats_hint}
-## 문제 유형 4분류 (먼저 각 문제의 유형을 판별)
+## 문제 유형 4분류
 {TYPE_DEFINITIONS}
 
-## 선택 기준 (중요)
+## [1] 출제 개념
+이 기출에서 **실제로 출제된 핵심 개념·주제와 출제 경향**을 뽑으세요.
+형식(어떻게 물었나)이 아니라 내용(무엇을 물었나)에 집중하세요.
+
+## [2] 유형 통계
+기출 전체 문항을 위 4분류로 **빠짐없이** 세세요. (합 = 전체 문항 수)
+
+## [3] 대표 문제 — 선택 기준 (중요)
 - **총 최대 5개**까지 선택.
 - 텍스트에 존재하는 **각 유형마다 최소 1개씩** 반드시 포함하세요.
   (해당 유형이 하나도 없으면 생략, 있으면 최소 1개 보장.)
 - 5개 한도 안에서, 문항이 많은 유형은 1개보다 많이 넣어 실제 비중을 반영해도 좋습니다.
 - **앞에서부터 순서대로 고르지 말고**, 그 시험에서 **전형적(대표적)**인 문제를 우선 선택하세요.
   특이하거나 예외적인 형식의 문제는 피하세요.
+- 원문 그대로 옮기되, 해설·부연설명 등 답이 아닌 내용은 절대 포함하지 마세요.
+  · 객관식 → 문제 번호, 지문(증례), 선택지 ①②③④⑤, 정답까지
+  · 빈칸채우기/단답형/서술형 → 문제와 정답(모범답안)만 (선택지 없음)
 
-## 추출 규칙 (공통: 해설·부연설명 등 답이 아닌 내용은 절대 포함하지 말 것)
-- [객관식] 문제 번호, 지문(증례), 선택지 ①②③④⑤, 정답만 원문 그대로.
-- [빈칸채우기/단답형/서술형] 문제와 정답(모범답안)만. (선택지 없음)
-
-## 출력 형식 (각 문제마다 — 유형 라벨은 4분류 중 하나 정확히)
-[유형: 객관식] / [유형: 빈칸채우기] / [유형: 단답형] / [유형: 서술형]
-(문제 원문 — 위 규칙대로)
-
-기타 조건:
-- 추출한 문제 사이는 빈 줄 2개로 구분
-- 문제 외 다른 설명 텍스트(선택 이유 등)는 추가하지 말 것
+## 출력 형식 — 아래 JSON만 (코드블록·설명 문장 금지)
+{{
+  "기출출제개념": ["출제된 개념/주제1", "개념/주제2"],
+  "빈출포인트": ["반복 출제되거나 강조된 포인트1", "포인트2"],
+  "유형통계": {{"객관식": 0, "빈칸채우기": 0, "단답형": 0, "서술형": 0}},
+  "대표문제": [
+    {{"유형": "객관식", "원문": "문제 번호부터 정답까지 원문 그대로 (줄바꿈 포함)"}}
+  ]
+}}
+- "대표문제.유형"은 4분류 중 하나를 정확히 쓰세요.
 
 ## 기출문제 텍스트
 {exam_text}"""
 
-    return _strip_sample_preamble(call_llm(prompt, api_key, model, provider))
+
+def _rebuild_sample_questions(items) -> str:
+    """
+    대표문제 JSON 배열 → 기존 Few-shot 텍스트 형식으로 복원.
+
+    생성 프롬프트의 "[1] 기출문제 예시"와 sessions.sample_questions 가 예전부터
+    "[유형: X]\\n원문" 을 빈 줄 두 개로 구분한 형식을 쓰므로, 호출을 합치면서도
+    아래 단계에는 **똑같은 문자열**을 넘긴다. (연결 계약 유지)
+
+    덤으로 예전 _strip_sample_preamble() 이 필요 없어졌다 — 모델이 "…추출하였습니다"
+    같은 머리말을 붙여도 JSON 밖이라 여기까지 오지 못한다.
+    """
+    blocks = []
+    for it in (items or []):
+        if not isinstance(it, dict):
+            continue
+        raw = str(it.get("원문") or "").strip()
+        if not raw:
+            continue
+        # 라벨 표기가 흔들려도(예: '빈칸 채우기') 4분류로 정규화한다
+        qtype = normalize_question_type(str(it.get("유형") or ""), [], raw)
+        blocks.append(f"[유형: {qtype}]\n{raw}")
+    return "\n\n\n".join(blocks)
+
+
+def analyze_exam(exam_text: str, api_key: str, model: str, provider=None,
+                 usage=None) -> dict:
+    """
+    기출 전문 → {exam_concepts, sample_questions}. LLM 1회.
+    반환 형태는 예전 두 함수의 결과를 합친 것과 같아서 호출부가 바뀌지 않는다.
+    """
+    raw = call_llm(build_exam_analysis_prompt(exam_text), api_key, model, provider,
+                   usage=usage)
+    data = safe_parse_json(raw)
+    return {
+        "exam_concepts": {
+            "기출출제개념": data.get("기출출제개념") or [],
+            "빈출포인트":   data.get("빈출포인트") or [],
+            # 비어 있으면 resolve_type_stats()가 정규식 폴백으로 넘어간다
+            "유형통계":     data.get("유형통계") or {},
+        },
+        "sample_questions": _rebuild_sample_questions(data.get("대표문제")),
+    }
 
 
 def analyze_format(sample_questions: str, api_key: str, model: str, provider=None,
@@ -367,35 +473,8 @@ def analyze_format(sample_questions: str, api_key: str, model: str, provider=Non
 ## 기출문제 예시
 {sample_questions}"""
 
-    return call_llm(prompt, api_key, model, provider)
-
-
-def extract_exam_concepts(exam_text: str, api_key: str, model: str, provider=None,
-                          usage=None) -> str:
-    """
-    기출 전문에서 '무엇을 물었는가(출제 개념·경향)'를 추출.
-    형식(how)이 아니라 내용(what)에 집중 → 강의개념 가중치 계산에 사용.
-    + 유형통계(4분류)도 같은 호출에서 집계 (추가 토큰 최소).
-    """
-    prompt = f"""아래는 의대 기출문제 PDF에서 추출한 전문입니다.
-이 기출에서 **실제로 출제된 핵심 개념·주제와 출제 경향**을 추출하고,
-**각 문제의 유형을 아래 4분류로 세어** 함께 반환하세요.
-
-## 문제 유형 4분류
-{TYPE_DEFINITIONS}
-
-다음 JSON 형식으로만 반환하세요 (코드블록 없이 JSON만):
-{{
-  "기출출제개념": ["출제된 개념/주제1", "개념/주제2"],
-  "빈출포인트": ["반복 출제되거나 강조된 포인트1", "포인트2"],
-  "유형통계": {{"객관식": 0, "빈칸채우기": 0, "단답형": 0, "서술형": 0}}
-}}
-- 유형통계는 기출 전체 문항을 4분류로 **빠짐없이** 센 개수입니다(합 = 전체 문항 수).
-
-## 기출문제 텍스트
-{exam_text}"""
-
-    return call_llm(prompt, api_key, model, provider)
+    # usage를 넘기지 않으면 이 호출의 토큰이 화면 집계에서 통째로 빠진다
+    return call_llm(prompt, api_key, model, provider, usage=usage)
 
 
 def _norm_term(s: str) -> str:
@@ -483,7 +562,7 @@ def build_question_generation_prompt(
     weight: int = 5,
     type_targets: dict = None,
     avoid_questions: list = None,
-) -> str:
+) -> tuple:
     """
     핵심 변경: 기출 패턴 요약 대신
     ① 실제 기출 예시 (Few-shot)
@@ -494,6 +573,17 @@ def build_question_generation_prompt(
     weight(1~10): 기출(개념·형식) 반영 강도. 사용자가 조절.
       - 높을수록 기출 출제개념·형식을 강하게 재현, 우선 주제 출제 비율↑
       - 낮을수록 강의자료 전반에서 자유롭게 출제, 형식은 느슨하게 참고
+
+    반환: (prefix, suffix) 두 조각
+      prefix — 한 회차 안에서 배치마다 **글자 하나까지 똑같은** 부분
+               (기출 예시·형식 키워드·개념 목록·공통 규칙·출력 형식)
+      suffix — 배치마다 달라지는 부분 (이번 배치 문제 수·유형 배분·회피 목록)
+
+    왜 나누나 — 프롬프트 캐싱은 **앞에서부터 정확히 일치하는 구간**에만 걸린다.
+    count가 크면 이 함수가 GEN_BATCH_SIZE 문제씩 여러 번 불리는데, 예전에는
+    문제 수·회피 목록 같은 가변 요소가 프롬프트 한가운데 있어서 그 뒤가 전부
+    캐시에서 빠졌다. 고정 부분을 앞에 몰아 두면 2번째 배치부터 접두부를 캐시에서
+    읽는다. (캐시 지시 필드가 없는 제공사에서는 그냥 이어붙이므로 동작은 같다)
     """
     exam_concepts = exam_concepts or {}
     priority_topics = priority_topics or []
@@ -554,14 +644,14 @@ def build_question_generation_prompt(
     if recent:
         avoid_block = f"""
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## [5] 이미 출제된 문제 (이번 회차에서 앞서 만든 것 — 재출제 금지)
+## [6] 이미 출제된 문제 (이번 회차에서 앞서 만든 것 — 재출제 금지)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {chr(10).join('- ' + q[:AVOID_SNIPPET_LEN] for q in recent)}
 """
         # '개념 금지'로 읽히면 모델이 [3] 개념 목록 밖으로 나가 억지 문제를 만든다.
         # 금지 범위를 '같은 문제'로 좁히고, 같은 개념의 다른 축은 허용임을 명시한다.
         avoid_rule = (
-            "\n- **아래 [5]에 있는 문제와 같은 것을 묻는 문제는 만들지 마세요.**"
+            "\n- **아래 [6]에 있는 문제와 같은 것을 묻는 문제는 만들지 마세요.**"
             " 표현만 바꾼 재출제도 금지입니다."
             "\n  단 [3]의 개념 자체를 피하라는 뜻은 **아닙니다** — 같은 개념이라도"
             " 다른 축(정의 / 기능 / 신경지배 / 경계·내용물 / 수치·레벨)을 물으면 됩니다."
@@ -582,18 +672,23 @@ def build_question_generation_prompt(
         if no_vignette else ""
     )
 
-    priority_block = ""
+    # 주제 목록 자체는 회차 내내 그대로라 접두부(캐시 대상)에 두고,
+    # 배치마다 달라지는 "최소 N문제" 지시만 접미부로 뺀다.
+    priority_block = priority_rule = ""
     if priority_topics:
         priority_block = f"""
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## [3-B] ⭐ 우선 출제 주제 (강의자료 ∩ 기출 경향 — 가중치 높음)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 아래 주제는 강의자료 핵심이면서 기출에서도 다뤄진 항목입니다.
-**전체 {count}문제 중 최소 {min_priority}문제 이상을 이 주제에서 출제**하세요. (기출 반영 강도 {weight}/10 기준)
 {chr(10).join('- ' + t for t in priority_topics)}
 """
+        priority_rule = (
+            f"\n- **이번 {count}문제 중 최소 {min_priority}문제 이상을 위 [3-B]"
+            f" 우선 출제 주제에서** 출제 (기출 반영 강도 {weight}/10 기준)"
+        )
 
-    return f"""당신은 한국 의과대학 중간/기말고사 출제위원입니다.
+    prefix = f"""당신은 한국 의과대학 중간/기말고사 출제위원입니다.
 아래 [기출문제 예시]의 형식과 **유형(4분류)**을 참고하여 새로운 예상 문제를 생성하세요.
 단, 아래 [0] 기출 반영 강도에 따라 기출을 얼마나 강하게 반영할지 조절하세요.
 
@@ -621,10 +716,8 @@ def build_question_generation_prompt(
 - 치료 원칙: {', '.join(concepts.get('치료원칙', []))}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## [4] 생성 규칙
+## [4] 공통 생성 규칙
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- 문제 수: {count}개
-- 유형 구성: {type_rule}
 - 유형별 형식:
   · 객관식 → 선택지 ①②③④⑤ 포함
   · 빈칸채우기 → 문제 문장에 빈칸 '____'를 두고, 선택지 없이 빈칸에 들어갈 답 제시
@@ -633,14 +726,14 @@ def build_question_generation_prompt(
   · 단답형 → 선택지 없이 단어·구·수치로 답
   · 서술형 → 선택지 없이 여러 문장으로 서술하는 모범답안 제시
 - 문체·구조·선택지 형식은 위 [0] 기출 반영 강도({weight}/10)에 맞춰 반영
-- 기출문제와 내용이 동일한 문제는 출제 금지
+- 기출문제와 내용이 완전히 동일한 문제는 출제 금지
 - **수식·기호는 LaTeX 문법을 쓰지 말고 그대로 읽히는 문자로 쓸 것.**
   화면에 수식 렌더러가 없어 LaTeX를 쓰면 기호가 그대로 글자로 보인다.
   $ ... $ / \\text{{}} / \\Delta / \\approx / ^{{}} / _{{}} 모두 금지.
   이렇게 쓸 것 → ΔG°' < 0,  K'eq > 1,  1 cal ≈ 4.184 J,  ΔG₁ + ΔG₂,  25°C,  H₂O
 - 문항·선택지·해설은 모두 한국어로 쓸 것 (의학 용어의 영문 원어 병기는 허용)
-- 각 문제에 해설과 함정포인트 포함{vignette_rule}{avoid_rule}
-{avoid_block}
+- 각 문제에 해설과 함정포인트 포함{vignette_rule}
+
 ## 출력 형식 (마크다운 코드블록 사용 금지)
 
 [객관식 문제일 때]
@@ -678,6 +771,18 @@ def build_question_generation_prompt(
 해설: [상세 해설]
 함정포인트: [핵심 함정]
 ---END---"""
+
+    # ── 여기부터가 배치마다 달라지는 부분 (캐시 경계 뒤) ──
+    suffix = f"""
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## [5] 이번에 만들 문제 (지금 지시)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- 문제 수: {count}개
+- 유형 구성: {type_rule}{priority_rule}{avoid_rule}
+{avoid_block}"""
+
+    return prefix, suffix
 
 
 # ──────────────────────────────────────────────
@@ -839,8 +944,11 @@ def analyze_concepts_progressively(lecture_text: str, exam_text: str, api_key: s
                                    model: str, provider=None, usage=None):
     """
     분석 1단계 — 의존성 없는 두 LLM 호출을 병렬 실행 (결과·동작은 순차와 동일):
-      [동시] ① 강의 핵심개념  ┐
-      [동시] ② 기출 개념+유형통계 ┘
+      [동시] ① 강의 핵심개념                     ┐
+      [동시] ② 기출 개념 + 유형통계 + 대표문제   ┘
+
+    ②가 예전에는 '개념 추출'과 '예시 추출' 두 호출로 나뉘어 기출 전문을 두 번
+    보냈다. 지금은 analyze_exam() 하나로 합쳐서 한 번만 보낸다.
 
     하나가 끝날 때마다 완료 개수를 yield하고, 마지막에 결과 dict를 return한다.
     (호출부: `result = yield from analyze_concepts_progressively(...)`)
@@ -850,40 +958,38 @@ def analyze_concepts_progressively(lecture_text: str, exam_text: str, api_key: s
             call_llm, build_concept_extraction_prompt(lecture_text), api_key, model,
             provider, None, usage
         )
-        f_exam = ex.submit(extract_exam_concepts, exam_text, api_key, model, provider,
-                           usage)
+        f_exam = ex.submit(analyze_exam, exam_text, api_key, model, provider, usage)
         done = 0
         for fut in as_completed([f_concepts, f_exam]):
             fut.result()          # 예외가 있으면 여기서 터뜨려 호출부가 잡게 한다
             done += 1
             yield done
         concepts = safe_parse_json(f_concepts.result())
-        exam_concepts = safe_parse_json(f_exam.result())
+        exam = f_exam.result()
 
+    exam_concepts = exam["exam_concepts"]
     return {
         "concepts": concepts,
         "exam_concepts": exam_concepts,
+        # 예시 추출이 이 단계로 올라왔다 (예전에는 2단계에서 기출을 다시 읽었다)
+        "sample_questions": exam["sample_questions"],
         # LLM 4분류 우선, 실패 시 정규식 폴백
         "type_stats": resolve_type_stats(exam_concepts, exam_text),
         "priority_topics": compute_priority_topics(concepts, exam_concepts),
     }
 
 
-def analyze_exam_format_progressively(exam_text: str, type_stats: dict, api_key: str,
-                                      model: str, provider=None, usage=None):
+def analyze_format_progressively(sample_questions: str, api_key: str,
+                                 model: str, provider=None, usage=None):
     """
-    분석 2단계 — ③ 예시추출 → ④ 형식분석.
-    ④는 ③의 결과를 입력으로 받으므로 병렬 불가. 각 단계가 끝날 때마다 yield.
+    분석 2단계 — 대표 문제로 형식 규칙 정리 (LLM 1회).
+
+    예전에는 여기서 기출 전문을 다시 보내 예시를 뽑고(③) 형식을 분석(④)해 2회였다.
+    ③이 1단계로 합쳐지면서 이 단계는 짧은 예시 텍스트만 받는 1회로 줄었다.
     """
-    sample_questions = extract_sample_questions(exam_text, api_key, model, type_stats,
-                                                provider, usage)
-    yield 1
     format_analysis = analyze_format(sample_questions, api_key, model, provider, usage)
-    yield 2
-    return {
-        "sample_questions": sample_questions,
-        "format_analysis": format_analysis,
-    }
+    yield 1
+    return {"format_analysis": format_analysis}
 
 
 def _drain(gen):
@@ -901,10 +1007,10 @@ def analyze_concepts(lecture_text: str, exam_text: str, api_key: str, model: str
         lecture_text, exam_text, api_key, model, provider, usage))
 
 
-def analyze_exam_format(exam_text: str, type_stats: dict, api_key: str, model: str,
+def analyze_exam_format(sample_questions: str, api_key: str, model: str,
                         provider=None, usage=None) -> dict:
-    return _drain(analyze_exam_format_progressively(
-        exam_text, type_stats, api_key, model, provider, usage))
+    return _drain(analyze_format_progressively(
+        sample_questions, api_key, model, provider, usage))
 
 
 def run_analysis(lecture_text: str, exam_text: str, api_key: str, model: str,
@@ -916,7 +1022,7 @@ def run_analysis(lecture_text: str, exam_text: str, api_key: str, model: str,
     analyze_exam_format 을 직접 호출한다. 어느 쪽이든 결과는 같다.
     """
     part1 = analyze_concepts(lecture_text, exam_text, api_key, model, provider, usage)
-    part2 = analyze_exam_format(exam_text, part1["type_stats"], api_key, model, provider,
+    part2 = analyze_exam_format(part1["sample_questions"], api_key, model, provider,
                                 usage)
     return {**part1, **part2}
 
@@ -934,6 +1040,10 @@ def run_analysis(lecture_text: str, exam_text: str, api_key: str, model: str,
 TOPIC_SIDE_CHAR_BUDGET = 120000
 # 파일을 여러 개 올려도 문서당 이만큼은 보장 (예산 ÷ 파일수가 너무 작아지는 것 방지)
 TOPIC_DOC_MIN_CHARS = 20000
+# 이미지 설명 예산 — **한쪽(강의록 전체 / 기출 전체) 기준**.
+# 예전에는 상한이 PDF 1개당이라, 기출을 5개 올리면 15×5=75번까지 Vision을 불렀다.
+# 문제 생성(기출 1개당 15)과 같은 수준으로 맞춘다.
+TOPIC_IMAGE_BUDGET = IMAGE_DESC_MAX
 # 주제 목록이 길어져도 JSON이 잘리지 않도록.
 # 주제마다 강의록발췌·기출 원문이 붙어 항목당 분량이 늘었으므로 기존(8000)보다 넉넉히 잡는다.
 TOPIC_MAX_TOKENS = 16000
@@ -942,6 +1052,7 @@ TOPIC_MAX_TOKENS = 16000
 def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
                          describe_images: bool = False, provider=None,
                          side_budget: int = TOPIC_SIDE_CHAR_BUDGET,
+                         img_budget: int = TOPIC_IMAGE_BUDGET,
                          usage=None) -> list:
     """
     업로드된 PDF 여러 개를 '라벨 + 페이지 마커가 붙은 텍스트'로 추출한다.
@@ -949,6 +1060,7 @@ def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
     label_prefix: '강의록' / '기출' → 라벨은 강의록1, 강의록2 … (LLM이 출처를 가리킬 때 사용.
                   긴 한글 파일명을 그대로 되풀이하게 하면 오타가 나므로 짧은 라벨을 쓰고
                   파일명 복원은 파싱 단계에서 우리가 한다)
+    img_budget:   이미지 설명 호출 수 상한 — **파일당이 아니라 이쪽 전체 기준**.
     반환: [{label, name, text, pages, source}]  (text에는 [페이지 N] 마커가 들어 있다)
     """
     files = list(files or [])
@@ -958,13 +1070,25 @@ def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
     # 예산을 파일 수로 나눠 배정 (파일이 많으면 문서당 최소치는 보장)
     per_doc = max(TOPIC_DOC_MIN_CHARS, side_budget // len(files))
 
+    # 이미지 예산은 '남은 예산 ÷ 남은 파일 수'로 배정한다. 앞 파일이 몫을 다 안 쓰면
+    # 남은 만큼이 뒤 파일로 넘어가므로, 그림이 한 파일에 몰려 있어도 낭비가 없다.
+    remaining_imgs = img_budget if describe_images else 0
+
     docs = []
     for i, f in enumerate(files, start=1):
         name = f.filename or f"{label_prefix}{i}"
+        files_left = len(files) - i + 1
+        quota = max(1, remaining_imgs // files_left) if remaining_imgs > 0 else 0
         try:
-            raw = extract_text_from_pdf(f, api_key, model,
-                                        describe_images=describe_images,
-                                        provider=provider, usage=usage)
+            # extract_text_from_pdf를 쓰지 않고 풀어 쓴 이유 — 이 파일이 이미지 설명을
+            # 실제로 몇 개 썼는지 알아야 남은 예산을 다음 파일로 넘길 수 있다.
+            pages, img_jobs = read_pdf_pages(f, api_key,
+                                             describe_images and quota > 0,
+                                             max_images=quota)
+            for _ in describe_images_progressively(img_jobs, api_key, model,
+                                                   provider, usage):
+                pass
+            raw = assemble_pdf_text(pages, len(img_jobs), quota)
         except ProviderError:
             raise                      # 키·한도 오류는 라우트가 상태코드로 구분하므로 그대로
         except Exception as e:
@@ -973,6 +1097,7 @@ def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
                 f"'{name}' 파일을 읽을 수 없습니다. "
                 f"PDF가 손상되었거나 암호가 걸려 있는지 확인해주세요. (상세: {e})"
             ) from e
+        remaining_imgs -= len(img_jobs)
         text = truncate(raw, per_doc)
         docs.append({
             "label": f"{label_prefix}{i}",
@@ -1046,7 +1171,8 @@ def build_topic_analysis_prompt(lecture_block: str, exam_block: str) -> str:
 ⑦ **기출 문항 상세** — 각 문항마다 다음을 함께 적으세요.
    - "페이지": 그 문항이 적힌 기출 자료의 [페이지 N] 번호. 확인 안 되면 빈 문자열.
    - "원문": 기출 텍스트에 있는 그 문제의 지문·질문을 **요약·의역하지 말고 원문 그대로**
-     옮기세요(선택지는 생략 가능). 200자가 넘으면 핵심까지만 자르고 "…"으로 표시하세요.
+     옮기세요(선택지는 생략 가능). 어떤 문제인지 알아볼 수 있을 만큼만 옮기고,
+     120자가 넘으면 거기서 자르고 "…"으로 표시하세요.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## [4] 출력 형식 — 아래 JSON만 (코드블록·설명 문장 금지)
@@ -1058,7 +1184,7 @@ def build_topic_analysis_prompt(lecture_block: str, exam_block: str) -> str:
       "강의록": [{{"자료": "강의록1", "페이지": [12, 13]}}],
       "강의록발췌": "12페이지 내용을 강의록 표현 그대로 1~3문장으로",
       "기출": [{{"자료": "기출1", "문항": [
-        {{"번호": "4", "페이지": "3", "원문": "문제 지문 원문 그대로(최대 200자)"}}
+        {{"번호": "4", "페이지": "3", "원문": "문제 지문 원문 그대로(최대 120자)"}}
       ]}}],
       "출제형태": "기출에서 이 주제를 무엇으로 물었는지 한 문장 (강의록 용어로만)"
     }}
@@ -1160,7 +1286,9 @@ def _normalize_exam_refs(raw_refs, exam_docs: list) -> list:
             if isinstance(it, dict):
                 num = str(it.get("번호") or it.get("문항") or "").strip()
                 page = str(it.get("페이지") or "").strip()
-                text = _clip_text(it.get("원문") or "", 200)
+                # 출력 토큰은 입력의 5배 단가라 인용 길이가 그대로 비용이다.
+                # 어떤 문제인지 알아보는 데는 이 정도면 충분하다.
+                text = _clip_text(it.get("원문") or "", 120)
             else:
                 num, page, text = str(it).strip(), "", ""
             num = re.sub(r"^(문제|문항)\s*", "", num, flags=re.I)

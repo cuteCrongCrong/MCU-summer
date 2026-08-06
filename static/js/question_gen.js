@@ -104,6 +104,7 @@ async function generate() {
   const apiKey      = document.getElementById('api-key').value.trim();
   const weight      = document.getElementById('weight').value;
   const model       = document.getElementById('model-select').value;
+  const analysisModel = document.getElementById('analysis-model-select').value;
 
   const manualMode = document.getElementById('manual-count-toggle').checked;
   let count, manualTargets = null;
@@ -148,6 +149,8 @@ async function generate() {
   if (document.getElementById('preserve-types').checked) form.append('preserve_types', '1');
   form.append('weight', weight);
   form.append('model', model);
+  // 비어 있으면 서버가 생성 모델을 그대로 쓴다
+  if (analysisModel) form.append('analysis_model', analysisModel);
   form.append('provider', currentProvider || '');
   form.append('title', document.getElementById('gen-title').value.trim());
   if (useSession) {
@@ -659,6 +662,13 @@ function populateModels(models) {
   // 선택값 복원: 이전 선택 > 기본모델 > 첫 항목
   if (models.includes(prev))                sel.value = prev;
   else if (models.includes(defaultModel))   sel.value = defaultModel;
+
+  // 분석 전용 모델 — 빈 값이 '생성 모델과 동일'(= 예전 동작)이라 항상 맨 위에 둔다
+  const aSel = document.getElementById('analysis-model-select');
+  const aPrev = aSel.value;
+  aSel.innerHTML = '<option value="">(생성 모델과 동일)</option>'
+    + models.map(m => `<option value="${escHtml(m)}">${escHtml(m)}</option>`).join('');
+  if (models.includes(aPrev)) aSel.value = aPrev;   // 없으면 빈 값(동일)으로 남는다
 }
 
 function showError(msg) {

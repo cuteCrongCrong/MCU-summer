@@ -248,6 +248,10 @@ def analyze_topics():
         except UnknownProviderError as e:
             return jsonify({"error": str(e)}), 400
         model = request.form.get("model", "").strip() or provider.default_model
+        # 이미지 설명 전용 모델(선택). 주제 대조 자체는 아래 model이 하고,
+        # 여기서는 기출 그림 페이지 설명만 담당하므로 저렴한 모델로 내려도 된다.
+        # 비워두면 위 모델을 그대로 써서 예전과 동작이 같다.
+        analysis_model = request.form.get("analysis_model", "").strip() or model
 
         # 이번에 분석할 내용 이름(선택). 비우면 화면에서 '제N회'로 표시된다.
         title = request.form.get("title", "").strip()
@@ -278,11 +282,13 @@ def analyze_topics():
         #   주제 이름은 '강의록에 있는 단어'만 써야 하는데, 이미지 설명은 LLM이 새로 쓴
         #   문장이라 강의록에 없는 용어를 끌어들인다. (토큰도 아낀다)
         #   → 이미지 설명을 끄므로 이 호출은 LLM을 쓰지 않는다 (사용량 0).
-        lecture_docs = extract_labeled_docs(lectures, "강의록", api_key, model,
+        lecture_docs = extract_labeled_docs(lectures, "강의록", api_key, analysis_model,
                                             describe_images=False, provider=provider,
                                             usage=usage)
         # 기출: 그림 문제(부위 이름 쓰기 등)를 놓치지 않도록 이미지 설명 포함 (문제 생성기와 동일)
-        exam_docs = extract_labeled_docs(exams, "기출", api_key, model,
+        # 이미지 설명 예산은 '기출 전체'에 걸린다 — 파일당이 아니다.
+        # (예전에는 파일당 15개라 기출 5개를 올리면 최대 75번을 불렀다)
+        exam_docs = extract_labeled_docs(exams, "기출", api_key, analysis_model,
                                          describe_images=True, provider=provider,
                                          usage=usage)
 

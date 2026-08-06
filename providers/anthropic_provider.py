@@ -81,8 +81,26 @@ class AnthropicProvider(Provider):
     def _client(self, api_key: str) -> anthropic.Anthropic:
         return anthropic.Anthropic(api_key=api_key)
 
+    @staticmethod
+    def _content(prompt: str, cache_prefix: str = None):
+        """
+        캐시 접두부가 있으면 텍스트 블록 두 개로 나눠 보내고, 앞 블록에 캐시 표시를 단다.
+
+        프롬프트 캐싱은 '앞에서부터 정확히 일치하는 구간'에만 걸린다. 문제 생성은
+        같은 접두부(기출 예시·형식·개념)를 배치 수만큼 반복해서 보내므로, 여기에
+        경계를 잡아두면 두 번째 배치부터 그 구간을 캐시에서 읽는다.
+        접두부가 캐시 최소 길이에 못 미치면 캐시가 안 걸릴 뿐 요청은 정상 동작한다.
+        """
+        if not cache_prefix:
+            return prompt
+        return [
+            {"type": "text", "text": cache_prefix,
+             "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": prompt},
+        ]
+
     def complete(self, prompt: str, api_key: str, model: str,
-                 max_tokens: int = None, usage=None) -> str:
+                 max_tokens: int = None, usage=None, cache_prefix: str = None) -> str:
         # thinking·effort를 지정하지 않는 이유: 사용자가 드롭다운에서 아무 모델이나
         # 고를 수 있는데, 이 옵션들은 모델마다 지원 여부가 달라 400을 낸다.
         # 생략하면 모든 모델에서 안전하게 동작한다.
@@ -90,7 +108,8 @@ class AnthropicProvider(Provider):
             response = self._client(api_key).messages.create(
                 model=model,
                 max_tokens=max_tokens or MAX_TOKENS,
-                messages=[{"role": "user", "content": prompt}],
+                messages=[{"role": "user",
+                           "content": self._content(prompt, cache_prefix)}],
             )
         # 거절(refusal)로 터지기 전에 기록한다 — 거절도 토큰은 쓴다
         if usage is not None:
@@ -98,7 +117,7 @@ class AnthropicProvider(Provider):
         return _extract_text(response)
 
     def complete_stream(self, prompt: str, api_key: str, model: str,
-                        max_tokens: int = None, usage=None):
+                        max_tokens: int = None, usage=None, cache_prefix: str = None):
         """
         Messages API의 스트리밍 헬퍼(messages.stream)를 쓴다.
         OpenAI 호환 계층과 달리 델타를 직접 뒤질 필요 없이 text_stream이 텍스트만 준다.
@@ -110,7 +129,8 @@ class AnthropicProvider(Provider):
             with self._client(api_key).messages.stream(
                 model=model,
                 max_tokens=max_tokens or MAX_TOKENS,
-                messages=[{"role": "user", "content": prompt}],
+                messages=[{"role": "user",
+                           "content": self._content(prompt, cache_prefix)}],
             ) as stream:
                 for text in stream.text_stream:
                     yield text

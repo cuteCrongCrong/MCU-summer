@@ -46,14 +46,20 @@ class Provider(ABC):
     # 토큰 사용량을 기록한다. None이면 아무것도 하지 않으므로, 사용량이 필요 없는
     # 호출부는 기존처럼 그냥 부르면 된다.
 
+    # cache_prefix 인자 — prompt 앞에 붙는 '여러 요청에서 똑같이 반복되는 부분'.
+    #   프롬프트 캐싱을 지원하는 제공사(Anthropic)는 여기에 캐시 경계를 잡아
+    #   두 번째 요청부터 접두부를 훨씬 싸게 처리한다.
+    #   지원하지 않는 제공사는 그냥 앞에 이어붙이면 되므로 결과는 어디서나 같다.
+    #   → 호출부는 제공사를 몰라도 "이 부분이 고정이다"만 알려주면 된다.
+
     @abstractmethod
     def complete(self, prompt: str, api_key: str, model: str,
-                 max_tokens: int = None, usage=None) -> str:
+                 max_tokens: int = None, usage=None, cache_prefix: str = None) -> str:
         """프롬프트 하나를 보내고 텍스트 응답을 받는다.
         max_tokens=None 이면 프로바이더 기본값을 쓴다."""
 
     def complete_stream(self, prompt: str, api_key: str, model: str,
-                        max_tokens: int = None, usage=None):
+                        max_tokens: int = None, usage=None, cache_prefix: str = None):
         """
         complete()와 같지만 응답을 조각(문자열)으로 나눠 yield 한다.
         조각 경계는 의미 단위가 아니므로, 호출부가 이어붙여 해석해야 한다.
@@ -61,7 +67,8 @@ class Provider(ABC):
         기본 구현은 complete()를 그대로 한 조각으로 내보낸다 —
         스트리밍을 지원하지 않는 프로바이더도 같은 인터페이스로 쓸 수 있게.
         """
-        yield self.complete(prompt, api_key, model, max_tokens, usage=usage)
+        yield self.complete(prompt, api_key, model, max_tokens, usage=usage,
+                            cache_prefix=cache_prefix)
 
     @abstractmethod
     def describe_image(self, png_bytes: bytes, api_key: str, model: str,

@@ -67,12 +67,14 @@ class FakeProvider:
     default_model = "fake-model"
     supports_credits = False        # 크레딧 미지원 경로
 
-    def complete(self, prompt, api_key, model, max_tokens=None, usage=None):
+    def complete(self, prompt, api_key, model, max_tokens=None, usage=None,
+                 cache_prefix=None):
         if usage is not None:
             usage.add(model, FakeUsage())
         return "{}"
 
-    def complete_stream(self, prompt, api_key, model, max_tokens=None, usage=None):
+    def complete_stream(self, prompt, api_key, model, max_tokens=None, usage=None,
+                        cache_prefix=None):
         # 조각 경계가 문제 중간을 자르는 실제 상황을 흉내낸다
         mid = len(QUESTION_BLOCK) // 2
         yield QUESTION_BLOCK[:mid]

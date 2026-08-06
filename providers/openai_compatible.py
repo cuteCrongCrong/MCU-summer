@@ -68,12 +68,21 @@ class OpenAICompatibleProvider(Provider):
     def _client(self, api_key: str) -> OpenAI:
         return OpenAI(api_key=api_key, base_url=self.base_url)
 
+    @staticmethod
+    def _messages(prompt: str, cache_prefix: str = None) -> list:
+        """
+        Chat Completions에는 캐시 경계를 지정하는 필드가 없다. 그냥 이어붙인다.
+        (자동 프롬프트 캐싱이 있는 서버라면 접두부가 앞에 몰려 있는 것만으로 이득이고,
+         없는 서버여도 예전과 완전히 같은 요청이 된다)
+        """
+        return [{"role": "user", "content": (cache_prefix or "") + prompt}]
+
     def complete(self, prompt: str, api_key: str, model: str,
-                 max_tokens: int = None, usage=None) -> str:
+                 max_tokens: int = None, usage=None, cache_prefix: str = None) -> str:
         with _translate_errors(self.label):
             response = self._client(api_key).chat.completions.create(
                 model=model,
-                messages=[{"role": "user", "content": prompt}],
+                messages=self._messages(prompt, cache_prefix),
                 max_tokens=max_tokens or self.max_tokens,
             )
         if usage is not None:
@@ -81,7 +90,7 @@ class OpenAICompatibleProvider(Provider):
         return response.choices[0].message.content
 
     def complete_stream(self, prompt: str, api_key: str, model: str,
-                        max_tokens: int = None, usage=None):
+                        max_tokens: int = None, usage=None, cache_prefix: str = None):
         """
         응답을 델타 조각으로 흘려보낸다.
 
@@ -91,7 +100,7 @@ class OpenAICompatibleProvider(Provider):
         """
         kwargs = dict(
             model=model,
-            messages=[{"role": "user", "content": prompt}],
+            messages=self._messages(prompt, cache_prefix),
             max_tokens=max_tokens or self.max_tokens,
             stream=True,
         )

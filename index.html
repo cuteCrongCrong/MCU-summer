@@ -218,6 +218,19 @@
       <select id="model-select" class="select-field"></select>
     </div>
 
+    <!-- 분석 전용 모델 (선택) — 입력 토큰의 대부분이 이 단계에서 나간다 -->
+    <div style="margin-top:14px;">
+      <label for="analysis-model-select">
+        🔎 분석용 모델 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 선택</span>
+      </label>
+      <select id="analysis-model-select" class="select-field"></select>
+      <div style="font-size:0.75rem;color:#64748b;margin-top:4px;">
+        PDF 그림 설명과 개념·형식 분석에만 쓰입니다. 넣는 글자의 대부분이 이 단계에서 나가지만
+        하는 일은 <b>읽고 추리기</b>라, 저렴한 모델을 골라도 문제 품질은 거의 그대로입니다.
+        비워두면 위 모델을 그대로 씁니다.
+      </div>
+    </div>
+
     <!-- 문제 수 -->
     <div style="margin-top:20px;">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
@@ -714,6 +727,18 @@
           <button type="button" class="icon-btn" onclick="topicLoadModels()" title="모델 목록 새로고침" aria-label="모델 목록 새로고침" style="margin-left:auto;">↻</button>
         </label>
         <select id="topic-model-select" class="select-field"></select>
+      </div>
+
+      <!-- 분석 전용 모델 (선택) -->
+      <div style="margin-top:14px;">
+        <label for="topic-analysis-model-select">
+          🔎 그림 설명용 모델 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 선택</span>
+        </label>
+        <select id="topic-analysis-model-select" class="select-field"></select>
+        <div style="font-size:0.75rem;color:#64748b;margin-top:4px;">
+          기출 그림 페이지를 설명할 때만 쓰입니다. 주제↔문항 대조는 위 모델이 그대로 합니다.
+          비워두면 위 모델을 그대로 씁니다.
+        </div>
       </div>
 
       <!-- 이번에 분석할 내용 이름 (선택) -->
