@@ -174,7 +174,7 @@ async function generate() {
     // 분량 상한을 넘는 파일이 있으면 서버가 추출까지만 하고 멈춰 있다.
     // 확인을 받으면 파일 대신 토큰만 보내 이어서 돈다 (재추출 = Vision 재과금 방지).
     if (result && result.needsConfirm) {
-      const go = await confirmTruncation(result.payload.warnings || []);
+      const go = await confirmTruncation(result.payload.warnings || [], result.payload);
       if (!go) {
         renderSpend(result.payload);   // 추출까지 쓴 양은 알려준다
       } else {

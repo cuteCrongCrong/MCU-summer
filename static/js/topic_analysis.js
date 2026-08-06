@@ -186,7 +186,7 @@ async function topicAnalyze() {
     // 분량 상한을 넘는 파일이 있으면 서버가 여기서 멈추고 물어본다.
     // 추출은 이미 끝나 서버에 보관돼 있으므로, 진행하면 토큰만 보내 이어서 돈다.
     if (data.needs_confirm) {
-      const go = await confirmTruncation(data.warnings || []);
+      const go = await confirmTruncation(data.warnings || [], data);
       if (!go) {
         setStep('topic-step4', 'wait');
         topicRenderSpend(data, 'main');   // 추출까지 쓴 양은 알려준다

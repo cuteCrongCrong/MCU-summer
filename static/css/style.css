@@ -1013,6 +1013,21 @@ main { margin-top: 20px; }
 .modal .cut-range b { color: var(--text); }
 .modal .cut-range .cut-arrow { color: #94a3b8; margin: 0 4px; }
 
+/* 안내 문구와 '여기까지 쓴 양'을 한 줄 양끝에 둔다 */
+.modal .cut-note {
+  display: flex; align-items: baseline; gap: 10px; margin-top: 14px;
+  font-size: 0.78rem; color: var(--text-muted); line-height: 1.7;
+}
+.modal .cut-spend {
+  margin-left: auto; flex: none; white-space: nowrap;
+  font-weight: 700; color: var(--text-muted);
+}
+/* 좁은 화면에서는 한 줄에 둘 다 들어가지 않는다 → 아래로 내리고 오른쪽 정렬 유지 */
+@media (max-width: 480px) {
+  .modal .cut-note { flex-wrap: wrap; }
+  .modal .cut-spend { margin-left: auto; }
+}
+
 /* ── 분량 초과 경고 모달의 선택 버튼 ── */
 .modal .cut-actions {
   display: flex; gap: 8px; justify-content: flex-end; align-items: center;
