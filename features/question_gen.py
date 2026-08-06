@@ -18,6 +18,7 @@ from flask import Blueprint, request, jsonify, Response
 from db import get_conn, json_col, owner_clause, LEGACY_PROVIDER
 # current_owner: (user_id, guest_id) 튜플. 게스트도 브라우저별로 서로 격리된다.
 from features.auth import current_owner
+from features import extract_cache
 from providers.base import (
     ProviderError, ProviderAuthError, ProviderRateLimitError,
 )
@@ -31,7 +32,7 @@ from llm import (
     QUESTION_TYPES, StreamingQuestionParser, IMAGE_DESCRIBE, IMAGE_TRANSCRIBE,
     MAX_FILES_PER_SIDE, GEN_SIDE_CHAR_BUDGET, GEN_DOC_MIN_CHARS,
     read_pdf_pages, describe_images_progressively, assemble_pdf_text,
-    truncate, build_source_info,
+    truncate, truncation_report, build_source_info,
     analyze_concepts_progressively, analyze_exam_format_progressively,
     compute_type_targets, build_question_generation_prompt, call_llm_stream,
 )
@@ -510,10 +511,12 @@ def read_generate_params() -> dict:
         raise GenerateParamError("문제 세트 이름은 100자 이내로 입력해주세요.")
 
     session_id = request.form.get("session_id", "").strip()
+    # 분량 초과 경고를 확인하고 다시 온 요청이면 파일 대신 토큰이 온다 (재추출 방지)
+    extract_token = request.form.get("extract_token", "").strip()
     lecture_files = []
     exam_files = []
     lecture_name = ""
-    if not session_id:
+    if not session_id and not extract_token:
         lectures = _collect_pdfs("lecture")
         exams    = _collect_pdfs("exam")
         if not lectures or not exams:
@@ -544,6 +547,7 @@ def read_generate_params() -> dict:
         "lecture_files":  lecture_files,   # [(파일명, bytes)]
         "exam_files":     exam_files,
         "lecture_name":   lecture_name,    # 세션 이름에 쓸 대표 파일명 (첫 파일)
+        "extract_token":  extract_token,   # 있으면 보관해둔 추출 결과를 재사용
         "name":           request.form.get("name", "").strip(),
     }
 
@@ -561,6 +565,13 @@ def _forward_progress(gen, key: str, total: int):
         yield {"type": "progress", "key": key, "done": done, "total": total}
 
 
+def _session_base(p: dict) -> str:
+    """세션 이름의 앞부분 — 첫 강의자료 파일명(확장자 제거) + 나머지 개수."""
+    base = p["lecture_name"].rsplit(".", 1)[0]
+    extra = len(p["lecture_files"]) - 1
+    return f"{base} 외 {extra}개" if extra > 0 else base
+
+
 def _join_side(files, parts, image_mode):
     """
     한쪽(강의자료 전체 / 기출 전체)의 파일별 텍스트를 예산 안에서 잘라 하나로 합친다.
@@ -568,15 +579,19 @@ def _join_side(files, parts, image_mode):
     예산을 파일 수로 나눠 배정하므로, 파일이 1개면 예전과 똑같이 GEN_SIDE_CHAR_BUDGET
     (=MAX_TEXT_CHARS) 전부를 쓴다. 파일이 여럿이면 어디부터 다른 자료인지 LLM이 알 수
     있게 파일명 구분선을 넣는다.
-    반환: (합친 텍스트, 반영 범위 dict) — 범위는 파일들을 합산한 값이다.
+    반환: (합친 텍스트, 반영 범위 dict, 잘린 파일 목록)
+          범위는 파일들을 합산한 값이고, 잘린 목록은 진행 전 경고에 쓴다.
     """
     per_doc = max(GEN_DOC_MIN_CHARS, GEN_SIDE_CHAR_BUDGET // len(files))
-    chunks, chars, used = [], 0, 0
+    chunks, chars, used, cuts = [], 0, 0, []
     for (name, _), (pages, jobs) in zip(files, parts):
         raw = assemble_pdf_text(pages, len(jobs), image_mode)
         info = build_source_info(raw, per_doc)
         chars += info["chars"]
         used  += info["used"]
+        cut = truncation_report(raw, per_doc)   # 상한을 넘겼으면 어느 줄이 버려지는지
+        if cut:
+            cuts.append({"name": name, **cut})
         text = truncate(raw, per_doc)
         chunks.append(f"===== {name} =====\n{text}" if len(files) > 1 else text)
     return "\n\n".join(chunks), {
@@ -585,7 +600,7 @@ def _join_side(files, parts, image_mode):
         "limit": per_doc * len(files),
         "truncated": used < chars,
         "coverage": round(used / chars * 100) if chars else 100,
-    }
+    }, cuts
 
 
 def _batch_targets(type_slots, offset, batch_count) -> dict:
@@ -635,35 +650,78 @@ def run_generation_events(p: dict):
         else:
             usage.set_stage("extract")
             yield {"type": "stage", "key": "extract", "status": "active"}
-            # 강의자료: 그림 속 글자만 그대로 전사 (손글씨·판서 보존). 그림 해설은 안 한다 —
-            #  해설은 LLM이 지어낸 문장이라 강의자료에 없는 용어를 끌어들인다.
-            # 기출문제: 이미지/그림 페이지는 Vision LLM 설명으로 보존
-            #  (예: 신체 부위 그림 → 부위 이름 쓰기 문제 등)
-            # 여기까지는 LLM 호출이 없다 (페이지 선정만) — 진행률 총계를 먼저 알아야 하므로
-            # 양쪽 파일을 모두 읽어 대상 페이지를 센 뒤에 Vision 호출을 시작한다.
-            lec_parts  = [read_pdf_pages(data, api_key, image_mode=IMAGE_TRANSCRIBE)
-                          for _, data in p["lecture_files"]]
-            exam_parts = [read_pdf_pages(data, api_key, image_mode=IMAGE_DESCRIBE)
-                          for _, data in p["exam_files"]]
 
-            total_imgs = sum(len(jobs) for _, jobs in lec_parts + exam_parts)
-            yield {"type": "progress", "key": "extract", "done": 0, "total": total_imgs}
-            done_imgs = 0
-            for parts, mode in ((lec_parts, IMAGE_TRANSCRIBE), (exam_parts, IMAGE_DESCRIBE)):
-                for _, jobs in parts:
-                    for d in describe_images_progressively(jobs, api_key, model,
-                                                           provider, usage, mode):
-                        yield {"type": "progress", "key": "extract",
-                               "done": done_imgs + d, "total": total_imgs}
-                    done_imgs += len(jobs)
+            # 분량 초과 경고를 확인하고 돌아온 요청 — 보관해둔 추출 결과를 그대로 쓴다.
+            # 다시 추출하면 손글씨 전사(Vision) 값을 두 번 낸다.
+            cached = extract_cache.take(p["extract_token"], owner) if p["extract_token"] else None
+            if p["extract_token"] and not cached:
+                yield {"type": "error", "status": 400,
+                       "message": "확인 시간이 지났습니다. 파일을 다시 올려 생성해주세요."}
+                return
+            if cached:
+                lecture_text   = cached["lecture_text"]
+                exam_text      = cached["exam_text"]
+                source_info    = cached["source_info"]
+                session_base   = cached["session_base"]
+                usage          = cached["usage"]        # 1단계에서 쓴 몫까지 이어서 센다
+                credits_before = cached["credits_before"]
+                # 추출은 이미 끝났으므로 진행률은 100%로 채워 보낸다
+                imgs = cached["img_count"]
+                yield {"type": "progress", "key": "extract", "done": imgs, "total": imgs}
+            else:
+                # 강의자료: 그림 속 글자만 그대로 전사 (손글씨·판서 보존). 그림 해설은 안 한다 —
+                #  해설은 LLM이 지어낸 문장이라 강의자료에 없는 용어를 끌어들인다.
+                # 기출문제: 이미지/그림 페이지는 Vision LLM 설명으로 보존
+                #  (예: 신체 부위 그림 → 부위 이름 쓰기 문제 등)
+                # 여기까지는 LLM 호출이 없다 (페이지 선정만) — 진행률 총계를 먼저 알아야 하므로
+                # 양쪽 파일을 모두 읽어 대상 페이지를 센 뒤에 Vision 호출을 시작한다.
+                lec_parts  = [read_pdf_pages(data, api_key, image_mode=IMAGE_TRANSCRIBE)
+                              for _, data in p["lecture_files"]]
+                exam_parts = [read_pdf_pages(data, api_key, image_mode=IMAGE_DESCRIBE)
+                              for _, data in p["exam_files"]]
 
-            lecture_text, lecture_src = _join_side(p["lecture_files"], lec_parts,
-                                                   IMAGE_TRANSCRIBE)
-            exam_text, exam_src = _join_side(p["exam_files"], exam_parts, IMAGE_DESCRIBE)
-            source_info = {
-                "lecture": lecture_src,   # 원문 반영 범위 (파일 여러 개면 합산)
-                "exam":    exam_src,
-            }
+                total_imgs = sum(len(jobs) for _, jobs in lec_parts + exam_parts)
+                yield {"type": "progress", "key": "extract", "done": 0, "total": total_imgs}
+                done_imgs = 0
+                for parts, mode in ((lec_parts, IMAGE_TRANSCRIBE),
+                                    (exam_parts, IMAGE_DESCRIBE)):
+                    for _, jobs in parts:
+                        for d in describe_images_progressively(jobs, api_key, model,
+                                                               provider, usage, mode):
+                            yield {"type": "progress", "key": "extract",
+                                   "done": done_imgs + d, "total": total_imgs}
+                        done_imgs += len(jobs)
+
+                lecture_text, lecture_src, lecture_cuts = _join_side(
+                    p["lecture_files"], lec_parts, IMAGE_TRANSCRIBE)
+                exam_text, exam_src, exam_cuts = _join_side(
+                    p["exam_files"], exam_parts, IMAGE_DESCRIBE)
+                source_info = {
+                    "lecture": lecture_src,   # 원문 반영 범위 (파일 여러 개면 합산)
+                    "exam":    exam_src,
+                }
+                session_base = _session_base(p)
+
+                # 상한을 넘겨 일부가 버려지는 파일이 있으면 진행 전에 물어본다.
+                # 추출 결과를 잠시 보관하고 토큰만 내려보낸다 — 확인 후 재추출하면 Vision 재과금.
+                warnings = ([{"side": "강의자료", **c} for c in lecture_cuts]
+                            + [{"side": "기출문제", **c} for c in exam_cuts])
+                if warnings:
+                    token = extract_cache.put({
+                        "lecture_text": lecture_text, "exam_text": exam_text,
+                        "source_info": source_info, "session_base": session_base,
+                        "usage": usage, "credits_before": credits_before,
+                        "img_count": total_imgs,
+                    }, owner)
+                    yield {"type": "needs_confirm", "payload": {
+                        "extract_token": token,
+                        "warnings": warnings,
+                        "usage": usage.summary(),
+                        "credits": credits_result(
+                            credits_before, credits_snapshot(provider, api_key)),
+                    }}
+                    return
+
             yield {"type": "stage", "key": "extract", "status": "done",
                    "source_info": source_info}
 
@@ -686,11 +744,7 @@ def run_generation_events(p: dict):
             analysis = {**part1, **part2, "source_info": source_info}
 
             # 세션 저장 (이름: 사용자 지정 or 파일명+시각) — 현재 소유자(로그인/게스트) 소유
-            base = p["lecture_name"].rsplit(".", 1)[0]   # 확장자 떼기 (첫 파일 기준)
-            extra = len(p["lecture_files"]) - 1
-            if extra > 0:
-                base += f" 외 {extra}개"
-            name = p["name"] or f"{base} · {datetime.now().strftime('%m/%d %H:%M')}"
+            name = p["name"] or f"{session_base} · {datetime.now().strftime('%m/%d %H:%M')}"
             session_id = save_session(name, model, analysis, owner, provider.name)
             analysis["name"] = name
             reused = False
@@ -841,6 +895,9 @@ def generate():
             return jsonify({"error": ev["message"],
                             "usage": ev.get("usage"),
                             "credits": ev.get("credits")}), ev["status"]
+        # 분량 초과 — 진행 여부를 물어야 하므로 결과 대신 확인 요청을 돌려준다
+        if ev["type"] == "needs_confirm":
+            return jsonify({"needs_confirm": True, **ev["payload"]})
         if ev["type"] == "done":
             return jsonify(ev["payload"])
     return jsonify({"error": "생성 결과를 받지 못했습니다."}), 500

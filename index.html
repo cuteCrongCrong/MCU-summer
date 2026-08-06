@@ -810,6 +810,23 @@
   </div>
 </div>
 
+<!-- 분량 초과 경고 모달 (주제 분석·문제 생성 공용 — common.js의 confirmTruncation이 연다) -->
+<div class="modal-overlay" id="cut-modal" onclick="if(event.target===this)resolveCutModal(false)">
+  <div class="modal" style="max-width:640px;">
+    <h3>⚠️ 일부 파일이 분량 상한을 넘습니다</h3>
+    <div class="modal-sub" id="cut-modal-sub"></div>
+    <div id="cut-modal-list"></div>
+    <div style="font-size:0.78rem;color:#64748b;line-height:1.7;margin-top:14px;">
+      ※ 버려지는 부분은 <b>결과에 전혀 반영되지 않습니다.</b>
+      파일 수를 줄이면 파일당 배정량이 늘어 덜 잘립니다.
+    </div>
+    <div class="cut-actions">
+      <button class="btn-ghost" onclick="resolveCutModal(false)">취소</button>
+      <button class="btn btn-primary" onclick="resolveCutModal(true)">이대로 진행</button>
+    </div>
+  </div>
+</div>
+
 <!-- 골학 원본(이름 표시) 이미지 모달 -->
 <div class="modal-overlay" id="bone-original-modal" onclick="if(event.target===this)closeBoneOriginal()">
   <div class="modal" style="max-width:640px;">

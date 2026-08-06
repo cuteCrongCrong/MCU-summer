@@ -200,6 +200,12 @@ def extract_text_from_pdf(pdf, api_key: str = None, model: str = None,
     return assemble_pdf_text(pages, len(img_jobs), image_mode)
 
 
+def _truncate_split(max_chars: int):
+    """truncate()가 남기는 (앞, 뒤) 길이. 실제 자르기와 경고용 계산이 어긋나지 않게 공유한다."""
+    head = int(max_chars * 0.7)
+    return head, max_chars - head
+
+
 def truncate(text: str, max_chars: int = MAX_TEXT_CHARS) -> str:
     """
     상한 초과 시 앞부분만 남기던 방식 → 앞(70%)+뒤(30%) 보존.
@@ -207,9 +213,56 @@ def truncate(text: str, max_chars: int = MAX_TEXT_CHARS) -> str:
     """
     if len(text) <= max_chars:
         return text
-    head = int(max_chars * 0.7)
-    tail = max_chars - head
+    head, tail = _truncate_split(max_chars)
     return text[:head] + "\n\n...(중략: 분량 초과로 일부 생략)...\n\n" + text[-tail:]
+
+
+def truncation_report(raw: str, limit: int) -> dict:
+    """
+    limit을 넘는 문서에서 **몇 번째 줄이 버려지는지** 계산한다. 넘지 않으면 None.
+
+    사용자에게 "이 파일의 어디가 빠지는지" 보여주고 진행 여부를 묻기 위한 것이라,
+    truncate()와 같은 분할(_truncate_split)을 써서 실제로 잘리는 범위와 일치시킨다.
+    줄 번호는 1부터 센다.
+    """
+    if len(raw) <= limit:
+        return None
+    head, tail = _truncate_split(limit)
+    lines = raw.split("\n")
+
+    # 앞에서 온전히 남는 줄 수 (줄바꿈 1자를 길이에 포함해 센다)
+    kept_head, end = 0, 0
+    for ln in lines:
+        end += len(ln) + 1
+        if end > head:
+            break
+        kept_head += 1
+
+    # 뒤쪽이 시작되는 줄 — 이 줄은 일부만 남으므로 '살아남는 첫 줄'로 본다
+    tail_start = len(raw) - tail
+    first_tail_line, end = len(lines), 0
+    for i, ln in enumerate(lines):
+        end += len(ln) + 1
+        if end > tail_start:
+            first_tail_line = i + 1
+            break
+
+    drop_from = kept_head + 1
+    drop_to = first_tail_line - 1
+    dropped = max(0, drop_to - drop_from + 1)
+    # 버려지는 첫 줄을 조금 보여주면 어디쯤인지 감이 온다
+    preview = lines[drop_from - 1].strip()[:80] if dropped else ""
+
+    return {
+        "chars": len(raw),
+        "limit": limit,
+        "coverage": round(limit / len(raw) * 100),
+        "total_lines": len(lines),
+        "drop_from": drop_from,
+        "drop_to": drop_to,
+        "dropped_lines": dropped,
+        "preview": preview,
+    }
 
 
 def build_source_info(raw_text: str, limit: int = MAX_TEXT_CHARS) -> dict:
@@ -1044,6 +1097,9 @@ def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
             ) from e
         text = truncate(raw, per_doc)
         docs.append({
+            # 상한을 넘겼다면 몇 번째 줄이 버려지는지 (안 넘으면 None).
+            # 진행 전에 사용자에게 보여주고 확인받는 데 쓴다 — DB에는 저장하지 않는다.
+            "cut": truncation_report(raw, per_doc),
             "label": f"{label_prefix}{i}",
             "name": name,
             "text": text,

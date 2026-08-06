@@ -170,7 +170,23 @@ async function generate() {
 
   genAbort = new AbortController();
   try {
-    await streamGenerate(form, genAbort.signal);
+    const result = await streamGenerate(form, genAbort.signal);
+    // 분량 상한을 넘는 파일이 있으면 서버가 추출까지만 하고 멈춰 있다.
+    // 확인을 받으면 파일 대신 토큰만 보내 이어서 돈다 (재추출 = Vision 재과금 방지).
+    if (result && result.needsConfirm) {
+      const go = await confirmTruncation(result.payload.warnings || []);
+      if (!go) {
+        renderSpend(result.payload);   // 추출까지 쓴 양은 알려준다
+      } else {
+        const again = new FormData();
+        for (const [k, v] of form.entries()) {
+          if (k !== 'lecture' && k !== 'exam') again.append(k, v);
+        }
+        again.append('extract_token', result.payload.extract_token);
+        resetSteps(false);
+        await streamGenerate(again, genAbort.signal);
+      }
+    }
   } catch (err) {
     if (err.name === 'AbortError') {
       showError('생성을 중지했습니다.');
@@ -293,6 +309,10 @@ async function fallbackGenerate(form, signal) {
   if (data.error) {
     showError(data.error + spendSuffix(data));
     return;
+  }
+  // 스트리밍 경로와 같은 형태로 호출부에 넘긴다 (분량 초과 → 확인 후 재요청)
+  if (data.needs_confirm) {
+    return { needsConfirm: true, payload: data };
   }
   if (!data.reused && data.session_id) {
     setActiveSession(data.session_id, data.session_name);
@@ -438,6 +458,10 @@ async function streamGenerate(form, signal) {
         showGenResult();
         archiveLoaded = false;   // 보관함 캐시 무효화 — 다음에 열 때 새 결과가 보이도록
         finished = true;
+      } else if (ev.type === 'needs_confirm') {
+        // 분량 초과 — 추출까지만 하고 멈춘 상태. 호출부가 확인을 받아 이어서 진행한다.
+        finished = true;
+        return { needsConfirm: true, payload: ev.payload };
       } else if (ev.type === 'error') {
         finished = true;
         showError((ev.message || '생성 중 오류가 발생했습니다.') + spendSuffix(ev));

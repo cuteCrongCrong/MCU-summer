@@ -592,3 +592,48 @@ function renderKeyHelp(info, boxId) {
       note + link +
     `</div>`;
 }
+
+// ══════════════════════════════════════════════
+// 분량 초과 경고 모달 (주제 분석·문제 생성 공용)
+//   서버가 needs_confirm 을 주면 어느 파일의 몇 번째 줄이 버려지는지 보여주고
+//   진행 여부를 묻는다. 확인을 받아야만 실제 분석/생성이 돈다.
+// ══════════════════════════════════════════════
+
+let _cutResolve = null;
+
+// 모달의 두 버튼과 배경 클릭이 부른다 (index.html)
+function resolveCutModal(ok) {
+  document.getElementById('cut-modal').classList.remove('open');
+  const done = _cutResolve;
+  _cutResolve = null;
+  if (done) done(ok);
+}
+
+/**
+ * 경고를 띄우고 사용자의 선택을 기다린다.
+ * @param {Array} warnings 서버가 준 목록 — {side, name, chars, limit, coverage,
+ *                         total_lines, drop_from, drop_to, dropped_lines, preview}
+ * @returns {Promise<boolean>} 진행하면 true
+ */
+function confirmTruncation(warnings) {
+  const nf = n => (n || 0).toLocaleString('ko-KR');
+  const rows = warnings.map(w => `
+    <div class="topic-doc-row" style="display:block;padding:10px 0;">
+      <div><b>${escHtml(w.side)}</b> · ${escHtml(w.name)}</div>
+      <div style="font-size:0.78rem;color:#b45309;margin-top:4px;">
+        추출 ${nf(w.chars)}자 중 ${nf(w.limit)}자(${w.coverage}%)만 반영 —
+        전체 ${nf(w.total_lines)}줄 가운데
+        <b>${nf(w.drop_from)}번째 줄 ~ ${nf(w.drop_to)}번째 줄</b>
+        (${nf(w.dropped_lines)}줄)을 버립니다.
+      </div>
+      ${w.preview ? `<div style="font-size:0.75rem;color:#64748b;margin-top:4px;">
+        버려지는 첫 줄: “${escHtml(w.preview)}”</div>` : ''}
+    </div>`).join('');
+
+  document.getElementById('cut-modal-sub').textContent =
+    `${warnings.length}개 파일이 배정된 글자수를 넘습니다. 넘는 부분은 가운데부터 버려집니다.`;
+  document.getElementById('cut-modal-list').innerHTML = rows;
+  document.getElementById('cut-modal').classList.add('open');
+
+  return new Promise(resolve => { _cutResolve = resolve; });
+}

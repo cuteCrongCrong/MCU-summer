@@ -32,6 +32,7 @@ from llm import (
     IMAGE_DESCRIBE, IMAGE_TRANSCRIBE, MAX_FILES_PER_SIDE,
     extract_labeled_docs, run_topic_analysis,
 )
+from features import extract_cache
 
 topic_bp = Blueprint("topic", __name__)
 
@@ -46,6 +47,55 @@ def _collect_pdfs(field: str):
         if not f.filename.lower().endswith(".pdf"):
             return None, f"PDF 파일만 올릴 수 있습니다: {f.filename}"
     return files, None
+
+
+def _finish_analysis(result, lecture_docs, exam_docs, model, provider, title, spend):
+    """
+    분석 결과를 보관하고 응답 JSON을 만든다.
+    바로 진행한 경우와 '분량 초과 확인 후 진행'한 경우가 같은 응답을 내도록 공유한다.
+    """
+    # 응답과 보관에 같은 값을 쓴다 (한 번만 조회 — 잔액 조회가 왕복 요청이라서)
+    spent = spend()
+
+    # 보관함('분석한 주제')에서 다시 볼 수 있도록 저장.
+    # 주제를 하나도 못 찾은 결과는 보관하지 않는다 — 목록에 빈 항목만 쌓인다.
+    analysis_id = None
+    if result["topics"]:
+        analysis_id = save_analysis(
+            result, lecture_docs, exam_docs, model, provider.name,
+            current_owner(), title,
+            usage=spent["usage"],
+            # 잔액은 시간이 지나면 틀린 값이 되므로 쓴 만큼만 남긴다
+            credits=credits_for_history(spent["credits"]),
+        )
+
+    return jsonify({
+        "success": True,
+        "analysis_id": analysis_id,       # 보관된 분석 id (주제가 없으면 null)
+        "title": title,                   # 사용자가 붙인 이름 (없으면 "")
+        "topics": result["topics"],
+        "dropped": result["dropped"],
+        "total_questions": result["total_questions"],
+        "lecture_docs": [_doc_meta(d) for d in lecture_docs],
+        "exam_docs": [_doc_meta(d) for d in exam_docs],
+        "raw": result["raw"],
+        "model": model,
+        "provider": provider.name,
+        **spent,                          # usage(토큰) + credits(크레딧)
+    })
+
+
+def truncation_warnings(*doc_groups) -> list:
+    """
+    상한을 넘겨 일부가 버려지는 문서만 골라 화면용 경고 목록으로. 없으면 빈 리스트.
+    (llm.extract_labeled_docs가 doc["cut"]에 넣어둔 계산 결과를 옮겨 담는다)
+    """
+    out = []
+    for side, docs in doc_groups:
+        for d in docs:
+            if d.get("cut"):
+                out.append({"side": side, "name": d["name"], **d["cut"]})
+    return out
 
 
 def _doc_meta(d: dict) -> dict:
@@ -256,6 +306,28 @@ def analyze_topics():
         if len(title) > 100:
             return jsonify({"error": "분석 세트 이름은 100자 이내로 입력해주세요."}), 400
 
+        # ── 2단계: 분량 초과 경고를 확인하고 다시 온 요청 ──
+        # 1단계에서 이미 추출(그림 속 글자 전사 포함)을 끝냈으므로 그대로 재사용한다.
+        # 다시 추출하면 Vision 호출값을 두 번 낸다.
+        token = request.form.get("extract_token", "").strip()
+        if token:
+            cached = extract_cache.take(token, current_owner())
+            if not cached:
+                return jsonify({
+                    "error": "확인 시간이 지났습니다. 파일을 다시 올려 분석해주세요."
+                }), 400
+            lecture_docs = cached["lecture_docs"]
+            exam_docs    = cached["exam_docs"]
+            usage        = cached["usage"]            # 1단계에서 쓴 몫까지 이어서 센다
+            credits_before = cached["credits_before"]
+            model        = cached["model"]
+            provider     = get_provider(cached["provider"])
+            usage.set_stage("topics")
+            result = run_topic_analysis(lecture_docs, exam_docs, api_key, model,
+                                        provider, usage)
+            return _finish_analysis(result, lecture_docs, exam_docs, model, provider,
+                                    title, spend)
+
         lectures, err = _collect_pdfs("lectures")
         if err:
             return jsonify({"error": err}), 400
@@ -302,39 +374,27 @@ def analyze_topics():
                 **spend(),
             }), 400
 
+        # 상한을 넘겨 일부가 버려지는 파일이 있으면 진행 전에 물어본다.
+        # 추출 결과를 잠시 보관하고 토큰만 내려보낸다 — 확인 후 재추출하면 Vision 재과금.
+        warnings = truncation_warnings(("강의록", lecture_docs), ("기출문제", exam_docs))
+        if warnings:
+            token = extract_cache.put({
+                "lecture_docs": lecture_docs, "exam_docs": exam_docs,
+                "usage": usage, "credits_before": credits_before,
+                "model": model, "provider": provider.name,
+            }, current_owner())
+            return jsonify({
+                "needs_confirm": True,
+                "extract_token": token,
+                "warnings": warnings,
+                **spend(),        # 여기까지(추출) 쓴 양도 알려준다
+            })
+
         usage.set_stage("topics")
         result = run_topic_analysis(lecture_docs, exam_docs, api_key, model, provider,
                                     usage)
-
-        # 응답과 보관에 같은 값을 쓴다 (한 번만 조회 — 잔액 조회가 왕복 요청이라서)
-        spent = spend()
-
-        # 보관함('분석한 주제')에서 다시 볼 수 있도록 저장.
-        # 주제를 하나도 못 찾은 결과는 보관하지 않는다 — 목록에 빈 항목만 쌓인다.
-        analysis_id = None
-        if result["topics"]:
-            analysis_id = save_analysis(
-                result, lecture_docs, exam_docs, model, provider.name,
-                current_owner(), title,
-                usage=spent["usage"],
-                # 잔액은 시간이 지나면 틀린 값이 되므로 쓴 만큼만 남긴다
-                credits=credits_for_history(spent["credits"]),
-            )
-
-        return jsonify({
-            "success": True,
-            "analysis_id": analysis_id,       # 보관된 분석 id (주제가 없으면 null)
-            "title": title,                   # 사용자가 붙인 이름 (없으면 "")
-            "topics": result["topics"],
-            "dropped": result["dropped"],
-            "total_questions": result["total_questions"],
-            "lecture_docs": [_doc_meta(d) for d in lecture_docs],
-            "exam_docs": [_doc_meta(d) for d in exam_docs],
-            "raw": result["raw"],
-            "model": model,
-            "provider": provider.name,
-            **spent,                          # usage(토큰) + credits(크레딧)
-        })
+        return _finish_analysis(result, lecture_docs, exam_docs, model, provider,
+                                title, spend)
 
     except ProviderAuthError as e:
         # 키가 틀린 경우엔 잔액 조회도 실패하므로 credits는 None이 된다
