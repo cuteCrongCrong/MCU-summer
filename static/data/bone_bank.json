@@ -5032,6 +5032,866 @@
       "view": [
         "posterior view"
       ]
+    },
+    {
+      "id": "skull_posterior",
+      "title": "두개골 전체 (Skull) 후면",
+      "category": "skull",
+      "subcategory": "entire_skull",
+      "image": "/static/images/bones/skull_posterior_final.png",
+      "original": "/static/images/bones/skull-posterior.jpg",
+      "structure": [
+        "skull",
+        "cranium"
+      ],
+      "view": [
+        "posterior view"
+      ],
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "parietal bones",
+            "parietal bone"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "sagittal suture"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "lambdoid suture"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "occipital bone"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "external occipital protuberance"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "temporal bone"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "superior nuchal line"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "mastoid process"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "occipital condyle"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "foramen magnum"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "zygomatic bone"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "skull_superior",
+      "title": "두개골 전체 (Skull) 상면",
+      "category": "skull",
+      "subcategory": "entire_skull",
+      "image": "/static/images/bones/skull_superior_final.png",
+      "original": "/static/images/bones/skull-superior.jpg",
+      "structure": [
+        "skull",
+        "cranium"
+      ],
+      "view": [
+        "superior view"
+      ],
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "frontal bone"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "coronal suture"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "bregma"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "sagittal suture"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "parietal bone"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "parietal foramen"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "lambdoid suture"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "occipital bone"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "lambda"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "skull_inferior",
+      "title": "두개골 전체 (Skull) 하면",
+      "category": "skull",
+      "subcategory": "entire_skull",
+      "image": "/static/images/bones/skull_inferior_final.png",
+      "original": "/static/images/bones/skull-inferior.jpg",
+      "structure": [
+        "skull",
+        "cranium"
+      ],
+      "view": [
+        "inferior view"
+      ],
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "vomer"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "maxilla"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "palatine process"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "zygomatic"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "palatine"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "zygomatic arch"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "medial"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "articular"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "sphenoid"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "foramen"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "spinosum"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "lacerum"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "mandibular"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "foramen"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "external"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "condyle"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "mastoid"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "temporal"
+          ]
+        },
+        {
+          "num": 19,
+          "answers": [
+            "styloid"
+          ]
+        },
+        {
+          "num": 20,
+          "answers": [
+            "magnum"
+          ]
+        },
+        {
+          "num": 21,
+          "answers": [
+            "stylomastoid"
+          ]
+        },
+        {
+          "num": 22,
+          "answers": [
+            "occipital"
+          ]
+        },
+        {
+          "num": 23,
+          "answers": [
+            "entrance"
+          ]
+        },
+        {
+          "num": 24,
+          "answers": [
+            "external"
+          ]
+        },
+        {
+          "num": 25,
+          "answers": [
+            "nuchal line"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "skull_transverse_superior",
+      "title": "두개골 전체 (Skull) 횡단면 상면",
+      "category": "skull",
+      "subcategory": "entire_skull",
+      "image": "/static/images/bones/skull_transverse_superior_final.png",
+      "original": "/static/images/bones/skull-transverse-superior.jpg",
+      "structure": [
+        "skull",
+        "cranium",
+        "cranial base"
+      ],
+      "view": [
+        "transverse view"
+      ],
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "frontal"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "ethmoid"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "crista gali"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "superior"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "cribriform"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "sphenoid"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "lesser wing"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "sella"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "rotundum"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "hypophyseal fossa"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "ovale"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "foramen"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "spinosum"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "exit of cartoid"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "meatus"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "temporal"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "canal"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "petrous"
+          ]
+        },
+        {
+          "num": 19,
+          "answers": [
+            "magnum"
+          ]
+        },
+        {
+          "num": 20,
+          "answers": [
+            "occipital"
+          ]
+        },
+        {
+          "num": 21,
+          "answers": [
+            "jugular"
+          ]
+        },
+        {
+          "num": 22,
+          "answers": [
+            "parietal"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "skull_anterior",
+      "title": "두개골 전체 (Skull) 전면",
+      "category": "skull",
+      "subcategory": "entire_skull",
+      "image": "/static/images/bones/skull_anterior_final.png",
+      "original": "/static/images/bones/skull-anterior.jpg",
+      "structure": [
+        "skull",
+        "cranium"
+      ],
+      "view": [
+        "anterior view"
+      ],
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "coronal suture"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "glabella"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "frontal"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "orbital foramen"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "parietal"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "orbital margin"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "orbit"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "sphenoid"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "optic canal"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "temporal"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "superior orbital fissure"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "ethmoid"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "lacrimal"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "nasal"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "palatine"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "inferior orbital fissure"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "nasal septum"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "zygomatic"
+          ]
+        },
+        {
+          "num": 19,
+          "answers": [
+            "perpendicular plate"
+          ]
+        },
+        {
+          "num": 20,
+          "answers": [
+            "infraorbital foramen"
+          ]
+        },
+        {
+          "num": 21,
+          "answers": [
+            "vomer"
+          ]
+        },
+        {
+          "num": 22,
+          "answers": [
+            "middle nasal concha"
+          ]
+        },
+        {
+          "num": 23,
+          "answers": [
+            "inferior nasal concha"
+          ]
+        },
+        {
+          "num": 24,
+          "answers": [
+            "maxilla"
+          ]
+        },
+        {
+          "num": 25,
+          "answers": [
+            "alveolar process"
+          ]
+        },
+        {
+          "num": 26,
+          "answers": [
+            "maxilla"
+          ]
+        },
+        {
+          "num": 27,
+          "answers": [
+            "alveolar process"
+          ]
+        },
+        {
+          "num": 28,
+          "answers": [
+            "mental foramen"
+          ]
+        },
+        {
+          "num": 29,
+          "answers": [
+            "mandible"
+          ]
+        },
+        {
+          "num": 30,
+          "answers": [
+            "mandible"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "skull_lateral",
+      "title": "두개골 전체 (Skull) 측면",
+      "category": "skull",
+      "subcategory": "entire_skull",
+      "image": "/static/images/bones/skull_lateral_final.png",
+      "original": "/static/images/bones/skull-lateral.jpg",
+      "structure": [
+        "skull",
+        "cranium"
+      ],
+      "view": [
+        "lateral view"
+      ],
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "zygomatic arch"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "pterion"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "coronal suture"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "parietal"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "frontal"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "greater wing"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "squamous suture"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "sphenoid"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "ethmoid"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "temporal"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "lacrimal"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "temporal"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "lacrimal fossa"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "zygomatic process"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "nasal"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "acoustic meatus"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "zygomatic"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "lambdoid suture"
+          ]
+        },
+        {
+          "num": 19,
+          "answers": [
+            "mastoid portion"
+          ]
+        },
+        {
+          "num": 20,
+          "answers": [
+            "temporal process"
+          ]
+        },
+        {
+          "num": 21,
+          "answers": [
+            "styloid process"
+          ]
+        },
+        {
+          "num": 22,
+          "answers": [
+            "maxilla"
+          ]
+        },
+        {
+          "num": 23,
+          "answers": [
+            "mastoid process"
+          ]
+        },
+        {
+          "num": 24,
+          "answers": [
+            "articular tubercle"
+          ]
+        },
+        {
+          "num": 25,
+          "answers": [
+            "occipital"
+          ]
+        },
+        {
+          "num": 26,
+          "answers": [
+            "mandibular fossa"
+          ]
+        },
+        {
+          "num": 27,
+          "answers": [
+            "mandible"
+          ]
+        },
+        {
+          "num": 28,
+          "answers": [
+            "mental protuberance"
+          ]
+        },
+        {
+          "num": 29,
+          "answers": [
+            "mandible"
+          ]
+        }
+      ]
     }
   ]
 }
