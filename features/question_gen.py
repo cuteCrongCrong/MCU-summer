@@ -685,6 +685,14 @@ def run_generation_events(p: dict):
                 #  (예: 신체 부위 그림 → 부위 이름 쓰기 문제 등)
                 # 여기까지는 LLM 호출이 없다 (페이지 선정만) — 진행률 총계를 먼저 알아야 하므로
                 # 양쪽 파일을 모두 읽어 대상 페이지를 센 뒤에 Vision 호출을 시작한다.
+                #
+                # 이미지 상한은 여기서 **파일 1개당** 걸린다 (max_images를 주지 않으므로
+                # 모드의 max_pages가 그대로 파일마다 적용된다 — 강의자료 40 / 기출 15).
+                # 파일을 상한(7개)까지 올리면 강의자료 280장·기출 105장까지 나갈 수 있다.
+                # 주제 분석(extract_labeled_docs)은 이 상한을 '한쪽 전체'로 나눠 쓰는데,
+                # 여기는 문제 품질이 자료를 얼마나 온전히 읽었는지에 직접 걸려 있어
+                # 일부러 파일마다 제 몫을 준다. 비용을 조이려면 read_pdf_pages에
+                # max_images를 넘겨 주제 분석과 같은 방식으로 바꾸면 된다.
                 lec_parts  = [read_pdf_pages(data, api_key, image_mode=IMAGE_TRANSCRIBE)
                               for _, data in p["lecture_files"]]
                 exam_parts = [read_pdf_pages(data, api_key, image_mode=IMAGE_DESCRIBE)
