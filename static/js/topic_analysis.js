@@ -7,7 +7,7 @@
 //   한쪽 수정이 다른 쪽을 깨지 않게 하기 위함. (그래서 상태 이름이 전부 따로다)
 // ══════════════════════════════════════════════
 
-const TOPIC_MAX_FILES = 5;   // 백엔드 MAX_FILES_PER_SIDE와 같은 값으로 유지
+const TOPIC_MAX_FILES = 7;   // llm.py TOPIC_MAX_FILES_PER_SIDE와 같은 값으로 유지
 
 // ── 파일 드래그앤드롭 (여러 개 지원) ──
 function topicSetupDrop(dropId, inputId, nameId) {
@@ -108,7 +108,7 @@ async function topicLoadModels() {
     return;
   }
   msg.textContent = '불러오는 중…';
-  msg.style.color = '#0ea5e9';
+  msg.style.color = '#4f8a76';
   try {
     const url = '/models?provider=' + encodeURIComponent(topicCurrentProvider || '');
     const resp = await fetch(url, { headers: { 'X-Api-Key': apiKey } });
@@ -175,13 +175,30 @@ async function topicAnalyze() {
   examFiles.forEach(f => form.append('exams', f));
 
   try {
-    const resp = await fetch('/analyze-topics', { method: 'POST', body: form });
+    let resp = await fetch('/analyze-topics', { method: 'POST', body: form });
 
     setStep('topic-step2', 'done'); setStep('topic-step3', 'active');
     await delay(300);
     setStep('topic-step3', 'done'); setStep('topic-step4', 'active');
 
-    const data = await resp.json();
+    let data = await resp.json();
+
+    // 분량 상한을 넘는 파일이 있으면 서버가 여기서 멈추고 물어본다.
+    // 추출은 이미 끝나 서버에 보관돼 있으므로, 진행하면 토큰만 보내 이어서 돈다.
+    if (data.needs_confirm) {
+      const go = await confirmTruncation(data.warnings || [], data);
+      if (!go) {
+        setStep('topic-step4', 'wait');
+        topicRenderSpend(data, 'main');   // 추출까지 쓴 양은 알려준다
+        return;
+      }
+      const again = new FormData();
+      again.append('api_key', apiKey);
+      again.append('title', document.getElementById('topic-title').value.trim());
+      again.append('extract_token', data.extract_token);
+      resp = await fetch('/analyze-topics', { method: 'POST', body: again });
+      data = await resp.json();
+    }
     setStep('topic-step4', 'done');
 
     if (!resp.ok || data.error) {

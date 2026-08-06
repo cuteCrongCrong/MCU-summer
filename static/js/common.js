@@ -666,3 +666,73 @@ function renderKeyHelp(info, boxId) {
       note + link +
     `</div>`;
 }
+
+// ══════════════════════════════════════════════
+// 분량 초과 경고 모달 (주제 분석·문제 생성 공용)
+//   서버가 needs_confirm 을 주면 어느 파일의 몇 번째 줄이 버려지는지 보여주고
+//   진행 여부를 묻는다. 확인을 받아야만 실제 분석/생성이 돈다.
+// ══════════════════════════════════════════════
+
+let _cutResolve = null;
+
+// 모달의 두 버튼과 배경 클릭이 부른다 (index.html)
+function resolveCutModal(ok) {
+  document.getElementById('cut-modal').classList.remove('open');
+  const done = _cutResolve;
+  _cutResolve = null;
+  if (done) done(ok);
+}
+
+/**
+ * 여기까지(추출) 쓴 양을 한 줄로. 취소해도 이미 나간 비용이라 숨기지 않는다.
+ *
+ * 크레딧 과금 제공사(전북대 게이트웨이)만 할당량(quota)이 있어 비율을 낼 수 있다.
+ * 토큰 과금 제공사는 총량 개념이 없으므로 절대값으로 보여준다.
+ */
+function cutSpendText(payload) {
+  const c = payload && payload.credits;
+  if (c && c.spent_known && c.quota > 0 && c.remaining != null) {
+    const after  = (c.remaining / c.quota) * 100;
+    const before = ((c.remaining + c.spent) / c.quota) * 100;
+    return `${before.toFixed(1)}% → ${after.toFixed(1)}% 소모`;
+  }
+  const u = payload && payload.usage;
+  if (!u || !u.calls) return '';
+  if (u.total) return `토큰 ${u.total.toLocaleString('ko-KR')}개 소모`;
+  // 제공사가 토큰을 안 알려준 경우 — 호출 수만 안다
+  return `LLM 호출 ${u.calls.toLocaleString('ko-KR')}회`;
+}
+
+/**
+ * 경고를 띄우고 사용자의 선택을 기다린다.
+ * @param {Array}  warnings 서버가 준 목록 — {side, name, coverage,
+ *                          from_page, from_words, to_page, to_words}
+ * @param {Object} spend    같은 응답의 {usage, credits} — 추출까지 쓴 양
+ * @returns {Promise<boolean>} 진행하면 true
+ */
+function confirmTruncation(warnings, spend) {
+  // 쪽 번호는 마커가 없으면 null로 온다 (스캔 PDF 등) → 그때는 어절만 보여준다
+  const at = (page, words) =>
+    (page ? `<b>${page}쪽</b> ` : '') + `“${escHtml(words || '…')}”`;
+
+  const rows = warnings.map(w => `
+    <div class="cut-row">
+      <div class="cut-file">
+        <b>${escHtml(w.side)}</b>
+        <span class="cut-name">${escHtml(w.name)}</span>
+        <span class="cut-pct">${w.coverage}%만 반영</span>
+      </div>
+      <div class="cut-range">
+        ${at(w.from_page, w.from_words)}<span class="cut-arrow">→</span>${at(w.to_page, w.to_words)}
+        <span style="color:#94a3b8;">사이를 버립니다</span>
+      </div>
+    </div>`).join('');
+
+  document.getElementById('cut-modal-sub').textContent =
+    `${warnings.length}개 파일이 배정된 글자수를 넘습니다. 아래 구간이 결과에 들어가지 않습니다.`;
+  document.getElementById('cut-modal-list').innerHTML = rows;
+  document.getElementById('cut-modal-spend').textContent = cutSpendText(spend);
+  document.getElementById('cut-modal').classList.add('open');
+
+  return new Promise(resolve => { _cutResolve = resolve; });
+}

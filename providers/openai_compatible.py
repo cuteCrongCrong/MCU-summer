@@ -12,15 +12,7 @@ from openai import OpenAI, APIStatusError, APIConnectionError
 
 from providers.base import (
     Provider, ProviderError, ProviderAuthError, ProviderRateLimitError,
-)
-
-# 이미지 페이지가 '무엇인지' 설명하게 하는 프롬프트 (프로바이더 공통)
-IMAGE_DESC_PROMPT = (
-    "이 이미지는 의대 강의자료 또는 기출문제의 한 페이지/그림입니다. "
-    "무엇을 나타내는 이미지인지 한국어로 간결히 설명하세요. "
-    "의학적으로 중요한 내용(그래프·표·해부도·검사 소견·수치 등)이 있으면 핵심을 요약하고, "
-    "이미지 안에 글자가 보이면 핵심 텍스트도 함께 옮겨 적으세요. "
-    "설명 외의 사족은 쓰지 마세요."
+    IMAGE_DESC_PROMPT,
 )
 
 
@@ -127,10 +119,11 @@ class OpenAICompatibleProvider(Provider):
                     usage.add(model, None)
 
     def describe_image(self, png_bytes: bytes, api_key: str, model: str,
-                       usage=None) -> str:
+                       usage=None, prompt: str = None) -> str:
         """
-        Vision LLM으로 이미지가 '무엇인지' 한국어로 설명 생성.
-        전체 전사가 아니라, 그림·그래프·표·해부도·검사 소견 등 핵심 내용을 요약.
+        Vision LLM으로 이미지를 한국어 텍스트로 만든다.
+        기본(IMAGE_DESC_PROMPT)은 전체 전사가 아니라 그림·그래프·표·해부도 등 핵심 요약.
+        IMAGE_TEXT_PROMPT를 주면 반대로 그림 속 글자만 그대로 옮긴다(강의록 손글씨용).
         엔드포인트가 이미지 입력을 지원하지 않으면 예외 → 호출부에서 폴백 처리.
         """
         b64 = base64.b64encode(png_bytes).decode()
@@ -141,7 +134,7 @@ class OpenAICompatibleProvider(Provider):
                 messages=[{
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": IMAGE_DESC_PROMPT},
+                        {"type": "text", "text": prompt or IMAGE_DESC_PROMPT},
                         {"type": "image_url",
                          "image_url": {"url": f"data:image/png;base64,{b64}"}},
                     ],
