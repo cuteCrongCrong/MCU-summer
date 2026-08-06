@@ -580,13 +580,15 @@ def _session_base(p: dict) -> str:
     return f"{base} 외 {extra}개" if extra > 0 else base
 
 
-def _join_side(files, parts, image_mode):
+def _join_side(files, parts, image_mode, by_question=False):
     """
     한쪽(강의자료 전체 / 기출 전체)의 파일별 텍스트를 예산 안에서 잘라 하나로 합친다.
 
     예산을 파일 수로 나눠 배정하므로, 파일이 1개면 예전과 똑같이 GEN_SIDE_CHAR_BUDGET
     (=MAX_TEXT_CHARS) 전부를 쓴다. 파일이 여럿이면 어디부터 다른 자료인지 LLM이 알 수
     있게 파일명 구분선을 넣는다.
+    by_question: 기출 쪽이면 True — 상한을 넘길 때 문항 경계로 자른다. 반쪽짜리 문항이
+                 남으면 few-shot 예시로 그대로 실려 생성 문제의 본이 된다.
     반환: (합친 텍스트, 반영 범위 dict, 잘린 파일 목록)
           범위는 파일들을 합산한 값이고, 잘린 목록은 진행 전 경고에 쓴다.
     """
@@ -594,13 +596,14 @@ def _join_side(files, parts, image_mode):
     chunks, chars, used, cuts = [], 0, 0, []
     for (name, _), (pages, jobs) in zip(files, parts):
         raw = assemble_pdf_text(pages, len(jobs), image_mode)
-        info = build_source_info(raw, per_doc)
+        info = build_source_info(raw, per_doc, by_question)
         chars += info["chars"]
         used  += info["used"]
-        cut = truncation_report(raw, per_doc)   # 상한을 넘겼으면 어느 줄이 버려지는지
+        # 상한을 넘겼으면 어느 줄이 버려지는지
+        cut = truncation_report(raw, per_doc, by_question)
         if cut:
             cuts.append({"name": name, **cut})
-        text = truncate(raw, per_doc)
+        text = truncate(raw, per_doc, by_question)
         chunks.append(f"===== {name} =====\n{text}" if len(files) > 1 else text)
     return "\n\n".join(chunks), {
         "chars": chars,
@@ -730,7 +733,7 @@ def run_generation_events(p: dict):
                 lecture_text, lecture_src, lecture_cuts = _join_side(
                     p["lecture_files"], lec_parts, IMAGE_TRANSCRIBE)
                 exam_text, exam_src, exam_cuts = _join_side(
-                    p["exam_files"], exam_parts, IMAGE_DESCRIBE)
+                    p["exam_files"], exam_parts, IMAGE_DESCRIBE, by_question=True)
                 source_info = {
                     "lecture": lecture_src,   # 원문 반영 범위 (파일 여러 개면 합산)
                     "exam":    exam_src,

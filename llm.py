@@ -359,15 +359,59 @@ def _truncate_split(max_chars: int):
     return head, max_chars - head
 
 
-def truncate(text: str, max_chars: int = MAX_TEXT_CHARS) -> str:
+# 줄머리 문제 번호 — "1.", "12)", "문제 3.", "38]".
+# 유형 집계(count_question_types)와 기출 자르기(_cut_points)가 같은 정의를 공유한다.
+# 갈라 두면 "집계에는 문항으로 잡히는데 자를 때는 경계가 아닌" 자리가 생긴다.
+_QUESTION_START = re.compile(r"(?m)^[ \t]*(?:문제\s*)?\d{1,3}\s*[.)\]]")
+
+
+def _cut_points(raw: str, limit: int, by_question: bool = False):
+    """
+    상한을 넘길 때 **실제로 버려지는 구간** (head_end, tail_start). 안 넘으면 None.
+
+    자르기(truncate)·경고(truncation_report)·반영 범위(build_source_info)가 이 하나를
+    공유한다. 갈라 두면 화면이 알려준 구간과 실제로 빠진 구간이 어긋난다.
+
+    by_question(기출): 경계를 문항 번호 자리로 당긴다. 글자수로만 자르면
+      앞쪽 끝에는 번호는 있고 지문은 반만 남은 문항이,
+      뒤쪽 시작에는 번호 없는 지문 꼬리가 남는다.
+      둘 다 "이 주제가 몇 번 문제로 나왔나"를 틀리게 만드는 재료다 — LLM이 반쪽 지문을
+      그 번호의 내용으로 읽거나, 꼬리를 바로 앞 번호에 갖다 붙인다. 틀린 출처는 없는
+      출처보다 나쁘므로(build_topic_analysis_prompt 규칙 ②) 문항 단위로만 버린다.
+      번호를 못 찾는 기출(번호가 그림 안에 있는 스캔본 등)은 글자수 방식으로 되돌아간다.
+    """
+    if len(raw) <= limit:
+        return None
+    head, tail = _truncate_split(limit)
+    head_end, tail_start = head, len(raw) - tail
+    if by_question:
+        starts = [m.start() for m in _QUESTION_START.finditer(raw)]
+        # 앞: 상한 안에 온전히 들어가는 마지막 문항까지 (걸친 문항은 통째로 버린다)
+        h = max((s for s in starts if s <= head_end), default=None)
+        # 뒤: 다시 살리는 첫 문항의 시작으로 민다 (앞 문항의 꼬리를 남기지 않는다)
+        t = min((s for s in starts if s >= tail_start), default=None)
+        if h is not None and t is not None and h < t:
+            head_end, tail_start = h, t
+    return head_end, tail_start
+
+
+def truncate(text: str, max_chars: int = MAX_TEXT_CHARS,
+             by_question: bool = False) -> str:
     """
     상한 초과 시 앞부분만 남기던 방식 → 앞(70%)+뒤(30%) 보존.
     기출 뒤쪽 문제·강의 마무리 내용이 통째로 사라지지 않도록 함.
+    by_question이면 문항 경계로 잘라 반쪽짜리 문항을 남기지 않는다 (_cut_points 참고).
     """
-    if len(text) <= max_chars:
+    cut = _cut_points(text, max_chars, by_question)
+    if not cut:
         return text
-    head, tail = _truncate_split(max_chars)
-    return text[:head] + "\n\n...(중략: 분량 초과로 일부 생략)...\n\n" + text[-tail:]
+    head_end, tail_start = cut
+    # 이어붙인 자리에 쪽 표시를 복원한다 — 뒤쪽 첫 문항·첫 문단이 몇 쪽인지 모르면
+    # 출처를 만들 수 없어 그 뒤가 통째로 버려진다(주제 분석 프롬프트 규칙 ②).
+    page = _page_at(text, tail_start)
+    marker = f"[페이지 {page}]\n" if page else ""
+    return (text[:head_end] + "\n\n...(중략: 분량 초과로 일부 생략)...\n\n"
+            + marker + text[tail_start:])
 
 
 # 추출 텍스트에 박아둔 쪽 표시 — assemble_pdf_text가 넣는다 ([페이지 3], [페이지 3 그림 속 글자])
@@ -420,26 +464,28 @@ def _words_near(raw: str, start: int, end: int, count: int, take_last: bool) -> 
     return " ".join(picked)
 
 
-def truncation_report(raw: str, limit: int) -> dict:
+def truncation_report(raw: str, limit: int, by_question: bool = False) -> dict:
     """
     limit을 넘는 문서에서 **어디부터 어디까지 버려지는지**를 쪽·어절로 알려준다.
     넘지 않으면 None.
 
     줄 번호 대신 쪽과 어절을 쓰는 이유: 추출 텍스트의 줄 번호는 원본 PDF에서 눈으로
     찾을 수가 없다. "12쪽 'superior orbital'부터"라야 사용자가 실제로 확인할 수 있다.
-    truncate()와 같은 분할(_truncate_split)을 쓰므로 실제로 잘리는 구간과 일치한다.
+    truncate()와 _cut_points를 공유하므로 실제로 잘리는 구간과 일치한다.
     """
-    if len(raw) <= limit:
+    cut = _cut_points(raw, limit, by_question)
+    if not cut:
         return None
-    head, tail = _truncate_split(limit)
+    head_end, tail_start = cut
     # 경계에 걸친 어절은 절반이 남으므로 온전히 버려지는 구간으로 좁힌다
-    start = _word_start_after(raw, head)            # 여기서부터 버려진다
-    end = _word_end_before(raw, len(raw) - tail)    # 여기부터 다시 남는다
+    start = _word_start_after(raw, head_end)        # 여기서부터 버려진다
+    end = _word_end_before(raw, tail_start)         # 여기부터 다시 남는다
 
     return {
         "chars": len(raw),
         "limit": limit,
-        "coverage": round(limit / len(raw) * 100),
+        # 문항 경계로 당기면 상한보다 조금 덜 들어가므로 실제 반영량으로 센다
+        "coverage": round((head_end + len(raw) - tail_start) / len(raw) * 100),
         # 버려지는 첫 어절 두 개 / 마지막 어절 두 개와 그 쪽 번호
         "from_page": _page_at(raw, start),
         "from_words": _words_near(raw, start, min(start + 400, end), 2, False),
@@ -448,20 +494,23 @@ def truncation_report(raw: str, limit: int) -> dict:
     }
 
 
-def build_source_info(raw_text: str, limit: int = MAX_TEXT_CHARS) -> dict:
+def build_source_info(raw_text: str, limit: int = MAX_TEXT_CHARS,
+                      by_question: bool = False) -> dict:
     """
     원문 추출 글자수 대비 LLM에 실제 반영된 범위 (truncate 여부·비율).
     limit: 이 문서에 적용한 글자수 상한. 생략하면 기본 상한(MAX_TEXT_CHARS).
            (기출 주제 분석처럼 여러 파일에 예산을 나눠 쓰는 경우 그 값을 넘긴다)
+    used는 상한이 아니라 **실제로 들어간 양**이다 — 문항 경계로 자르면(by_question)
+    상한보다 조금 덜 들어가는데, 상한을 그대로 쓰면 화면이 반영률을 부풀린다.
     """
     chars = len(raw_text or "")
-    truncated = chars > limit
-    used = limit if truncated else chars
+    cut = _cut_points(raw_text or "", limit, by_question)
+    used = chars if not cut else cut[0] + chars - cut[1]
     return {
         "chars": chars,
         "used": used,
         "limit": limit,
-        "truncated": truncated,
+        "truncated": cut is not None,
         "coverage": (round(used / chars * 100) if chars else 100),
     }
 
@@ -519,7 +568,7 @@ def count_question_types(exam_text: str) -> dict:
     """
     text = exam_text or ""
     objective = len(re.findall(r"(?m)^\s*①", text))
-    markers = re.findall(r"(?m)^\s*(?:문제\s*)?\d{1,3}\s*[.)\]]", text)
+    markers = _QUESTION_START.findall(text)      # 기출 자르기와 같은 '문항 시작' 정의
     total = max(len(markers), objective)
     non_obj = max(0, total - objective)
 
@@ -1265,6 +1314,13 @@ def run_analysis(lecture_text: str, exam_text: str, api_key: str, model: str,
 # 문제 생성은 문서 1개당 MAX_TEXT_CHARS(100000)를 쓰는데, 여기서도 그만큼 여유를 주되
 # 강의+기출을 한 프롬프트에 함께 넣는 점을 감안해 살짝 보수적으로 잡는다.
 TOPIC_SIDE_CHAR_BUDGET = 120000
+# 강의록 + 기출을 합친 총예산. 한쪽 몫의 2배라, 양쪽이 모두 상한을 채우는 최악의 경우엔
+# 프롬프트 크기가 예전과 같다. 칸막이를 12만씩 고정하지 않는 이유 —
+# 실측(topic_analyses id=9·10·13·14·18·19)에서 강의록은 상한의 21~46%만 쓰는데
+# 기출은 매번 넘겼다(152쪽 기출이 80% 반영, 2만 8천 자가 가운데에서 통째로 버려짐).
+# 한쪽에 6만 자 이상 남는데 반대쪽만 잘리고 있었다. 강의록을 먼저 추출하므로 그 시점에
+# 실사용량이 확정된다 → 남은 몫을 기출에 넘긴다. (remaining_char_budget)
+TOPIC_TOTAL_CHAR_BUDGET = TOPIC_SIDE_CHAR_BUDGET * 2
 # 파일을 여러 개 올려도 문서당 이만큼은 보장 (예산 ÷ 파일수가 너무 작아지는 것 방지).
 # 상한(MAX_FILES_PER_SIDE)까지 채웠을 때의 몫으로 잡아 둔다 — 이래야 '문서당 몫 × 파일수
 # ≤ 예산'이 허용 개수 전 구간에서 성립한다. 손으로 따로 잡으면 파일 상한을 올렸을 때 이
@@ -1275,10 +1331,27 @@ TOPIC_DOC_MIN_CHARS = TOPIC_SIDE_CHAR_BUDGET // MAX_FILES_PER_SIDE
 TOPIC_MAX_TOKENS = 16000
 
 
+def remaining_char_budget(docs: list) -> int:
+    """
+    먼저 추출한 쪽(강의록)이 쓰고 남긴 몫 — 반대쪽(기출)에 넘길 글자 예산.
+
+    docs의 text는 이미 상한이 적용된 결과라, 여기서 세는 값이 실제로 프롬프트에
+    들어가는 양과 같다. (원문 길이인 source["chars"]를 세면 안 된다 — 잘려서
+    안 들어간 몫까지 쓴 것으로 쳐서 반대쪽 예산을 도로 깎는다)
+
+    한쪽 몫(TOPIC_SIDE_CHAR_BUDGET)을 하한으로 둔다. 강의록은 그 상한 안에서 잘리므로
+    실제로 하한에 걸릴 일은 없지만, 나중에 상한을 손댔을 때 기출이 예전보다 적게 받는
+    일이 없도록 못을 박아둔다.
+    """
+    used = sum(len(d.get("text") or "") for d in docs)
+    return max(TOPIC_SIDE_CHAR_BUDGET, TOPIC_TOTAL_CHAR_BUDGET - used)
+
+
 def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
                          image_mode: dict = None, provider=None,
                          side_budget: int = TOPIC_SIDE_CHAR_BUDGET,
                          img_budget: int = None,
+                         by_question: bool = False,
                          usage=None) -> list:
     """
     업로드된 PDF 여러 개를 '라벨 + 페이지 마커가 붙은 텍스트'로 추출한다.
@@ -1286,10 +1359,15 @@ def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
     label_prefix: '강의록' / '기출' → 라벨은 강의록1, 강의록2 … (LLM이 출처를 가리킬 때 사용.
                   긴 한글 파일명을 그대로 되풀이하게 하면 오타가 나므로 짧은 라벨을 쓰고
                   파일명 복원은 파싱 단계에서 우리가 한다)
+    side_budget:  이쪽 전체에 배정하는 글자 예산 (파일 수로 나눠 쓴다).
+                  기출은 강의록이 남긴 몫을 받으므로 호출부가 remaining_char_budget()으로
+                  계산해 넘긴다. 생략하면 한쪽 몫(TOPIC_SIDE_CHAR_BUDGET)이다.
     img_budget:   이미지 처리 호출 수 상한 — **파일당이 아니라 이쪽 전체 기준**.
                   생략하면 모드의 max_pages(기출 15 / 강의록 40)를 이쪽 전체에 쓴다.
                   예전에는 이 상한이 PDF 1개당이라, 기출 7개를 올리면 15×7=105번까지
                   Vision을 불렀다.
+    by_question:  기출 쪽이면 True — 상한을 넘길 때 문항 번호 경계로 자른다
+                  (반쪽짜리 문항을 남기지 않는다. _cut_points 참고)
     반환: [{label, name, text, pages, source}]  (text에는 [페이지 N] 마커가 들어 있다)
     """
     files = list(files or [])
@@ -1332,11 +1410,11 @@ def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
                 f"PDF가 손상되었거나 암호가 걸려 있는지 확인해주세요. (상세: {e})"
             ) from e
         remaining_imgs -= len(img_jobs)
-        text = truncate(raw, per_doc)
+        text = truncate(raw, per_doc, by_question)
         docs.append({
             # 상한을 넘겼다면 몇 번째 줄이 버려지는지 (안 넘으면 None).
             # 진행 전에 사용자에게 보여주고 확인받는 데 쓴다 — DB에는 저장하지 않는다.
-            "cut": truncation_report(raw, per_doc),
+            "cut": truncation_report(raw, per_doc, by_question),
             # 그림·필기가 몇 쪽 중 몇 쪽 반영됐는지. 'cut'과 같은 용도(진행 전 확인)라
             # 함께 싣는다. 이미지 처리를 안 하는 경우엔 후보가 0이라 경고도 안 뜬다.
             "img": image_coverage(pages, img_jobs),
@@ -1346,7 +1424,7 @@ def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
             # 내용이 잡힌 페이지 수 (스캔 PDF 판별·안내용).
             # '[페이지 N]'과 '[페이지 N 이미지 설명]' 두 형태를 모두 센다 (set으로 중복 제거).
             "pages": len(set(re.findall(r"\[페이지 (\d+)[\] ]", raw))),
-            "source": build_source_info(raw, per_doc),
+            "source": build_source_info(raw, per_doc, by_question),
         })
     return docs
 

@@ -11,6 +11,14 @@
   ③ 이미지 예산          — 기출 여러 개를 올려도 '파일당'이 아니라 '전체' 상한이 걸린다
   ④ 기출 분석 1회 병합   — 기출 전문을 두 번 보내지 않는다
   ⑤ 생성 프롬프트 분리   — 배치가 달라도 캐시 접두부는 글자 하나까지 같다
+  ⑥ 상한 초과분 집계     — 못 읽은 쪽까지 끝까지 세어 '몇 쪽 중 몇 쪽'을 만든다
+  ⑦ 이미지 출력 한도     — 모드별로 다르고, 바뀌면 캐시가 무효화된다
+
+아래 둘은 '요금'이 아니라 **결과가 조용히 나빠지는** 쪽이다. 되돌아가도 화면에는
+주제 표가 멀쩡하게 나오고 기출만 소리 없이 잘린다:
+
+  ⑧ 글자 예산 넘겨주기   — 강의록이 안 쓴 몫이 기출로 넘어간다
+  ⑨ 기출 자르기 경계     — 상한을 넘겨도 반쪽짜리 문항은 남기지 않는다
 
 LLM 호출 없이 가짜 프로바이더로 돈다. API 키도 요금도 필요 없다:
 
@@ -479,6 +487,157 @@ def test_prompt_split():
     check("접두부가 캐시 최소 길이를 넘길 만큼 크다", len(head1) > 1000, str(len(head1)))
 
 
+# ──────────────────────────────────────────────
+# ⑧ 글자 예산 넘겨주기 (주제 분석)
+# ──────────────────────────────────────────────
+
+def _text_pdf(chars: int) -> bytes:
+    """대략 chars 글자쯤 되는 텍스트 PDF. 쪽을 넘겨 가며 그린다 (쪽 밖은 추출되지 않는다)."""
+    doc = fitz.open()
+    line = "femur proximal end structure item choose one "      # 45자
+    page, y = doc.new_page(), 60
+    for _ in range(chars // len(line) + 1):
+        if y > 740:
+            page, y = doc.new_page(), 60
+        page.insert_text((40, y), line, fontsize=8)
+        y += 12
+    out = doc.tobytes()
+    doc.close()
+    return out
+
+
+def test_char_budget_handoff():
+    """
+    이건 '요금'이 아니라 '결과'가 조용히 나빠지는 쪽이다 — 넘겨주기가 사라지면 기출
+    가운데가 통째로 잘리는데, 화면에는 주제 표가 멀쩡하게 나온다. 그래서 고정해둔다.
+    """
+    print("[⑧ 글자 예산 — 강의록이 남긴 몫이 기출로 넘어간다]")
+
+    check("총예산은 한쪽 몫의 2배 (양쪽이 다 채우면 예전과 같다)",
+          llm.TOPIC_TOTAL_CHAR_BUDGET == llm.TOPIC_SIDE_CHAR_BUDGET * 2,
+          f"{llm.TOPIC_TOTAL_CHAR_BUDGET} vs {llm.TOPIC_SIDE_CHAR_BUDGET}")
+
+    lecture_docs = [{"text": "가" * 50000}]        # 강의록이 상한의 42%만 쓴 상황
+    check("남은 몫 = 총예산 − 강의록 실사용",
+          llm.remaining_char_budget(lecture_docs)
+          == llm.TOPIC_TOTAL_CHAR_BUDGET - 50000,
+          str(llm.remaining_char_budget(lecture_docs)))
+    check("강의록이 상한을 다 써도 한쪽 몫은 보장",
+          llm.remaining_char_budget([{"text": "가" * llm.TOPIC_SIDE_CHAR_BUDGET}])
+          >= llm.TOPIC_SIDE_CHAR_BUDGET)
+    check("강의록이 없으면 총예산 그대로",
+          llm.remaining_char_budget([]) == llm.TOPIC_TOTAL_CHAR_BUDGET)
+
+    # 실제 추출에 걸어본다. 한쪽 몫으로는 넘치고 남은 몫으로는 들어가는 크기여야
+    # 두 갈래가 갈린다 — 크기가 어긋나면 조용히 통과하지 않도록 여기서 먼저 확인한다.
+    exam = [FakeUpload("기출.pdf", _text_pdf(150000))]
+    prov = CountingProvider()
+
+    old = llm.extract_labeled_docs(exam, "기출", "key", "m", provider=prov)
+    chars = old[0]["source"]["chars"]
+    check("시험용 기출이 한쪽 몫과 남은 몫 사이 크기",
+          llm.TOPIC_SIDE_CHAR_BUDGET < chars
+          <= llm.remaining_char_budget(lecture_docs), str(chars))
+    check("예전 칸막이(한쪽 몫)로는 잘린다", old[0]["source"]["truncated"] is True,
+          str(old[0]["source"]))
+
+    new = llm.extract_labeled_docs(exam, "기출", "key", "m", provider=prov,
+                                   side_budget=llm.remaining_char_budget(lecture_docs))
+    check("남은 몫을 받으면 안 잘린다", new[0]["source"]["truncated"] is False,
+          str(new[0]["source"]))
+    check("확인 모달을 띄울 경고도 사라진다", new[0]["cut"] is None, str(new[0]["cut"]))
+    check("본문이 통째로 들어간다", len(new[0]["text"]) == chars,
+          f'{len(new[0]["text"])} vs {chars}')
+
+
+# ──────────────────────────────────────────────
+# ⑨ 기출 자르기 경계 — 반쪽짜리 문항 금지
+# ──────────────────────────────────────────────
+
+CUT_NOTE = "...(중략: 분량 초과로 일부 생략)..."
+
+
+def _exam_text(questions: int = 80, body_words: int = 40) -> str:
+    """[페이지 N] 마커가 붙은 기출 흉내. 문항 5개마다 쪽이 넘어가고, 문항은 '?'로 끝난다."""
+    out = []
+    for i in range(1, questions + 1):
+        if (i - 1) % 5 == 0:
+            out.append(f"[페이지 {(i - 1) // 5 + 1}]")
+        out.append(f"{i}. " + "다음설명중 " * body_words + "옳은 것은?")
+    return "\n".join(out)
+
+
+def _halves(text):
+    head, _, tail = text.partition(CUT_NOTE)
+    return head.strip(), tail.strip()
+
+
+def test_question_boundary_cut():
+    print("[⑨ 기출 자르기 — 반쪽짜리 문항을 남기지 않는다]")
+    raw = _exam_text()
+    limit = len(raw) // 2
+
+    old = llm.truncate(raw, limit)                      # 글자수 방식 (강의록)
+    new = llm.truncate(raw, limit, by_question=True)    # 문항 경계 (기출)
+    check("둘 다 잘리기는 한다", CUT_NOTE in old and CUT_NOTE in new)
+
+    # 예전 방식이 실제로 무엇을 남기는지 — 이게 이 변경의 이유다.
+    #   앞: "…옳은 것은?\n29."   ← 번호만 있고 지문은 통째로 없는 문항
+    #   뒤: "?\n69. 다음설명중…"  ← 번호 없이 앞 문항의 꼬리부터 시작
+    o_head, o_tail = _halves(old)
+    check("예전 방식은 번호만 남은 문항이 앞에 붙는다",
+          o_head.rsplit("\n", 1)[-1].strip().rstrip(".)]").isdigit(),
+          repr(o_head[-30:]))
+    check("예전 방식은 뒤가 앞 문항의 꼬리로 시작한다",
+          not llm._QUESTION_START.match(o_tail.split("\n", 1)[1]),
+          repr(o_tail[:40]))
+
+    # 남아 있는 문항 번호 수 = 완결된 문항 수('?'로 끝나는 것)
+    check("문항 경계로 자르면 남은 문항이 모두 온전하다",
+          len(llm._QUESTION_START.findall(new)) == new.count("?"),
+          f'번호 {len(llm._QUESTION_START.findall(new))} vs 완결 {new.count("?")}')
+
+    n_head, n_tail = _halves(new)
+    check("앞부분은 문항 끝에서 끊긴다", n_head.endswith("?"), n_head[-30:])
+    check("뒷부분은 쪽 표시로 시작한다", n_tail.startswith("[페이지 "), n_tail[:30])
+    check("쪽 표시 다음은 문항 번호", bool(llm._QUESTION_START.match(
+        n_tail.split("\n", 1)[1])), n_tail.split("\n", 1)[1][:30])
+
+    # 복원한 쪽 번호가 그 문항의 실제 쪽과 같아야 한다 (틀린 출처는 없는 출처보다 나쁘다)
+    first_no = int(llm._QUESTION_START.findall(n_tail.split("\n", 1)[1])[0]
+                   .strip().rstrip(".)]").strip())
+    check("복원한 쪽 번호가 실제 쪽과 같다",
+          n_tail.startswith(f"[페이지 {(first_no - 1) // 5 + 1}]"),
+          f"{n_tail[:20]} / 문항 {first_no}")
+
+    # 번호를 못 찾는 기출(스캔본 등)은 예전 방식으로 되돌아간다
+    plain = "가나다라마바사아자차" * 5000
+    check("번호가 없으면 글자수 방식으로 되돌아간다",
+          llm.truncate(plain, 1000, by_question=True)
+          == llm.truncate(plain, 1000), "폴백 실패")
+
+    # 보고 값이 실제로 남긴 양과 맞는지 — 상한을 그대로 쓰면 반영률이 부풀려진다
+    h, t = llm._cut_points(raw, limit, True)
+    info = llm.build_source_info(raw, limit, by_question=True)
+    check("반영량은 실제로 남긴 양", info["used"] == h + len(raw) - t,
+          f'{info["used"]} vs {h + len(raw) - t}')
+    check("문항 경계로 당긴 만큼 상한보다 적다", info["used"] < limit,
+          f'{info["used"]} vs {limit}')
+    check("경고의 반영률도 같은 값",
+          llm.truncation_report(raw, limit, True)["coverage"] == info["coverage"],
+          str(llm.truncation_report(raw, limit, True)["coverage"]))
+
+    # 글자수 방식은 예전 그대로 (상한을 꽉 채운다)
+    check("글자수 방식의 반영량은 그대로 상한",
+          llm.build_source_info(raw, limit)["used"] == limit,
+          str(llm.build_source_info(raw, limit)["used"]))
+
+    # 유형 집계가 자르기와 같은 '문항 시작' 정의를 쓴다
+    check("문항 집계가 같은 정의를 쓴다",
+          llm.count_question_types(raw)["총문항"] == 80,
+          str(llm.count_question_types(raw)["총문항"]))
+
+
 if __name__ == "__main__":
     try:
         test_image_selection()
@@ -490,6 +649,8 @@ if __name__ == "__main__":
         test_image_budget()
         test_exam_merge()
         test_prompt_split()
+        test_char_budget_handoff()
+        test_question_boundary_cut()
     finally:
         try:
             pathlib.Path(_tmp.name).unlink()

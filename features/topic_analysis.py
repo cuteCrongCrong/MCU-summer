@@ -30,7 +30,7 @@ from providers.usage import (
 )
 from llm import (
     IMAGE_DESCRIBE, IMAGE_TRANSCRIBE, MAX_FILES_PER_SIDE,
-    extract_labeled_docs, run_topic_analysis,
+    extract_labeled_docs, remaining_char_budget, run_topic_analysis,
 )
 from features import extract_cache
 
@@ -371,9 +371,13 @@ def analyze_topics():
                                             image_mode=IMAGE_TRANSCRIBE, provider=provider,
                                             usage=usage)
         # 기출: 그림 문제(부위 이름 쓰기 등)를 놓치지 않도록 그림 해설 포함 (문제 생성기와 동일)
+        # 글자 예산은 강의록이 쓰고 남긴 몫까지 받는다 — 강의록보다 기출이 훨씬 긴 것이
+        # 보통이라(강의록 5만 자 · 기출 15만 자), 12만씩 칸막이를 치면 기출만 잘렸다.
+        # 강의록 추출이 끝난 지금은 실사용량이 확정돼 있으므로 여기서 계산할 수 있다.
         exam_docs = extract_labeled_docs(exams, "기출", api_key, analysis_model,
                                          image_mode=IMAGE_DESCRIBE, provider=provider,
-                                         usage=usage)
+                                         side_budget=remaining_char_budget(lecture_docs),
+                                         by_question=True, usage=usage)
 
         # 아래 두 오류는 기출 이미지 설명(LLM)이 이미 돈 뒤에 나므로 사용량을 함께 보낸다
         if not any((d["text"] or "").strip() for d in lecture_docs):
