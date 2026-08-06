@@ -672,9 +672,9 @@ def analyze_format(sample_questions: str, api_key: str, model: str, provider=Non
 산문 설명 없이, 각 항목을 반드시 "라벨: 키워드1, 키워드2, ..." 한 줄 형태로만 작성하세요.
 
 항목 (해당 없으면 '해당없음'):
-문제유형: (객관식/빈칸채우기/단답형/서술형 비율 키워드)
-증례제시: (나이/성별/주소/검사 제시 순서 키워드)
-문체: (어투, 문장 길이, 전문용어 사용 키워드)
+문제유형: (객관식/빈칸채우기/단답형/서술형 키워드)
+증례제시: (나이/성별/상황/검사 등 키워드)
+문체: (어투, 문장 길이, 전문용어 사용 여부 등 키워드)
 선택지구성: (객관식 선택지 길이·구조 키워드 / 비객관식이면 '해당없음')
 질문형태: (진단/치료/다음단계 등 키워드)
 기타: (특이사항 키워드)
@@ -720,7 +720,7 @@ def compute_priority_topics(concepts: dict, exam_concepts: dict) -> list:
     exam_terms = (exam_concepts.get("기출출제개념", []) or []) + \
                  (exam_concepts.get("빈출포인트", []) or [])
     lecture_items = []
-    for key in ["핵심질환", "핵심개념", "중요수치", "감별진단포인트", "치료원칙"]:
+    for key in ["핵심질환", "핵심개념", "중요수치", "진단포인트", "치료원칙"]:
         lecture_items.extend(concepts.get(key, []) or [])
 
     priority, seen = [], set()
@@ -750,7 +750,7 @@ def build_concept_extraction_prompt(lecture_text: str) -> str:
   "핵심질환": ["질환명1", "질환명2"],
   "핵심개념": ["개념1", "개념2"],
   "중요수치": ["수치1 (의미)", "수치2 (의미)"],
-  "감별진단포인트": ["포인트1", "포인트2"],
+  "진단포인트": ["포인트1", "포인트2"],
   "치료원칙": ["원칙1", "원칙2"]
 }}"""
 
@@ -921,7 +921,7 @@ def build_question_generation_prompt(
 - 핵심 질환: {', '.join(concepts.get('핵심질환', []))}
 - 핵심 개념: {', '.join(concepts.get('핵심개념', []))}
 - 중요 수치: {', '.join(concepts.get('중요수치', []))}
-- 감별 진단 포인트: {', '.join(concepts.get('감별진단포인트', []))}
+- 진단 포인트: {', '.join(concepts.get('진단포인트', []))}
 - 치료 원칙: {', '.join(concepts.get('치료원칙', []))}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
