@@ -23,7 +23,7 @@ from providers.factory import get_provider
 _default_provider = get_provider()
 
 # 강의/기출 텍스트를 LLM에 넣기 전 문서당 최대 글자 수.
-MAX_TEXT_CHARS = 1000000
+MAX_TEXT_CHARS = 100000
 
 # 한쪽(강의록/기출)당 업로드 파일 개수 상한 — 주제 분석·문제 생성 공통.
 # 프런트(static/js/topic_analysis.js · question_gen.js)도 같은 값을 들고 있으므로 함께 고친다.
