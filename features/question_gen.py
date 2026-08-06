@@ -28,7 +28,7 @@ from providers.usage import (
     UsageCollector, credits_for_history, credits_result, credits_snapshot,
 )
 from llm import (
-    QUESTION_TYPES, StreamingQuestionParser,
+    QUESTION_TYPES, StreamingQuestionParser, IMAGE_DESCRIBE, IMAGE_TRANSCRIBE,
     read_pdf_pages, describe_images_progressively, assemble_pdf_text,
     truncate, build_source_info,
     analyze_concepts_progressively, analyze_exam_format_progressively,
@@ -592,21 +592,29 @@ def run_generation_events(p: dict):
         else:
             usage.set_stage("extract")
             yield {"type": "stage", "key": "extract", "status": "active"}
-            # 강의자료: 텍스트만 추출 (이미지 설명 생략)
-            lecture_pages, _ = read_pdf_pages(p["lecture_bytes"], api_key,
-                                              describe_images=False)
-            lecture_raw = assemble_pdf_text(lecture_pages)
+            # 강의자료: 그림 속 글자만 그대로 전사 (손글씨·판서 보존). 그림 해설은 안 한다 —
+            #  해설은 LLM이 지어낸 문장이라 강의자료에 없는 용어를 끌어들인다.
+            lecture_pages, lec_jobs = read_pdf_pages(p["lecture_bytes"], api_key,
+                                                     image_mode=IMAGE_TRANSCRIBE)
             # 기출문제: 이미지/그림 페이지는 Vision LLM 설명으로 보존
             #  (예: 신체 부위 그림 → 부위 이름 쓰기 문제 등)
             exam_pages, img_jobs = read_pdf_pages(p["exam_bytes"], api_key,
-                                                  describe_images=True)
-            total_imgs = len(img_jobs)
+                                                  image_mode=IMAGE_DESCRIBE)
+            # 진행률은 강의자료·기출을 합쳐서 센다 (강의자료도 이제 Vision을 쓰므로)
+            total_imgs = len(lec_jobs) + len(img_jobs)
             yield {"type": "progress", "key": "extract", "done": 0, "total": total_imgs}
-            for done_imgs in describe_images_progressively(img_jobs, api_key, model,
-                                                          provider, usage):
+            for done_imgs in describe_images_progressively(lec_jobs, api_key, model,
+                                                           provider, usage,
+                                                           IMAGE_TRANSCRIBE):
                 yield {"type": "progress", "key": "extract",
                        "done": done_imgs, "total": total_imgs}
-            exam_raw = assemble_pdf_text(exam_pages, total_imgs)
+            for done_imgs in describe_images_progressively(img_jobs, api_key, model,
+                                                           provider, usage,
+                                                           IMAGE_DESCRIBE):
+                yield {"type": "progress", "key": "extract",
+                       "done": len(lec_jobs) + done_imgs, "total": total_imgs}
+            lecture_raw = assemble_pdf_text(lecture_pages, len(lec_jobs), IMAGE_TRANSCRIBE)
+            exam_raw = assemble_pdf_text(exam_pages, len(img_jobs), IMAGE_DESCRIBE)
 
             lecture_text = truncate(lecture_raw)
             exam_text    = truncate(exam_raw)

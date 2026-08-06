@@ -11,7 +11,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import fitz  # pymupdf
 
-from providers.base import ProviderError
+from providers.base import ProviderError, IMAGE_DESC_PROMPT, IMAGE_TEXT_PROMPT
 from providers.factory import get_provider
 
 # ──────────────────────────────────────────────
@@ -23,10 +23,35 @@ _default_provider = get_provider()
 # 강의/기출 텍스트를 LLM에 넣기 전 문서당 최대 글자 수.
 MAX_TEXT_CHARS = 100000
 
-# 이미지/스캔 페이지 → Vision LLM으로 '무슨 이미지인지' 설명 생성 (토큰 비용 상한용)
-IMAGE_DESC_MAX = 15          # 설명할 이미지 페이지 최대 개수
+# 이미지/스캔 페이지 → Vision LLM으로 텍스트를 남긴다 (토큰 비용 상한용)
+IMAGE_DESC_MAX = 15          # 기출: 설명할 이미지 페이지 최대 개수
+LECTURE_IMAGE_MAX = 40       # 강의록: 손글씨·판서 페이지가 많아 기출보다 넉넉히 잡는다
 SPARSE_TEXT_THRESHOLD = 20   # 페이지 텍스트가 이보다 짧으면 이미지 페이지로 간주
 IMAGE_RENDER_DPI = 150       # 페이지 렌더 해상도
+
+# 태블릿 벡터 필기(굿노트 등) 감지 임계값 — 페이지의 '곡선' 세그먼트 개수.
+# 인쇄 슬라이드 위에 펜으로 쓴 페이지는 텍스트 레이어가 멀쩡하고 래스터 이미지도 없어서
+# 위 두 조건에 안 걸린다. 그렇다고 벡터 도형이 있다고 다 잡으면 표·밑줄까지 걸린다.
+# 곡선만 세면 갈린다 — 표 테두리·밑줄은 직선이라 곡선이 0개다.
+# 실측(21쪽짜리 아이패드 필기 강의록): 표만 있는 쪽 0 · 인쇄만 있는 쪽 0 ·
+#                                   짧은 메모 몇 줄 757 · 필기로 채운 쪽 16,703
+INK_CURVE_MIN = 150
+
+# 이미지 페이지를 텍스트로 남기는 두 가지 방식. 아래 PDF 함수들에 그대로 넘긴다.
+#   IMAGE_DESCRIBE   — 그림이 무엇인지 설명. 기출용 (그림 문제를 살리려면 해석이 필요)
+#   IMAGE_TRANSCRIBE — 그림 속 글자만 그대로. 강의록용 (손글씨는 살리되 지어낸 문장은 금지)
+# 라벨이 다른 이유: 프롬프트에 [페이지 N 이미지 설명]으로 들어가면 LLM이 '모델이 쓴 문장'
+# 으로 읽는다. 전사한 글자는 강의록 원문이므로 그렇게 보이면 안 된다.
+# detect_ink: 벡터 필기가 있는 페이지도 대상에 넣을지. 강의록만 켠다 —
+#   기출은 손글씨를 찾을 일이 없고, 켜면 페이지 선정이 늘어 비용만 는다.
+IMAGE_DESCRIBE = {
+    "prompt": IMAGE_DESC_PROMPT, "label": "이미지 설명", "max_pages": IMAGE_DESC_MAX,
+    "detect_ink": False,
+}
+IMAGE_TRANSCRIBE = {
+    "prompt": IMAGE_TEXT_PROMPT, "label": "그림 속 글자", "max_pages": LECTURE_IMAGE_MAX,
+    "detect_ink": True,
+}
 
 # 문제 유형 4분류 (집계·few-shot·생성에서 공통 사용)
 QUESTION_TYPES = ["객관식", "빈칸채우기", "단답형", "서술형"]
@@ -43,25 +68,48 @@ TYPE_DEFINITIONS = (
 # LLM / PDF 유틸
 # ──────────────────────────────────────────────
 
-def read_pdf_pages(pdf, api_key: str = None, describe_images: bool = True):
+def has_vector_ink(page) -> bool:
     """
-    PDF에서 텍스트 레이어를 뽑고, 이미지 설명이 필요한 페이지를 고른다. (LLM 호출 없음)
+    페이지에 태블릿 펜 필기로 보이는 벡터 획이 있는지. (곡선 세그먼트 개수로 판단)
+    표 테두리·밑줄은 직선이라 곡선이 0개이므로 필기와 깔끔하게 갈린다.
+    """
+    curves = 0
+    for path in page.get_drawings():
+        for item in path["items"]:
+            if item[0] == "c":
+                curves += 1
+                if curves >= INK_CURVE_MIN:   # 넘으면 더 셀 필요 없다
+                    return True
+    return False
+
+
+def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None):
+    """
+    PDF에서 텍스트 레이어를 뽑고, 이미지 처리가 필요한 페이지를 고른다. (LLM 호출 없음)
+
+    image_mode: None이면 이미지 페이지를 건너뛴다 (텍스트 레이어만).
+                IMAGE_DESCRIBE(기출) / IMAGE_TRANSCRIBE(강의록) 중 하나를 넘긴다.
     반환: (pages, img_jobs) — img_jobs는 pages 안 엔트리를 그대로 참조한다.
     """
     # 업로드 객체(FileStorage)와 bytes 모두 허용 — 스트리밍 경로는 요청 컨텍스트가
     # 닫힌 뒤에 실행되므로 라우트에서 미리 읽어둔 bytes를 넘긴다.
     pdf_bytes = pdf.read() if hasattr(pdf, "read") else pdf
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    max_pages = (image_mode or {}).get("max_pages", 0)
+    detect_ink = (image_mode or {}).get("detect_ink", False)
 
     pages = []       # {idx, text, png(optional), desc}
-    img_jobs = []    # 설명 대상 페이지 (엔트리 참조)
+    img_jobs = []    # 이미지 처리 대상 페이지 (엔트리 참조)
     for i, page in enumerate(doc):
         text = page.get_text()
         entry = {"idx": i, "text": text if text.strip() else "", "desc": None}
+        # or가 왼쪽부터 끊기므로 비싼 has_vector_ink는 앞의 두 조건이 다 빗나갈 때만 돈다
         want_img = (
-            describe_images and api_key
-            and len(img_jobs) < IMAGE_DESC_MAX
-            and (len(text.strip()) < SPARSE_TEXT_THRESHOLD or bool(page.get_images()))
+            image_mode and api_key
+            and len(img_jobs) < max_pages
+            and (len(text.strip()) < SPARSE_TEXT_THRESHOLD
+                 or bool(page.get_images())
+                 or (detect_ink and has_vector_ink(page)))
         )
         if want_img:
             try:
@@ -76,62 +124,69 @@ def read_pdf_pages(pdf, api_key: str = None, describe_images: bool = True):
 
 
 def describe_images_progressively(img_jobs, api_key: str, model: str, provider=None,
-                                  usage=None):
+                                  usage=None, image_mode: dict = None):
     """
-    이미지 설명을 병렬로 만들되, 하나 끝날 때마다 완료 개수를 yield한다.
+    이미지 페이지를 병렬로 텍스트화하되, 하나 끝날 때마다 완료 개수를 yield한다.
     (진행률 표시용 — 호출부가 제너레이터를 돌리면서 이벤트를 낼 수 있게)
+    image_mode를 생략하면 IMAGE_DESCRIBE(그림 설명)로 동작한다.
     게이트웨이가 이미지를 지원하지 않으면 폴백 문구를 채운다.
     """
     if not img_jobs:
         return
     prov = provider or _default_provider
+    prompt = (image_mode or IMAGE_DESCRIBE)["prompt"]
     with ThreadPoolExecutor(max_workers=4) as ex:
         futs = {ex.submit(prov.describe_image, e["png"], api_key, model,
-                          usage=usage): e for e in img_jobs}
+                          usage=usage, prompt=prompt): e for e in img_jobs}
         done = 0
         for fut in as_completed(futs):
             entry = futs[fut]
             try:
                 entry["desc"] = fut.result()
             except Exception:
-                entry["desc"] = "(이미지 설명 생성 실패 — 게이트웨이 이미지 미지원일 수 있음)"
+                entry["desc"] = "(이미지 처리 실패 — 게이트웨이 이미지 미지원일 수 있음)"
             done += 1
             yield done
 
 
-def assemble_pdf_text(pages, img_job_count: int = 0) -> str:
-    """페이지 텍스트 + 이미지 설명을 하나의 텍스트로 합친다."""
+def assemble_pdf_text(pages, img_job_count: int = 0, image_mode: dict = None) -> str:
+    """
+    페이지 텍스트 + 이미지에서 뽑은 텍스트를 하나로 합친다.
+    image_mode의 label이 마커에 들어간다 ([페이지 3 그림 속 글자] 등) — 생략하면 그림 설명.
+    """
+    mode = image_mode or IMAGE_DESCRIBE
     parts = []
     for e in pages:
         block = []
         if e["text"]:
             block.append(f"[페이지 {e['idx']+1}]\n{e['text']}")
         if e.get("desc"):
-            block.append(f"[페이지 {e['idx']+1} 이미지 설명]\n{e['desc']}")
+            block.append(f"[페이지 {e['idx']+1} {mode['label']}]\n{e['desc']}")
         if block:
             parts.append("\n".join(block))
 
-    if img_job_count >= IMAGE_DESC_MAX:
-        parts.append(f"...(이미지 설명은 최대 {IMAGE_DESC_MAX}개까지만 생성됨)")
+    if img_job_count >= mode["max_pages"]:
+        parts.append(f"...(이미지 페이지는 최대 {mode['max_pages']}개까지만 처리됨)")
 
     return "\n\n".join(parts)
 
 
 def extract_text_from_pdf(pdf, api_key: str = None, model: str = None,
-                          describe_images: bool = True, provider=None,
+                          image_mode: dict = None, provider=None,
                           usage=None) -> str:
     """
-    PDF에서 텍스트 레이어를 추출하고, 이미지/스캔 페이지는 Vision LLM으로
-    '무슨 이미지인지' 설명을 생성해 텍스트로 함께 남긴다.
-    - 텍스트가 거의 없는 페이지(스캔·사진) 또는 그림이 포함된 페이지를 이미지 설명 대상으로 선정
-    - 비용 상한: 최대 IMAGE_DESC_MAX개 페이지만 설명, 이미지 설명은 병렬 처리
+    PDF에서 텍스트 레이어를 추출하고, image_mode를 주면 이미지/스캔 페이지도
+    Vision LLM으로 텍스트화해 함께 남긴다.
+    - 텍스트가 거의 없는 페이지(스캔·사진) 또는 그림이 포함된 페이지를 대상으로 선정
+    - 비용 상한: 모드의 max_pages개 페이지까지만, 병렬 처리
 
     진행률이 필요한 곳(스트리밍)은 위 세 함수를 직접 조합한다. 결과는 동일하다.
     """
-    pages, img_jobs = read_pdf_pages(pdf, api_key, describe_images)
-    for _ in describe_images_progressively(img_jobs, api_key, model, provider, usage):
+    pages, img_jobs = read_pdf_pages(pdf, api_key, image_mode)
+    for _ in describe_images_progressively(img_jobs, api_key, model, provider, usage,
+                                           image_mode):
         pass
-    return assemble_pdf_text(pages, len(img_jobs))
+    return assemble_pdf_text(pages, len(img_jobs), image_mode)
 
 
 def truncate(text: str, max_chars: int = MAX_TEXT_CHARS) -> str:
@@ -932,15 +987,21 @@ def run_analysis(lecture_text: str, exam_text: str, api_key: str, model: str,
 # 문제 생성은 문서 1개당 MAX_TEXT_CHARS(100000)를 쓰는데, 여기서도 그만큼 여유를 주되
 # 강의+기출을 한 프롬프트에 함께 넣는 점을 감안해 살짝 보수적으로 잡는다.
 TOPIC_SIDE_CHAR_BUDGET = 120000
-# 파일을 여러 개 올려도 문서당 이만큼은 보장 (예산 ÷ 파일수가 너무 작아지는 것 방지)
-TOPIC_DOC_MIN_CHARS = 20000
+# 한쪽(강의록/기출)당 업로드 파일 개수 상한. features/topic_analysis.py가 이 값으로 검증하고
+# static/js/topic_analysis.js가 같은 값을 들고 있다.
+TOPIC_MAX_FILES_PER_SIDE = 7
+# 파일을 여러 개 올려도 문서당 이만큼은 보장 (예산 ÷ 파일수가 너무 작아지는 것 방지).
+# 상한까지 채웠을 때의 몫으로 잡아 둔다 — 이래야 '문서당 몫 × 파일수 ≤ 예산'이 허용 개수
+# 전 구간에서 성립한다. 손으로 따로 잡으면 파일 상한을 올렸을 때 이 최소치가 예산을
+# 덮어써서(max가 최소치를 고름) 프롬프트가 조용히 예산을 넘긴다.
+TOPIC_DOC_MIN_CHARS = TOPIC_SIDE_CHAR_BUDGET // TOPIC_MAX_FILES_PER_SIDE
 # 주제 목록이 길어져도 JSON이 잘리지 않도록.
 # 주제마다 강의록발췌·기출 원문이 붙어 항목당 분량이 늘었으므로 기존(8000)보다 넉넉히 잡는다.
 TOPIC_MAX_TOKENS = 16000
 
 
 def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
-                         describe_images: bool = False, provider=None,
+                         image_mode: dict = None, provider=None,
                          side_budget: int = TOPIC_SIDE_CHAR_BUDGET,
                          usage=None) -> list:
     """
@@ -963,7 +1024,7 @@ def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
         name = f.filename or f"{label_prefix}{i}"
         try:
             raw = extract_text_from_pdf(f, api_key, model,
-                                        describe_images=describe_images,
+                                        image_mode=image_mode,
                                         provider=provider, usage=usage)
         except ProviderError:
             raise                      # 키·한도 오류는 라우트가 상태코드로 구분하므로 그대로

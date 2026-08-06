@@ -28,13 +28,17 @@ from providers.factory import UnknownProviderError, get_provider
 from providers.usage import (
     UsageCollector, credits_for_history, credits_result, credits_snapshot,
 )
-from llm import extract_labeled_docs, run_topic_analysis
+from llm import (
+    IMAGE_DESCRIBE, IMAGE_TRANSCRIBE, TOPIC_MAX_FILES_PER_SIDE,
+    extract_labeled_docs, run_topic_analysis,
+)
 
 topic_bp = Blueprint("topic", __name__)
 
 # 한쪽(강의록/기출)당 업로드 파일 개수 상한.
 # 파일 수가 늘수록 문서당 반영 글자수가 줄고(예산 분할) 프롬프트도 커지므로 상한을 둔다.
-MAX_FILES_PER_SIDE = 5
+# 글자 예산(TOPIC_SIDE_CHAR_BUDGET)과 맞물려 있어 llm.py에서 한 번만 정한다.
+MAX_FILES_PER_SIDE = TOPIC_MAX_FILES_PER_SIDE
 
 
 def _collect_pdfs(field: str):
@@ -274,16 +278,16 @@ def analyze_topics():
         credits_before = credits_snapshot(provider, api_key)
 
         usage.set_stage("extract")
-        # 강의록: 이미지 설명 생략.
-        #   주제 이름은 '강의록에 있는 단어'만 써야 하는데, 이미지 설명은 LLM이 새로 쓴
-        #   문장이라 강의록에 없는 용어를 끌어들인다. (토큰도 아낀다)
-        #   → 이미지 설명을 끄므로 이 호출은 LLM을 쓰지 않는다 (사용량 0).
+        # 강의록: 그림 속 '글자만' 전사 (손글씨·판서 포함), 그림 해설은 금지.
+        #   주제 이름은 '강의록에 있는 단어'만 써야 한다. 그림이 무엇인지 설명하게 하면
+        #   LLM이 지어낸 문장이 강의록 텍스트에 섞이고, 그 표현까지 '강의록에 있는 것'이
+        #   되어 용어 규칙이 무력해진다. 전사만 시키면 손글씨는 살리면서 그 위험은 없다.
         lecture_docs = extract_labeled_docs(lectures, "강의록", api_key, model,
-                                            describe_images=False, provider=provider,
+                                            image_mode=IMAGE_TRANSCRIBE, provider=provider,
                                             usage=usage)
-        # 기출: 그림 문제(부위 이름 쓰기 등)를 놓치지 않도록 이미지 설명 포함 (문제 생성기와 동일)
+        # 기출: 그림 문제(부위 이름 쓰기 등)를 놓치지 않도록 그림 해설 포함 (문제 생성기와 동일)
         exam_docs = extract_labeled_docs(exams, "기출", api_key, model,
-                                         describe_images=True, provider=provider,
+                                         image_mode=IMAGE_DESCRIBE, provider=provider,
                                          usage=usage)
 
         # 아래 두 오류는 기출 이미지 설명(LLM)이 이미 돈 뒤에 나므로 사용량을 함께 보낸다

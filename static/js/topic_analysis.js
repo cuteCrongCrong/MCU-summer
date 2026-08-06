@@ -7,7 +7,7 @@
 //   한쪽 수정이 다른 쪽을 깨지 않게 하기 위함. (그래서 상태 이름이 전부 따로다)
 // ══════════════════════════════════════════════
 
-const TOPIC_MAX_FILES = 5;   // 백엔드 MAX_FILES_PER_SIDE와 같은 값으로 유지
+const TOPIC_MAX_FILES = 7;   // llm.py TOPIC_MAX_FILES_PER_SIDE와 같은 값으로 유지
 
 // ── 파일 드래그앤드롭 (여러 개 지원) ──
 function topicSetupDrop(dropId, inputId, nameId) {
