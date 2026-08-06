@@ -32,6 +32,7 @@ from llm import (
     QUESTION_TYPES, StreamingQuestionParser, IMAGE_DESCRIBE, IMAGE_TRANSCRIBE,
     MAX_FILES_PER_SIDE, GEN_SIDE_CHAR_BUDGET, GEN_DOC_MIN_CHARS,
     read_pdf_pages, describe_images_progressively, assemble_pdf_text,
+    image_coverage,
     truncate, truncation_report, build_source_info,
     analyze_concepts_progressively, analyze_format_progressively,
     compute_type_targets, build_question_generation_prompt, call_llm_stream,
@@ -610,6 +611,21 @@ def _join_side(files, parts, image_mode):
     }, cuts
 
 
+def _image_warnings(files, parts, side: str) -> list:
+    """
+    상한에 걸려 못 읽은 그림·필기 쪽이 있는 파일을 화면용 경고로.
+
+    문제 생성은 주제 분석과 달리 상한이 '파일 1개당' 걸리므로(question_gen 쪽 주석 참고)
+    파일마다 따로 센다. 없으면 빈 리스트 — 그때는 확인 모달이 안 뜬다.
+    """
+    out = []
+    for (name, _), (pages, jobs) in zip(files, parts):
+        cov = image_coverage(pages, jobs)
+        if cov["skipped"]:
+            out.append({"kind": "image", "side": side, "name": name, **cov})
+    return out
+
+
 def _batch_targets(type_slots, offset, batch_count) -> dict:
     """이번 배치가 가져갈 유형별 개수. 슬롯을 잘라 세므로 전체 합계가 보존된다."""
     if type_slots is None:
@@ -723,8 +739,12 @@ def run_generation_events(p: dict):
 
                 # 상한을 넘겨 일부가 버려지는 파일이 있으면 진행 전에 물어본다.
                 # 추출 결과를 잠시 보관하고 토큰만 내려보낸다 — 확인 후 재추출하면 Vision 재과금.
-                warnings = ([{"side": "강의자료", **c} for c in lecture_cuts]
-                            + [{"side": "기출문제", **c} for c in exam_cuts])
+                # 글자수 초과와 그림 쪽수 초과를 한 목록에 담는다 (kind로 구분) —
+                # 사용자에게는 "이대로 진행할까"라는 같은 질문이라 모달을 두 번 띄우면 안 된다.
+                warnings = ([{"kind": "text", "side": "강의자료", **c} for c in lecture_cuts]
+                            + [{"kind": "text", "side": "기출문제", **c} for c in exam_cuts]
+                            + _image_warnings(p["lecture_files"], lec_parts, "강의자료")
+                            + _image_warnings(p["exam_files"], exam_parts, "기출문제"))
                 if warnings:
                     token = extract_cache.put({
                         "lecture_text": lecture_text, "exam_text": exam_text,

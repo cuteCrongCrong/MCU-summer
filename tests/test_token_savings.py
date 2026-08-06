@@ -273,6 +273,52 @@ def test_failure_not_cached():
 # ③ 이미지 예산은 '한쪽 전체' 기준
 # ──────────────────────────────────────────────
 
+def test_image_coverage():
+    """
+    상한에 걸려 못 읽은 쪽을 끝까지 세는지.
+    예전에는 상한 검사가 후보 판정 안에 있어서, 상한을 채우는 순간 뒤 페이지를
+    후보인지조차 안 따졌다 → 진행률이 15/15로 떠서 다 읽은 것처럼 보였다.
+    """
+    print("[⑥ 상한 초과분을 끝까지 센다]")
+
+    # 큰 그림이 있는 페이지 6장 (전부 후보)
+    doc = fitz.open()
+    body = "\n".join(f"{i}. 대퇴골의 몸쪽 끝 구조는?" for i in range(20))
+    for _ in range(6):
+        p = doc.new_page()
+        p.insert_text((50, 60), body, fontsize=9)
+        p.insert_image(fitz.Rect(50, 300, 500, 750), stream=_png(64))
+    pdf = doc.tobytes()
+    doc.close()
+
+    pages, jobs = llm.read_pdf_pages(pdf, "key", llm.IMAGE_DESCRIBE, max_images=2)
+    cov = llm.image_coverage(pages, jobs)
+
+    check("실제 처리는 상한까지만", cov["processed"] == 2, str(cov["processed"]))
+    check("후보는 상한 넘어서도 전부 센다", cov["candidates"] == 6, str(cov["candidates"]))
+    check("건너뛴 수", cov["skipped"] == 4, str(cov["skipped"]))
+    check("건너뛴 쪽 번호(1부터)", cov["skipped_pages"] == [3, 4, 5, 6],
+          str(cov["skipped_pages"]))
+    check("렌더는 상한까지만 (건너뛴 쪽엔 png 없음)",
+          sum(1 for e in pages if e.get("png")) == 2)
+
+    # 상한에 안 걸리면 경고가 안 뜬다
+    pages2, jobs2 = llm.read_pdf_pages(pdf, "key", llm.IMAGE_DESCRIBE, max_images=99)
+    cov2 = llm.image_coverage(pages2, jobs2)
+    check("여유가 있으면 건너뛴 쪽 없음", cov2["skipped"] == 0 and cov2["processed"] == 6,
+          str(cov2))
+
+    # 이미지 처리를 안 하면 후보 자체가 0 (헛돌지 않는다)
+    pages3, jobs3 = llm.read_pdf_pages(pdf, "key", None)
+    cov3 = llm.image_coverage(pages3, jobs3)
+    check("모드가 없으면 후보 0", cov3["candidates"] == 0, str(cov3))
+
+    # 추출 텍스트에도 '몇 쪽 중 몇 쪽'이 남는다 (LLM이 자료가 온전치 않음을 알게)
+    raw = llm.assemble_pdf_text(pages, len(jobs), llm.IMAGE_DESCRIBE, 2)
+    check("본문에 누락 사실이 남는다", "6쪽 중 앞 2쪽만" in raw,
+          raw[-90:].replace("\n", " "))
+
+
 def test_image_budget():
     print("[③ 이미지 예산 — 파일당이 아니라 전체]")
     pdf = build_pdf()      # 파일 하나당 설명 대상 2쪽
@@ -392,6 +438,7 @@ if __name__ == "__main__":
         test_image_cache()
         test_cache_modes_do_not_collide()
         test_failure_not_cached()
+        test_image_coverage()
         test_image_budget()
         test_exam_merge()
         test_prompt_split()

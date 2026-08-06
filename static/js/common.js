@@ -629,10 +629,22 @@ function cutSpendText(payload) {
   return `LLM 호출 ${u.calls.toLocaleString('ko-KR')}회`;
 }
 
+// 건너뛴 쪽 번호를 "12, 13, 14쪽 외 5쪽"으로. 전부 나열하면 모달이 번호로 가득 찬다.
+const CUT_PAGE_PREVIEW = 8;
+function cutPageList(pages) {
+  const list = pages || [];
+  if (!list.length) return '';
+  const head = list.slice(0, CUT_PAGE_PREVIEW).join(', ');
+  const rest = list.length - CUT_PAGE_PREVIEW;
+  return rest > 0 ? `${head}쪽 외 ${rest}쪽` : `${head}쪽`;
+}
+
 /**
  * 경고를 띄우고 사용자의 선택을 기다린다.
- * @param {Array}  warnings 서버가 준 목록 — {side, name, coverage,
- *                          from_page, from_words, to_page, to_words}
+ * @param {Array}  warnings 서버가 준 목록. kind로 두 종류가 섞여 온다 —
+ *                 kind='text'  {side, name, coverage, from_page, from_words, to_page, to_words}
+ *                 kind='image' {side, name, candidates, processed, skipped, skipped_pages}
+ *                 (kind가 없으면 예전 형식이므로 text로 본다)
  * @param {Object} spend    같은 응답의 {usage, credits} — 추출까지 쓴 양
  * @returns {Promise<boolean>} 진행하면 true
  */
@@ -641,21 +653,36 @@ function confirmTruncation(warnings, spend) {
   const at = (page, words) =>
     (page ? `<b>${page}쪽</b> ` : '') + `“${escHtml(words || '…')}”`;
 
+  const head = w => `
+    <div class="cut-file">
+      <b>${escHtml(w.side)}</b>
+      <span class="cut-name">${escHtml(w.name)}</span>
+      <span class="cut-pct">${w.kind === 'image'
+        ? `그림 ${w.candidates}쪽 중 ${w.processed}쪽만 반영`
+        : `${w.coverage}%만 반영`}</span>
+    </div>`;
+
   const rows = warnings.map(w => `
     <div class="cut-row">
-      <div class="cut-file">
-        <b>${escHtml(w.side)}</b>
-        <span class="cut-name">${escHtml(w.name)}</span>
-        <span class="cut-pct">${w.coverage}%만 반영</span>
-      </div>
+      ${head(w)}
       <div class="cut-range">
-        ${at(w.from_page, w.from_words)}<span class="cut-arrow">→</span>${at(w.to_page, w.to_words)}
-        <span style="color:#94a3b8;">사이를 버립니다</span>
+        ${w.kind === 'image'
+          ? `<span style="color:#94a3b8;">그림·필기를 읽지 않는 쪽</span>
+             ${escHtml(cutPageList(w.skipped_pages))}`
+          : `${at(w.from_page, w.from_words)}<span class="cut-arrow">→</span>${at(w.to_page, w.to_words)}
+             <span style="color:#94a3b8;">사이를 버립니다</span>`}
       </div>
     </div>`).join('');
 
+  // 두 종류가 섞일 수 있으므로 안내 문구도 섞인 만큼만 말한다
+  const nText  = warnings.filter(w => w.kind !== 'image').length;
+  const nImage = warnings.length - nText;
+  const parts = [];
+  if (nText)  parts.push(`${nText}개 파일이 배정된 글자수를 넘습니다`);
+  if (nImage) parts.push(`${nImage}개 파일의 그림·필기가 처리 상한을 넘습니다`);
   document.getElementById('cut-modal-sub').textContent =
-    `${warnings.length}개 파일이 배정된 글자수를 넘습니다. 아래 구간이 결과에 들어가지 않습니다.`;
+    parts.join(' · ') + '. 아래 내용이 결과에 들어가지 않습니다.';
+
   document.getElementById('cut-modal-list').innerHTML = rows;
   document.getElementById('cut-modal-spend').textContent = cutSpendText(spend);
   document.getElementById('cut-modal').classList.add('open');

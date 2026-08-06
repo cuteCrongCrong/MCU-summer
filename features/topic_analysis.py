@@ -88,13 +88,22 @@ def _finish_analysis(result, lecture_docs, exam_docs, model, provider, title, sp
 def truncation_warnings(*doc_groups) -> list:
     """
     상한을 넘겨 일부가 버려지는 문서만 골라 화면용 경고 목록으로. 없으면 빈 리스트.
-    (llm.extract_labeled_docs가 doc["cut"]에 넣어둔 계산 결과를 옮겨 담는다)
+    (llm.extract_labeled_docs가 doc["cut"]·doc["img"]에 넣어둔 계산 결과를 옮겨 담는다)
+
+    두 종류를 한 목록에 담고 kind로 구분한다 — 사용자 입장에서는 "이대로 진행할까"를
+    묻는 같은 질문이라, 모달을 두 번 띄우면 확인을 두 번 받아야 한다.
+      kind="text"  : 글자수 상한 초과 (어느 구간이 버려지는지)
+      kind="image" : 그림·필기 쪽수 상한 초과 (몇 쪽 중 몇 쪽만 읽었는지)
     """
     out = []
     for side, docs in doc_groups:
         for d in docs:
             if d.get("cut"):
-                out.append({"side": side, "name": d["name"], **d["cut"]})
+                out.append({"kind": "text", "side": side, "name": d["name"],
+                            **d["cut"]})
+            img = d.get("img") or {}
+            if img.get("skipped"):
+                out.append({"kind": "image", "side": side, "name": d["name"], **img})
     return out
 
 

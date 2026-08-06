@@ -186,24 +186,48 @@ def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None,
     for i, page in enumerate(doc):
         text = page.get_text()
         entry = {"idx": i, "text": text if text.strip() else "", "desc": None}
+        # 상한 검사를 후보 판정 '밖'에 둔다 — 안에 두면 상한을 채우는 순간 뒤 페이지는
+        # 후보인지조차 따지지 않고 넘어가서, 전체가 몇 쪽이었는지가 어디에도 안 남는다.
+        # 그러면 화면 진행률이 15/15로 떠서 다 읽은 것처럼 보인다(실제로는 잘렸는데도).
+        # 세는 것은 로컬 계산이라 LLM 비용이 0이므로, 끝까지 세고 렌더·호출만 상한에 건다.
         # or가 왼쪽부터 끊기므로 비싼 has_vector_ink는 앞의 두 조건이 다 빗나갈 때만 돈다
-        want_img = (
+        is_candidate = (
             image_mode and api_key
-            and len(img_jobs) < max_pages
             and (len(text.strip()) < SPARSE_TEXT_THRESHOLD
                  or has_meaningful_image(page, min_area)
                  or (detect_ink and has_vector_ink(page)))
         )
-        if want_img:
-            try:
-                pix = page.get_pixmap(dpi=dpi)
-                entry["png"] = pix.tobytes("png")
-                img_jobs.append(entry)
-            except Exception:
-                pass
+        if is_candidate:
+            if len(img_jobs) < max_pages:
+                try:
+                    pix = page.get_pixmap(dpi=dpi)
+                    entry["png"] = pix.tobytes("png")
+                    img_jobs.append(entry)
+                except Exception:
+                    pass
+            else:
+                # 상한을 넘겨 못 읽는 쪽. image_coverage()가 이걸 세어 경고로 만든다.
+                entry["img_skipped"] = True
         pages.append(entry)
     doc.close()
     return pages, img_jobs
+
+
+def image_coverage(pages, img_jobs) -> dict:
+    """
+    이 PDF에서 이미지 대상이 몇 쪽이었고 그중 몇 쪽을 실제로 처리했는지.
+
+    상한에 걸려 못 읽은 쪽이 있으면 skipped_pages에 쪽 번호(1부터)가 담긴다.
+    화면은 이걸로 "그림 47쪽 중 15쪽만 반영"을 보여주고, 진행 전에 확인을 받는다.
+    """
+    skipped = [e["idx"] + 1 for e in pages if e.get("img_skipped")]
+    processed = len(img_jobs)
+    return {
+        "candidates":    processed + len(skipped),
+        "processed":     processed,
+        "skipped":       len(skipped),
+        "skipped_pages": skipped,
+    }
 
 
 def describe_images_progressively(img_jobs, api_key: str, model: str, provider=None,
@@ -280,7 +304,14 @@ def assemble_pdf_text(pages, img_job_count: int = 0, image_mode: dict = None,
         if block:
             parts.append("\n".join(block))
 
-    if cap > 0 and img_job_count >= cap:
+    # 상한에 걸려 못 읽은 쪽이 있으면 LLM에게도 알린다 — 자료가 온전하지 않다는 사실을
+    # 모르면 "여기 없는 내용"을 근거 삼아 단정하는 답이 나온다.
+    # 이제 후보를 끝까지 세므로 '몇 쪽 중 몇 쪽'까지 적을 수 있다.
+    skipped = sum(1 for e in pages if e.get("img_skipped"))
+    if skipped:
+        parts.append(f"...(그림·필기 {img_job_count + skipped}쪽 중 앞 {img_job_count}쪽만 "
+                     f"처리됨 — 나머지 {skipped}쪽은 반영되지 않음)")
+    elif cap > 0 and img_job_count >= cap:
         parts.append(f"...(이미지 페이지는 최대 {cap}개까지만 처리됨)")
 
     return "\n\n".join(parts)
@@ -1288,6 +1319,9 @@ def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
             # 상한을 넘겼다면 몇 번째 줄이 버려지는지 (안 넘으면 None).
             # 진행 전에 사용자에게 보여주고 확인받는 데 쓴다 — DB에는 저장하지 않는다.
             "cut": truncation_report(raw, per_doc),
+            # 그림·필기가 몇 쪽 중 몇 쪽 반영됐는지. 'cut'과 같은 용도(진행 전 확인)라
+            # 함께 싣는다. 이미지 처리를 안 하는 경우엔 후보가 0이라 경고도 안 뜬다.
+            "img": image_coverage(pages, img_jobs),
             "label": f"{label_prefix}{i}",
             "name": name,
             "text": text,
