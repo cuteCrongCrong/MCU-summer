@@ -217,51 +217,81 @@ def truncate(text: str, max_chars: int = MAX_TEXT_CHARS) -> str:
     return text[:head] + "\n\n...(중략: 분량 초과로 일부 생략)...\n\n" + text[-tail:]
 
 
+# 추출 텍스트에 박아둔 쪽 표시 — assemble_pdf_text가 넣는다 ([페이지 3], [페이지 3 그림 속 글자])
+_PAGE_MARKER = re.compile(r"\[페이지 (\d+)[^\]]*\]")
+_WORD = re.compile(r"\S+")
+
+
+def _page_at(raw: str, pos: int):
+    """pos 앞쪽에서 가장 가까운 쪽 번호. 마커가 없으면 None."""
+    page = None
+    for m in _PAGE_MARKER.finditer(raw, 0, pos + 1):
+        page = int(m.group(1))
+    return page
+
+
+def _word_start_after(raw: str, pos: int) -> int:
+    """
+    pos가 어절 한가운데면 그 어절 끝으로 민다.
+    경계에 걸린 어절은 앞부분이 남으므로 '온전히 버려지는' 첫 어절이 아니다.
+    """
+    n = len(raw)
+    if 0 < pos < n and not raw[pos - 1].isspace():
+        while pos < n and not raw[pos].isspace():
+            pos += 1
+    return pos
+
+
+def _word_end_before(raw: str, pos: int) -> int:
+    """pos가 어절 한가운데면 그 어절 앞으로 당긴다. (뒷부분이 남는 어절을 제외)"""
+    if pos < len(raw) and not raw[pos].isspace():
+        while pos > 0 and not raw[pos - 1].isspace():
+            pos -= 1
+    return pos
+
+
+def _words_near(raw: str, start: int, end: int, count: int, take_last: bool) -> str:
+    """
+    [start, end) 구간에서 어절 count개를 뽑는다. take_last면 뒤에서, 아니면 앞에서.
+    쪽 표시([페이지 N])는 원문이 아니라 우리가 넣은 것이므로 건너뛴다.
+    """
+    spans = [(m.start(), m.end()) for m in _PAGE_MARKER.finditer(raw, start, end)]
+    words = []
+    for m in _WORD.finditer(raw, start, end):
+        if any(s < m.end() and m.start() < e for s, e in spans):
+            continue                       # 쪽 표시의 조각
+        words.append(m.group())
+        if not take_last and len(words) >= count:
+            break
+    picked = words[-count:] if take_last else words[:count]
+    return " ".join(picked)
+
+
 def truncation_report(raw: str, limit: int) -> dict:
     """
-    limit을 넘는 문서에서 **몇 번째 줄이 버려지는지** 계산한다. 넘지 않으면 None.
+    limit을 넘는 문서에서 **어디부터 어디까지 버려지는지**를 쪽·어절로 알려준다.
+    넘지 않으면 None.
 
-    사용자에게 "이 파일의 어디가 빠지는지" 보여주고 진행 여부를 묻기 위한 것이라,
-    truncate()와 같은 분할(_truncate_split)을 써서 실제로 잘리는 범위와 일치시킨다.
-    줄 번호는 1부터 센다.
+    줄 번호 대신 쪽과 어절을 쓰는 이유: 추출 텍스트의 줄 번호는 원본 PDF에서 눈으로
+    찾을 수가 없다. "12쪽 'superior orbital'부터"라야 사용자가 실제로 확인할 수 있다.
+    truncate()와 같은 분할(_truncate_split)을 쓰므로 실제로 잘리는 구간과 일치한다.
     """
     if len(raw) <= limit:
         return None
     head, tail = _truncate_split(limit)
-    lines = raw.split("\n")
-
-    # 앞에서 온전히 남는 줄 수 (줄바꿈 1자를 길이에 포함해 센다)
-    kept_head, end = 0, 0
-    for ln in lines:
-        end += len(ln) + 1
-        if end > head:
-            break
-        kept_head += 1
-
-    # 뒤쪽이 시작되는 줄 — 이 줄은 일부만 남으므로 '살아남는 첫 줄'로 본다
-    tail_start = len(raw) - tail
-    first_tail_line, end = len(lines), 0
-    for i, ln in enumerate(lines):
-        end += len(ln) + 1
-        if end > tail_start:
-            first_tail_line = i + 1
-            break
-
-    drop_from = kept_head + 1
-    drop_to = first_tail_line - 1
-    dropped = max(0, drop_to - drop_from + 1)
-    # 버려지는 첫 줄을 조금 보여주면 어디쯤인지 감이 온다
-    preview = lines[drop_from - 1].strip()[:80] if dropped else ""
+    # 경계에 걸친 어절은 절반이 남으므로 온전히 버려지는 구간으로 좁힌다
+    start = _word_start_after(raw, head)            # 여기서부터 버려진다
+    end = _word_end_before(raw, len(raw) - tail)    # 여기부터 다시 남는다
 
     return {
         "chars": len(raw),
         "limit": limit,
         "coverage": round(limit / len(raw) * 100),
-        "total_lines": len(lines),
-        "drop_from": drop_from,
-        "drop_to": drop_to,
-        "dropped_lines": dropped,
-        "preview": preview,
+        # 버려지는 첫 어절 두 개 / 마지막 어절 두 개와 그 쪽 번호
+        "from_page": _page_at(raw, start),
+        "from_words": _words_near(raw, start, min(start + 400, end), 2, False),
+        "to_page": _page_at(raw, end),
+        "to_words": _words_near(raw, max(start, end - 400), end, 2, True),
     }
 
 

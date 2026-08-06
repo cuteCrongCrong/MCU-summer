@@ -324,9 +324,11 @@ def test_truncation_confirm_flow():
     check("경고는 초과한 1개 파일만", len(warns) == 1, [w.get("name") for w in warns])
     w = warns[0]
     check("어느 파일인지 알려준다", w.get("name") == "큰파일.pdf", w.get("name"))
-    check("버릴 줄 범위를 알려준다",
-          w.get("drop_from", 0) >= 1 and w.get("drop_to", 0) > w.get("drop_from", 0), w)
-    check("버리는 줄 수가 양수", w.get("dropped_lines", 0) > 0, w.get("dropped_lines"))
+    check("버리기 시작하는 쪽·어절", bool(w.get("from_page")) and bool(w.get("from_words")), w)
+    check("버리기 끝나는 쪽·어절", bool(w.get("to_page")) and bool(w.get("to_words")), w)
+    check("시작이 끝보다 앞 쪽", w.get("from_page", 0) <= w.get("to_page", 0), w)
+    check("어절은 2개씩", len(w["from_words"].split()) == 2
+          and len(w["to_words"].split()) == 2, (w["from_words"], w["to_words"]))
     check("토큰이 온다", bool(confirm.get("extract_token")))
 
     extract_calls = (confirm.get("usage") or {}).get("calls", 0)

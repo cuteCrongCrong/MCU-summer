@@ -115,9 +115,12 @@ def test_topic_confirm():
     w = warns[0]
     check("강의록 쪽임을 알려준다", w.get("side") == "강의록", w.get("side"))
     check("어느 파일인지 알려준다", w.get("name") == "큰강의록.pdf", w.get("name"))
-    check("버릴 줄 범위를 알려준다",
-          w.get("drop_to", 0) > w.get("drop_from", 0) >= 1, w)
-    check("전체 줄 수도 알려준다", w.get("total_lines", 0) > w.get("drop_to", 0), w)
+    check("버리기 시작하는 쪽·어절", bool(w.get("from_page")) and bool(w.get("from_words")), w)
+    check("버리기 끝나는 쪽·어절", bool(w.get("to_page")) and bool(w.get("to_words")), w)
+    check("시작 쪽이 끝 쪽보다 앞", w.get("from_page", 0) <= w.get("to_page", 0), w)
+    check("어절에 쪽 표시가 안 섞인다",
+          all("페이지" not in x and "[" not in x
+              for x in (w["from_words"], w["to_words"])), w)
     token = d1.get("extract_token")
     check("토큰이 온다", bool(token))
 

@@ -611,27 +611,30 @@ function resolveCutModal(ok) {
 
 /**
  * 경고를 띄우고 사용자의 선택을 기다린다.
- * @param {Array} warnings 서버가 준 목록 — {side, name, chars, limit, coverage,
- *                         total_lines, drop_from, drop_to, dropped_lines, preview}
+ * @param {Array} warnings 서버가 준 목록 — {side, name, coverage,
+ *                         from_page, from_words, to_page, to_words}
  * @returns {Promise<boolean>} 진행하면 true
  */
 function confirmTruncation(warnings) {
-  const nf = n => (n || 0).toLocaleString('ko-KR');
+  // 쪽 번호는 마커가 없으면 null로 온다 (스캔 PDF 등) → 그때는 어절만 보여준다
+  const at = (page, words) =>
+    (page ? `<b>${page}쪽</b> ` : '') + `“${escHtml(words || '…')}”`;
+
   const rows = warnings.map(w => `
-    <div class="topic-doc-row" style="display:block;padding:10px 0;">
-      <div><b>${escHtml(w.side)}</b> · ${escHtml(w.name)}</div>
-      <div style="font-size:0.78rem;color:#b45309;margin-top:4px;">
-        추출 ${nf(w.chars)}자 중 ${nf(w.limit)}자(${w.coverage}%)만 반영 —
-        전체 ${nf(w.total_lines)}줄 가운데
-        <b>${nf(w.drop_from)}번째 줄 ~ ${nf(w.drop_to)}번째 줄</b>
-        (${nf(w.dropped_lines)}줄)을 버립니다.
+    <div class="cut-row">
+      <div class="cut-file">
+        <b>${escHtml(w.side)}</b>
+        <span class="cut-name">${escHtml(w.name)}</span>
+        <span class="cut-pct">${w.coverage}%만 반영</span>
       </div>
-      ${w.preview ? `<div style="font-size:0.75rem;color:#64748b;margin-top:4px;">
-        버려지는 첫 줄: “${escHtml(w.preview)}”</div>` : ''}
+      <div class="cut-range">
+        ${at(w.from_page, w.from_words)}<span class="cut-arrow">→</span>${at(w.to_page, w.to_words)}
+        <span style="color:#94a3b8;">사이를 버립니다</span>
+      </div>
     </div>`).join('');
 
   document.getElementById('cut-modal-sub').textContent =
-    `${warnings.length}개 파일이 배정된 글자수를 넘습니다. 넘는 부분은 가운데부터 버려집니다.`;
+    `${warnings.length}개 파일이 배정된 글자수를 넘습니다. 아래 구간이 결과에 들어가지 않습니다.`;
   document.getElementById('cut-modal-list').innerHTML = rows;
   document.getElementById('cut-modal').classList.add('open');
 

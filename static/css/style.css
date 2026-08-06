@@ -987,6 +987,32 @@ main { margin-top: 20px; }
 }
 .modal .divider { text-align: center; font-size: 0.76rem; color: #94a3b8; margin: 14px 0 4px; }
 
+/* ── 분량 초과 경고 모달 ── */
+.modal .cut-row {
+  background: var(--bg); border-radius: 10px;
+  padding: 11px 13px; margin-bottom: 8px;
+}
+.modal .cut-file {
+  display: flex; align-items: baseline; gap: 6px;
+  font-size: 0.88rem; color: var(--text);
+}
+/* 좁은 화면에서 '강의록'이 한 글자씩 접히지 않도록 라벨은 줄이지 않는다.
+   대신 파일명이 줄어들며 말줄임된다. */
+.modal .cut-file > b { flex: none; white-space: nowrap; }
+.modal .cut-file .cut-name {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 반영률은 오른쪽 끝에 붙여 파일이 여러 개일 때 세로로 읽히게 한다 */
+.modal .cut-pct {
+  margin-left: auto; flex: none;
+  font-size: 0.78rem; font-weight: 700; color: #b45309;
+}
+.modal .cut-range {
+  margin-top: 6px; font-size: 0.82rem; color: #b45309; line-height: 1.6;
+}
+.modal .cut-range b { color: var(--text); }
+.modal .cut-range .cut-arrow { color: #94a3b8; margin: 0 4px; }
+
 /* ── 분량 초과 경고 모달의 선택 버튼 ── */
 .modal .cut-actions {
   display: flex; gap: 8px; justify-content: flex-end; align-items: center;
