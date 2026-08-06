@@ -494,7 +494,7 @@ function renderSessionList() {
         <div style="font-size:0.75rem;color:#94a3b8;margin-top:2px;">${escHtml(s.created_at || '')} · ${escHtml(providerLabel(s.provider))} / ${escHtml(s.model || '')}${compo ? ' · ' + compo : ''}</div>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0;">
-        <button onclick="useSessionRow(${s.id})" style="font-size:0.78rem;padding:5px 10px;border:none;border-radius:7px;background:#2563eb;color:#fff;cursor:pointer;">${active ? '선택됨' : '불러오기'}</button>
+        <button onclick="useSessionRow(${s.id})" style="font-size:0.78rem;padding:5px 10px;border:none;border-radius:7px;background:#2f5c50;color:#fff;cursor:pointer;">${active ? '선택됨' : '불러오기'}</button>
         <button onclick="renameSessionRow(${s.id})" title="이름 변경" style="font-size:0.78rem;padding:5px 8px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;">✏️</button>
         <button onclick="deleteSessionRow(${s.id})" title="삭제" style="font-size:0.78rem;padding:5px 8px;border:1px solid #fecaca;border-radius:7px;background:#fff;color:#dc2626;cursor:pointer;">🗑️</button>
       </div>
@@ -627,7 +627,7 @@ async function loadModels() {
     return;
   }
   msg.textContent = '불러오는 중…';
-  msg.style.color = '#0ea5e9';
+  msg.style.color = '#4f8a76';
   loadCredits();          // 키가 들어온 시점 — 잔액도 같이 갱신
   try {
     const url = '/models?provider=' + encodeURIComponent(currentProvider || '');

@@ -21,7 +21,7 @@
   </g>
 
   <!-- 번호 뱃지 -->
-  <g font-size="16" font-weight="700" text-anchor="middle">
+  <g font-size="24" font-weight="700" text-anchor="middle">
     <circle cx="260" cy="112" r="16" fill="#2563eb"/><text x="260" y="118" fill="#fff">1</text>
     <circle cx="260" cy="206" r="16" fill="#2563eb"/><text x="260" y="212" fill="#fff">2</text>
     <circle cx="260" cy="306" r="16" fill="#2563eb"/><text x="260" y="312" fill="#fff">3</text>

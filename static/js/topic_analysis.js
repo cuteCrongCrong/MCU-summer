@@ -108,7 +108,7 @@ async function topicLoadModels() {
     return;
   }
   msg.textContent = '불러오는 중…';
-  msg.style.color = '#0ea5e9';
+  msg.style.color = '#4f8a76';
   try {
     const url = '/models?provider=' + encodeURIComponent(topicCurrentProvider || '');
     const resp = await fetch(url, { headers: { 'X-Api-Key': apiKey } });
