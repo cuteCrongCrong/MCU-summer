@@ -102,12 +102,18 @@ class Provider(ABC):
 
     @abstractmethod
     def describe_image(self, png_bytes: bytes, api_key: str, model: str,
-                       usage=None, prompt: str = None) -> str:
+                       usage=None, prompt: str = None,
+                       max_tokens: int = None) -> str:
         """
         이미지를 vision 모델에 보내 한국어 텍스트를 받는다.
 
         prompt: 생략하면 IMAGE_DESC_PROMPT(그림이 무엇인지 설명).
                 IMAGE_TEXT_PROMPT를 주면 그림 속 글자만 그대로 옮긴다.
+        max_tokens: 생략하면 프로바이더 기본값. 하는 일에 따라 필요량이 크게 달라서
+                호출부가 지정한다 — 그림 설명은 짧지만, 글자 전사는 빽빽한 슬라이드
+                한 장을 통째로 옮겨야 한다.
+                ⚠️ 사고(thinking)를 하는 모델은 그 토큰도 이 한도에 포함된다.
+                   빠듯하게 잡으면 사고가 예산을 먹고 본문이 단어 중간에서 잘린다.
         """
 
     @abstractmethod

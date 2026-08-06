@@ -142,12 +142,13 @@ class AnthropicProvider(Provider):
                 _check_refusal(final)
 
     def describe_image(self, png_bytes: bytes, api_key: str, model: str,
-                       usage=None, prompt: str = None) -> str:
+                       usage=None, prompt: str = None,
+                       max_tokens: int = None) -> str:
         b64 = base64.b64encode(png_bytes).decode()
         with _translate_errors():
             response = self._client(api_key).messages.create(
                 model=model,
-                max_tokens=IMAGE_MAX_TOKENS,
+                max_tokens=max_tokens or IMAGE_MAX_TOKENS,
                 messages=[{
                     "role": "user",
                     "content": [

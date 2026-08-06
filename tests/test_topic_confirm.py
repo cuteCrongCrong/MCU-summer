@@ -41,7 +41,8 @@ class FakeProvider:
     def complete(self, prompt, api_key, model, max_tokens=None, usage=None):
         return "{}"
 
-    def describe_image(self, png_bytes, api_key, model, usage=None, prompt=None):
+    def describe_image(self, png_bytes, api_key, model, usage=None, prompt=None,
+                       max_tokens=None):
         return "그림 설명"
 
     def list_models(self, api_key):

@@ -87,7 +87,8 @@ class FakeProvider:
         if usage is not None:
             usage.add(model, FakeUsage())
 
-    def describe_image(self, png_bytes, api_key, model, usage=None, prompt=None):
+    def describe_image(self, png_bytes, api_key, model, usage=None, prompt=None,
+                       max_tokens=None):
         if usage is not None:
             usage.add(model, FakeUsage())
         return "그림 설명"

@@ -57,6 +57,17 @@ TRANSCRIBE_RENDER_DPI = 150
 DESCRIBE_MIN_AREA_RATIO   = 0.12
 TRANSCRIBE_MIN_AREA_RATIO = 0.03
 
+# 이미지 호출 한 번의 출력 한도.
+#   ⚠️ 사고(thinking)를 하는 모델은 **사고 토큰도 이 한도에 포함**된다. 빠듯하게 잡으면
+#      사고가 예산을 다 먹고 본문이 단어 중간에서 잘린다. 실측(전북대 게이트웨이):
+#      한도 1024일 때 gemini-3.6-flash는 쪽당 175자만 남기고 24%가 단어 중간에서 끊겼다
+#      (같은 쪽을 claude-sonnet-4-6은 806자로 옮겼다). 게이트웨이가 보고하는 출력 토큰에는
+#      사고분이 안 잡혀서, 사용량 표만 보면 한도에 안 걸린 것처럼 보이는 점도 주의.
+#   설명은 '무엇인지' 한 문단이면 되지만, 전사는 빽빽한 슬라이드 한 장을 통째로 옮긴다.
+#   한도는 천장일 뿐이라 올려도 실제 생성한 만큼만 과금된다.
+DESCRIBE_MAX_OUTPUT   = 2048
+TRANSCRIBE_MAX_OUTPUT = 4096
+
 # 태블릿 벡터 필기(굿노트 등) 감지 임계값 — 페이지의 '곡선' 세그먼트 개수.
 # 인쇄 슬라이드 위에 펜으로 쓴 페이지는 텍스트 레이어가 멀쩡하고 래스터 이미지도 없어서
 # 위 두 조건에 안 걸린다. 그렇다고 벡터 도형이 있다고 다 잡으면 표·밑줄까지 걸린다.
@@ -78,11 +89,13 @@ IMAGE_DESCRIBE = {
     "prompt": IMAGE_DESC_PROMPT, "label": "이미지 설명", "max_pages": IMAGE_DESC_MAX,
     "detect_ink": False,
     "dpi": DESCRIBE_RENDER_DPI, "min_area_ratio": DESCRIBE_MIN_AREA_RATIO,
+    "max_output": DESCRIBE_MAX_OUTPUT,
 }
 IMAGE_TRANSCRIBE = {
     "prompt": IMAGE_TEXT_PROMPT, "label": "그림 속 글자", "max_pages": LECTURE_IMAGE_MAX,
     "detect_ink": True,
     "dpi": TRANSCRIBE_RENDER_DPI, "min_area_ratio": TRANSCRIBE_MIN_AREA_RATIO,
+    "max_output": TRANSCRIBE_MAX_OUTPUT,
 }
 
 # 문제 유형 4분류 (집계·few-shot·생성에서 공통 사용)
@@ -130,19 +143,21 @@ def has_meaningful_image(page, min_area_ratio: float) -> bool:
     return False
 
 
-def image_cache_key(prompt: str, png_bytes: bytes) -> str:
+def image_cache_key(prompt: str, png_bytes: bytes, max_output: int = 0) -> str:
     """
-    이미지 설명 캐시의 키 — **프롬프트까지 넣어서** 해싱한다.
+    이미지 결과 캐시의 키 — **결과를 바꾸는 입력을 전부** 해싱한다.
 
-    같은 페이지라도 기출로 올리면 '그림 설명'을, 강의록으로 올리면 '그림 속 글자
-    전사'를 받아야 한다. PNG만 해싱하면 먼저 넣은 쪽이 반대쪽 요청에 그대로
-    돌아와서, 강의록 원문 자리에 모델이 지어낸 설명 문장이 조용히 들어간다.
-    (주제 분석의 "주제명은 강의록에 있는 표현만" 규칙이 무력해진다)
-
-    PNG 바이트를 그대로 해싱하므로 렌더 해상도가 바뀌면 키도 바뀐다 — 옛 해상도로
-    만든 설명이 새 설정에 재사용되지 않는다.
+    ① 프롬프트: 같은 페이지라도 기출로 올리면 '그림 설명'을, 강의록으로 올리면
+       '그림 속 글자 전사'를 받아야 한다. PNG만 해싱하면 먼저 넣은 쪽이 반대쪽 요청에
+       그대로 돌아와서, 강의록 원문 자리에 모델이 지어낸 설명 문장이 조용히 들어간다.
+       (주제 분석의 "주제명은 강의록에 있는 표현만" 규칙이 무력해진다)
+    ② PNG 바이트: 렌더 해상도가 바뀌면 키도 바뀐다.
+    ③ 출력 한도: 한도에 걸려 잘린 결과가 캐시에 남아 있는데 한도만 올리면, 다시 돌려도
+       잘린 옛 결과가 그대로 나온다. 한도를 키에 넣어 두면 값을 고치는 순간 자동으로
+       다시 받는다 — 캐시를 손으로 비울 일이 없다.
     """
-    return hashlib.sha256(prompt.encode("utf-8") + b"\x00" + png_bytes).hexdigest()
+    seed = f"{prompt}\x00{max_output}".encode("utf-8")
+    return hashlib.sha256(seed + b"\x00" + png_bytes).hexdigest()
 
 
 def has_vector_ink(page) -> bool:
@@ -246,12 +261,14 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
         return
     prov = provider or _default_provider
     prov_name = getattr(prov, "name", "") or ""
-    prompt = (image_mode or IMAGE_DESCRIBE)["prompt"]
+    mode = image_mode or IMAGE_DESCRIBE
+    prompt = mode["prompt"]
+    max_output = mode.get("max_output") or DESCRIBE_MAX_OUTPUT
 
     done = 0
     pending = []
     for e in img_jobs:
-        e["cache_key"] = image_cache_key(prompt, e["png"])
+        e["cache_key"] = image_cache_key(prompt, e["png"], max_output)
         cached = get_cached_image_desc(e["cache_key"], prov_name, model)
         if cached:
             e["desc"] = cached
@@ -265,7 +282,8 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
 
     with ThreadPoolExecutor(max_workers=4) as ex:
         futs = {ex.submit(prov.describe_image, e["png"], api_key, model,
-                          usage=usage, prompt=prompt): e for e in pending}
+                          usage=usage, prompt=prompt, max_tokens=max_output): e
+                for e in pending}
         for fut in as_completed(futs):
             entry = futs[fut]
             try:

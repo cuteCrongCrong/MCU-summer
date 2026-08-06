@@ -113,9 +113,11 @@ class CountingProvider:
                         cache_prefix=None):
         yield self.complete(prompt, api_key, model, max_tokens, usage, cache_prefix)
 
-    def describe_image(self, png_bytes, api_key, model, usage=None, prompt=None):
+    def describe_image(self, png_bytes, api_key, model, usage=None, prompt=None,
+                       max_tokens=None):
         self.image_calls += 1
         self.last_image_prompt = prompt
+        self.last_image_max_tokens = max_tokens
         return f"그림 결과 {self.image_calls}"
 
     def list_models(self, api_key):
@@ -184,7 +186,12 @@ def test_image_cache():
     first_calls = prov.image_calls
     check("첫 실행은 실제로 호출한다", first_calls == len(jobs1),
           f"{first_calls} != {len(jobs1)}")
+    # 폴백 문구도 truthy 라서 '채워졌다'만 보면 안 된다 — describe_image 시그니처가
+    # 어긋나면 TypeError 가 폴백으로 삼켜져 테스트가 통과해버린 적이 있다.
     check("결과가 채워진다", all(e.get("desc") for e in jobs1))
+    check("폴백(실패) 문구가 아니다",
+          not any("실패" in (e.get("desc") or "") for e in jobs1),
+          str([e.get("desc") for e in jobs1][:1]))
 
     # 같은 PDF를 다시 올린 상황
     prov2 = CountingProvider()
@@ -242,11 +249,51 @@ def test_cache_modes_do_not_collide():
     check("같은 이미지라도 모드가 다르면 키가 다르다", key_d != key_t)
 
 
+def test_output_cap():
+    """
+    이미지 호출 출력 한도가 모드별로 전달되는지, 그리고 한도를 바꾸면 캐시가
+    자동으로 무효화되는지.
+
+    왜 중요한가 — 사고(thinking)를 하는 모델은 사고 토큰도 이 한도에 포함된다.
+    한도가 빠듯하면 사고가 예산을 먹고 전사가 단어 중간에서 잘리는데, 잘린 결과가
+    캐시에 남으면 한도만 올려도 옛 결과가 그대로 재사용된다.
+    """
+    print("[⑦ 출력 한도 — 모드별 전달 + 한도 변경 시 캐시 무효화]")
+
+    check("전사 한도가 설명 한도보다 크다",
+          llm.TRANSCRIBE_MAX_OUTPUT > llm.DESCRIBE_MAX_OUTPUT,
+          f"{llm.TRANSCRIBE_MAX_OUTPUT} vs {llm.DESCRIBE_MAX_OUTPUT}")
+    check("두 모드 모두 한도를 들고 있다",
+          llm.IMAGE_DESCRIBE.get("max_output") and llm.IMAGE_TRANSCRIBE.get("max_output"))
+
+    doc = fitz.open()
+    doc.new_page().insert_text((50, 60), "8", fontsize=9)
+    pdf = doc.tobytes()
+    doc.close()
+
+    # 모드마다 제 한도가 프로바이더까지 내려가는지
+    for mode, want in ((llm.IMAGE_DESCRIBE, llm.DESCRIBE_MAX_OUTPUT),
+                       (llm.IMAGE_TRANSCRIBE, llm.TRANSCRIBE_MAX_OUTPUT)):
+        prov = CountingProvider()
+        _, jobs = llm.read_pdf_pages(pdf, "key", mode)
+        describe_all(jobs, prov, model=f"cap-{want}", mode=mode)
+        check(f"{mode['label']} 모드는 한도 {want} 전달",
+              prov.last_image_max_tokens == want, str(prov.last_image_max_tokens))
+
+    # 한도가 키에 들어가야 값을 올렸을 때 다시 받는다
+    k_low = llm.image_cache_key(llm.IMAGE_TEXT_PROMPT, b"png", 1024)
+    k_high = llm.image_cache_key(llm.IMAGE_TEXT_PROMPT, b"png", 4096)
+    check("한도가 다르면 캐시 키가 다르다", k_low != k_high)
+    check("한도가 같으면 캐시 키도 같다",
+          k_high == llm.image_cache_key(llm.IMAGE_TEXT_PROMPT, b"png", 4096))
+
+
 def test_failure_not_cached():
     print("[②-b 실패는 캐시하지 않는다]")
 
     class FailingProvider(CountingProvider):
-        def describe_image(self, png_bytes, api_key, model, usage=None, prompt=None):
+        def describe_image(self, png_bytes, api_key, model, usage=None, prompt=None,
+                           max_tokens=None):
             self.image_calls += 1
             raise RuntimeError("이미지 미지원")
 
@@ -437,6 +484,7 @@ if __name__ == "__main__":
         test_image_selection()
         test_image_cache()
         test_cache_modes_do_not_collide()
+        test_output_cap()
         test_failure_not_cached()
         test_image_coverage()
         test_image_budget()
