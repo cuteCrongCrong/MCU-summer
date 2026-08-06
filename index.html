@@ -28,9 +28,15 @@
 </svg>
 
 <header style="position:relative;">
-  <div id="auth-widget" style="position:absolute;top:10px;right:14px;color:#fff;"></div>
-  <h1>🩺 MCU 학습 플랫폼</h1>
-  <p>의대생을 위한 AI 학습 도우미</p>
+  <div id="auth-widget" style="position:absolute;top:14px;right:16px;"></div>
+  <p class="hdr-eyebrow">MCU 학습 플랫폼</p>
+  <p class="hdr-tagline">의대생을 위한 AI 학습 도우미</p>
+  <div class="hdr-quote-row">
+    <p class="hdr-quote" id="home-quote">문구 불러오는 중…</p>
+    <button type="button" class="hdr-quote-refresh" onclick="rerollHomeQuote()" aria-label="다른 문구 보기">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg>
+    </button>
+  </div>
 </header>
 
 <!-- ── 탭 안에서만 보이는 상단 바 (홈으로 돌아가기 + 현재 위치) ── -->
@@ -53,12 +59,12 @@
       <section class="home-group">
         <h3 class="home-group-title">만들기</h3>
         <div class="home-cards">
-          <button class="home-card" onclick="openGenerator()">
+          <button class="home-card c-gen" onclick="openGenerator()">
             <span class="home-card-icon">📝</span>
             <span class="home-card-title">문제 생성</span>
             <span class="home-card-desc" id="home-gen-desc">강의자료로<br>예상문제 만들기</span>
           </button>
-          <button class="home-card" onclick="switchTab('topics')">
+          <button class="home-card c-topic" onclick="switchTab('topics')">
             <span class="home-card-icon">🔍</span>
             <span class="home-card-title">기출 주제 분석</span>
             <span class="home-card-desc">기출에 나온<br>주제 찾기</span>
@@ -69,12 +75,12 @@
       <section class="home-group">
         <h3 class="home-group-title">복습하기</h3>
         <div class="home-cards">
-          <button class="home-card" onclick="switchTab('archive')">
+          <button class="home-card c-archive" onclick="switchTab('archive')">
             <span class="home-card-icon">🗂️</span>
             <span class="home-card-title">보관함</span>
             <span class="home-card-desc" id="home-archive-desc">만든 문제와<br>분석한 주제</span>
           </button>
-          <button class="home-card" onclick="switchTab('wrong')">
+          <button class="home-card c-wrong" onclick="switchTab('wrong')">
             <span class="home-card-icon">❌</span>
             <span class="home-card-title">오답 노트</span>
             <span class="home-card-desc" id="home-wrong-desc">틀린 문제<br>모아 보기</span>
@@ -89,7 +95,7 @@
                '한 칸짜리 큰 카드'로 보이게 한다 (얇은 가로 막대는 각주처럼 읽혔다).
                문항 수를 넣지 않는 이유: bone_bank.json 이 91KB라 홈에서 세려고 받기엔
                크고, 숫자를 박아두면 팀원이 데이터를 추가할 때마다 틀려진다. -->
-          <button class="home-card" onclick="switchTab('bones')">
+          <button class="home-card c-bone" onclick="switchTab('bones')">
             <span class="home-card-icon">🦴</span>
             <span class="home-card-title">골학 문제은행</span>
             <!-- 다른 카드와 달리 한 줄이다. 전체 폭이라 데스크톱에서는 한 줄로 충분하고,
@@ -212,7 +218,7 @@
     <!-- 모델 선택 -->
     <div style="margin-top:20px;">
       <label style="display:flex;align-items:center;gap:8px;">
-        🤖 사용할 모델 <span id="model-load-msg" style="font-weight:400;font-size:0.8rem;color:#0ea5e9;"></span>
+        🤖 사용할 모델 <span id="model-load-msg" style="font-weight:400;font-size:0.8rem;color:#4f8a76;"></span>
         <button type="button" class="icon-btn" onclick="loadModels()" title="모델 목록 새로고침" aria-label="모델 목록 새로고침" style="margin-left:auto;">↻</button>
       </label>
       <select id="model-select" class="select-field"></select>
@@ -221,7 +227,7 @@
     <!-- 문제 수 -->
     <div style="margin-top:20px;">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-        <input type="checkbox" id="manual-count-toggle" onchange="toggleManualCount()" style="width:16px;height:16px;accent-color:#2563eb;" />
+        <input type="checkbox" id="manual-count-toggle" onchange="toggleManualCount()" style="width:16px;height:16px;accent-color:#2f5c50;" />
         <span>🎯 유형별 문제 수 직접 설정</span>
       </label>
 
@@ -235,7 +241,7 @@
       <!-- 자동 배분에서만 의미가 있다 → 수동 모드에서는 auto-count-row와 함께 숨긴다 -->
       <div id="preserve-types-row" style="margin-top:10px;">
         <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin-bottom:0;">
-          <input type="checkbox" id="preserve-types" style="width:16px;height:16px;margin-top:2px;accent-color:#2563eb;flex-shrink:0;" />
+          <input type="checkbox" id="preserve-types" style="width:16px;height:16px;margin-top:2px;accent-color:#2f5c50;flex-shrink:0;" />
           <span style="font-weight:400;color:#475569;">
             기출에 있는 유형은 최소 1개씩 넣기
             <span style="display:block;font-size:0.75rem;color:#64748b;margin-top:2px;">
@@ -268,10 +274,10 @@
     <div style="margin-top:20px;">
       <label for="weight">
         📊 기출 반영 강도
-        <span id="weight-value" style="font-weight:800;color:#2563eb;">5</span> / 10
+        <span id="weight-value" style="font-weight:800;color:#2f5c50;">5</span> / 10
       </label>
       <input type="range" id="weight" min="1" max="10" value="5" step="1"
-             oninput="updateWeight()" style="width:100%;accent-color:#2563eb;cursor:pointer;" />
+             oninput="updateWeight()" style="width:100%;accent-color:#2f5c50;cursor:pointer;" />
       <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:#64748b;margin-top:2px;">
         <span>1 · 강의자료 위주 (자유 출제)</span>
         <span>10 · 기출 밀착 (개념·형식 재현)</span>
@@ -518,7 +524,7 @@
         <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <button type="button" onclick="boneBackToSubcategories()"
                   style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">← 범위 다시 선택</button>
-          <span id="bone-mode-label" style="font-size:0.82rem;color:#2563eb;font-weight:700;"></span>
+          <span id="bone-mode-label" style="font-size:0.82rem;color:#2f5c50;font-weight:700;"></span>
         </div>
         <div style="font-size:0.85rem;color:#64748b;margin-bottom:12px;">어떤 방식으로 풀지 선택하세요.</div>
         <div class="bone-mode-grid">
@@ -544,12 +550,12 @@
       <div id="bone-quiz" style="display:none;">
         <div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
           <button type="button" class="mini-btn" onclick="boneBackToSubcategories()">← 범위 다시 선택</button>
-          <span id="bone-scope-label" style="font-size:0.82rem;color:#2563eb;font-weight:700;"></span>
+          <span id="bone-scope-label" style="font-size:0.82rem;color:#2f5c50;font-weight:700;"></span>
         </div>
 
         <div style="text-align:center;margin:8px 0 16px;">
           <img id="bone-image" alt="골학 번호 그림"
-               style="max-width:100%;max-height:340px;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;" />
+               style="max-width:100%;max-height:560px;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;" />
         </div>
 
         <div style="margin-bottom:8px;">
@@ -575,12 +581,12 @@
         <div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
           <button type="button" onclick="boneBackToSubcategories()"
                   style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">← 범위 다시 선택</button>
-          <span id="bone-click-scope-label" style="font-size:0.82rem;color:#2563eb;font-weight:700;"></span>
+          <span id="bone-click-scope-label" style="font-size:0.82rem;color:#2f5c50;font-weight:700;"></span>
         </div>
 
         <div style="text-align:center;margin:8px 0 16px;">
           <img id="bone-click-image" alt="골학 번호 그림"
-               style="max-width:100%;max-height:340px;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;" />
+               style="max-width:100%;max-height:560px;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;" />
         </div>
 
         <div style="margin-bottom:12px;">
@@ -607,12 +613,12 @@
         <div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
           <button type="button" onclick="boneBackToSubcategories()"
                   style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">← 범위 다시 선택</button>
-          <span id="bone-write-scope-label" style="font-size:0.82rem;color:#2563eb;font-weight:700;"></span>
+          <span id="bone-write-scope-label" style="font-size:0.82rem;color:#2f5c50;font-weight:700;"></span>
         </div>
 
         <div style="text-align:center;margin:8px 0 16px;">
           <img id="bone-write-image" alt="골학 번호 그림"
-               style="max-width:100%;max-height:340px;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;" />
+               style="max-width:100%;max-height:560px;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;" />
         </div>
 
         <div style="margin-bottom:12px;">
@@ -659,7 +665,7 @@
         다만 <b>브라우저 탭을 닫거나 새로고침하면</b> 분석이 중단되니 그것만 주의하세요.
       </div>
 
-      <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:0.84rem;color:#1e3a8a;line-height:1.65;">
+      <div style="background:#eaf1ed;border:1.5px solid #cfe0d5;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:0.84rem;color:#1f4438;line-height:1.65;">
         강의록에 있는 주제 중 <b>기출에 실제로 나온 것</b>만 골라
         <b>어떤 강의록 몇 페이지 → 어떤 기출 몇 번</b> 형태로 정리합니다.<br />
         주제 이름은 <b>강의록에 적힌 표현 그대로</b> 씁니다. (강의록에 없는 용어는 쓰지 않습니다)
@@ -710,7 +716,7 @@
       <!-- 모델 선택 -->
       <div style="margin-top:20px;">
         <label style="display:flex;align-items:center;gap:8px;">
-          🤖 사용할 모델 <span id="topic-model-load-msg" style="font-weight:400;font-size:0.8rem;color:#0ea5e9;"></span>
+          🤖 사용할 모델 <span id="topic-model-load-msg" style="font-weight:400;font-size:0.8rem;color:#4f8a76;"></span>
           <button type="button" class="icon-btn" onclick="topicLoadModels()" title="모델 목록 새로고침" aria-label="모델 목록 새로고침" style="margin-left:auto;">↻</button>
         </label>
         <select id="topic-model-select" class="select-field"></select>
@@ -851,7 +857,7 @@
 
     <!-- flex-wrap + flex-basis: 좁은 화면(모바일)에서는 버튼이 세로로 쌓인다 -->
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:18px;">
-      <button onclick="authWelcomeLogin()" style="flex:1 1 150px;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px;border:none;border-radius:8px;background:#2563eb;color:#fff;font-weight:700;font-size:0.88rem;font-family:inherit;cursor:pointer;"><span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#fff;border-radius:4px;flex-shrink:0;"><svg width="15" height="15" aria-hidden="true"><use href="#google-g" /></svg></span>Google로 로그인</button>
+      <button onclick="authWelcomeLogin()" style="flex:1 1 150px;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px;border:none;border-radius:8px;background:#2f5c50;color:#fff;font-weight:700;font-size:0.88rem;font-family:inherit;cursor:pointer;"><span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#fff;border-radius:4px;flex-shrink:0;"><svg width="15" height="15" aria-hidden="true"><use href="#google-g" /></svg></span>Google로 로그인</button>
       <button onclick="authCloseWelcome()" style="flex:1 1 150px;padding:11px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#475569;font-size:0.88rem;font-family:inherit;cursor:pointer;">로그인 없이 둘러보기</button>
     </div>
   </div>

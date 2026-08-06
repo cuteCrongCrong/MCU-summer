@@ -232,5 +232,47 @@ function relativeDay(stamp) {
   return stamp.split(' ')[0];
 }
 
+// ── 헤더 응원 문구 ──
+// 날짜를 시드로 써서 같은 날엔 새로고침해도 같은 문구, 자정이 지나면 자동으로
+// 다음 문구로 바뀐다. "🔄 다른 문구 보기"는 그날의 고정 문구와 별개로 미리보기만
+// 보여주는 것이라 새로고침하면 다시 그날의 문구로 돌아온다(별도 저장 안 함).
+const HOME_QUOTES = [
+  { text: '천 리 길도 한 걸음부터예요.', src: '' },
+  { text: '오늘 외운 한 페이지가 내일의 자신감이 됩니다.', src: '' },
+  { text: '성공은 매일 반복한 작은 노력의 합이다.', src: '로버트 콜리어' },
+  { text: '공부한 시간은 절대 사라지지 않아요.', src: '' },
+  { text: '포기하지 않는 한 아직 실패한 게 아니에요.', src: '' },
+  { text: '1%의 영감과 99%의 노력이 천재를 만든다.', src: '토마스 에디슨' },
+  { text: '어제보다 나은 오늘이면 충분해요.', src: '' },
+  { text: '배움에는 지름길이 없어요, 다만 꾸준함이 있을 뿐.', src: '' },
+  { text: '시작이 반이다.', src: '' },
+  { text: '지금의 집중 30분이 내일의 여유를 만듭니다.', src: '' },
+  { text: '피할 수 없다면 즐겨라.', src: '로버트 엘리엇' },
+  { text: '휴식도 공부의 일부예요. 잠깐 숨을 골라도 괜찮아요.', src: '' },
+  { text: '한계는 나를 더 높이 뛰어오르게 하기 위한 하나의 장치이다.', src: '' },
+  { text: '경주는 빠른 사람이 아니라 끝까지 가는 사람이 완주한다.', src: '' },
+  { text: '나를 죽이지 못하는 고통은 나를 발전시킨다.', src: '니체' },
+  { text: '성공이란 열정을 잃지 않고 실패에서 실패로 거듭해 나가는 능력이다.', src: '윈스턴 처칠' },
+];
+
+function renderHomeQuote(idx) {
+  const el = document.getElementById('home-quote');
+  if (!el) return;
+  const q = HOME_QUOTES[idx];
+  el.innerHTML = `“${escHtml(q.text)}”` + (q.src ? ` <span class="src">— ${escHtml(q.src)}</span>` : '');
+}
+
+function todayQuoteIndex() {
+  const d = new Date();
+  const seed = d.getFullYear() * 372 + (d.getMonth() + 1) * 31 + d.getDate();
+  return seed % HOME_QUOTES.length;
+}
+
+function rerollHomeQuote() {
+  renderHomeQuote(Math.floor(Math.random() * HOME_QUOTES.length));
+}
+
+renderHomeQuote(todayQuoteIndex());
+
 // ── 초기 로드 ── (앱을 켜면 홈부터)
 loadHome();
