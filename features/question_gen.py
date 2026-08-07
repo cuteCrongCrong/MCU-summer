@@ -33,7 +33,7 @@ from llm import (
     MAX_FILES_PER_SIDE, GEN_SIDE_CHAR_BUDGET, GEN_DOC_MIN_CHARS,
     remaining_gen_budget,
     read_labeled_pdfs, describe_images_progressively, assemble_pdf_text,
-    image_coverage, shrink_pdf_bytes,
+    image_coverage,
     truncate, truncation_report, build_source_info,
     analyze_concepts_progressively, analyze_format_progressively,
     compute_type_targets, build_question_generation_prompt, call_llm_stream,
@@ -547,11 +547,8 @@ def read_generate_params() -> dict:
                 f"강의자료·기출은 각각 최대 {MAX_FILES_PER_SIDE}개까지 올릴 수 있습니다.")
         # 요청 컨텍스트가 살아 있을 때 바이트로 읽어둔다
         # (스트리밍 제너레이터는 컨텍스트가 닫힌 뒤에 돈다 — owner를 미리 잡는 것과 같은 이유)
-        # 파일을 하나씩 읽고 곧바로 축소한다 — 한꺼번에 다 읽어서 쌓아두면(리스트 컴프리헨션)
-        # 제일 큰 원본들이 전부 한때 메모리에 같이 떠 있는다. RAM이 1GB인 배포 환경에서는
-        # 이 차이가 크다 (config.MAX_UPLOAD_MB·배포-GCP.md 참고).
-        lecture_files = [(f.filename or "강의자료", shrink_pdf_bytes(f.read())) for f in lectures]
-        exam_files    = [(f.filename or "기출문제", shrink_pdf_bytes(f.read())) for f in exams]
+        lecture_files = [(f.filename or "강의자료", f.read()) for f in lectures]
+        exam_files    = [(f.filename or "기출문제", f.read()) for f in exams]
         lecture_name  = lecture_files[0][0]
 
     model = request.form.get("model", "").strip() or provider.default_model
