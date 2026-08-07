@@ -277,11 +277,9 @@ async function fallbackGenerate(form, signal) {
 // 방금 생성한 회차 — 결과 화면에서 이름을 붙일 때 대상이 된다
 let lastGeneration = { id: null, title: '', ordinal: 0 };
 
-// 결과 화면 제목. 이름을 붙였으면 그 이름으로, 아니면 '제N회'.
-// '생성된 예상문제'는 어느 시험지인지 알려주지 않아 보관함 목록과 부르는 이름이
-// 어긋났다 — 목록은 이름이 없으면 '제N회'로 부른다. 여기서도 같게 맞춘다.
-// 회차 번호를 못 받은 경우(저장 실패 등)에만 예전 문구로 돌아간다.
-// renderQuestions가 제목을 기본값으로 되돌리므로 반드시 그 뒤에 부른다.
+// 결과 화면 제목. 이름을 붙였으면 그 이름으로, 아니면 '제N회' — 보관함 목록이 부르는
+// 이름과 같게 맞춘다. 회차 번호를 못 받은 경우(저장 실패 등)에만 기본 문구로 돌아간다.
+// ⚠️ renderQuestions가 제목을 기본값으로 되돌리므로 반드시 그 뒤에 부른다.
 function setResultTitle(title, ordinal) {
   const name = (title || '').trim() || (ordinal ? `제${ordinal}회` : '생성된 예상문제');
   document.getElementById('result-title').textContent = `📋 ${name}`;
@@ -466,14 +464,10 @@ function updateSessionListHighlight() {
   renderSessionList();
 }
 
-// 세션을 이번 생성의 활성 세션으로 지정한다.
-// 예전에는 여기서 분석 요약을 결과 화면에 띄웠지만(showGenResult), 분석 요약을
-// 없앤 뒤로는 띄울 것이 없어 빈 결과 화면이 된다. 그래서 화면을 전환하지 않고
-// 입력 화면에 머문다 — setActiveSession이 초록색 현재 세션 바를 띄우고,
-// 생성 버튼 문구를 바꾸고, 목록의 버튼을 '선택됨'으로 만들어 준다.
-//
-// fetch는 표시할 데이터가 아니라 세션이 실제로 존재하는지(그리고 내 것인지)
-// 확인하는 용도로만 남긴다. 다른 탭에서 지운 세션을 고르는 경우를 잡는다.
+// 세션을 이번 생성의 활성 세션으로 지정한다. 화면은 전환하지 않고 입력 화면에 머문다 —
+// setActiveSession이 현재 세션 바를 띄우고 생성 버튼 문구와 목록 버튼을 바꿔 준다.
+// fetch는 표시용이 아니라 그 세션이 아직 존재하는지(그리고 내 것인지) 확인하는 용도다.
+// (다른 탭에서 지운 세션을 고르는 경우를 잡는다)
 async function useSessionRow(id) {
   try {
     const resp = await fetch('/session/' + id);

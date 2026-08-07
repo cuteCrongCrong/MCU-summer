@@ -85,18 +85,17 @@ SERVER_THREADS = _int("SERVER_THREADS", 16)
 MAX_UPLOAD_MB = _int("MAX_UPLOAD_MB", 100)
 
 # Vision으로 읽을 이미지 페이지 상한 — **한쪽(강의록 전체 / 기출 전체) 기준**, 파일당이 아니다.
-#   여기 있는 이유는 메모리다. llm.read_pdf_pages가 렌더한 PNG를 설명이 끝날 때까지
+#   설정으로 뺀 이유는 메모리다. llm.read_pdf_pages가 렌더한 PNG를 설명이 끝날 때까지
 #   들고 있어서 '상한 × PNG 한 장'이 요청 하나의 상주 메모리가 된다.
 #   (150DPI A4 PNG ≈ 벡터 슬라이드 0.3~0.6MB · 스캔 페이지 2~3MB)
-#   기본값은 RAM이 넉넉한 환경(로컬·2GB 이상) 기준이고, e2-micro(1GB) 배포는
-#   deploy/gcp/setup.sh가 .env에 낮은 값을 써 둔다. 서버를 키웠으면 .env의 숫자만 올리면 된다.
+#   기본값은 RAM 2GB 이상 기준. e2-micro(1GB) 배포는 deploy/gcp/setup.sh가 .env에
+#   낮은 값을 써 둔다 — 서버를 키웠으면 .env의 숫자만 올리면 된다.
 IMAGE_CAP_LECTURE = _int("IMAGE_CAP_LECTURE", 100)   # 강의록: 그림 속 글자 전사
 IMAGE_CAP_EXAM    = _int("IMAGE_CAP_EXAM", 60)       # 기출: 그림 설명
 
 # 이미지 호출 동시 실행 수. 네트워크 대기가 대부분이라 CPU보다 상한·지연에 걸린다.
-#   상한을 올리면 이 값도 같이 올려야 체감이 나빠지지 않는다 (상한 ÷ 워커 = 대기 라운드 수).
-#   PNG는 이미 상한만큼 메모리에 있으므로 이 값이 메모리를 크게 늘리지는 않는다 —
-#   늘어나는 건 동시에 뜨는 pixmap(장당 ~6.5MB)과 제공사 rate limit 압력이다.
+#   상한을 올리면 이 값도 같이 올려야 체감이 유지된다 (상한 ÷ 워커 = 대기 라운드 수).
+#   메모리는 크게 안 는다 — 늘어나는 건 동시에 뜨는 pixmap(장당 ~6.5MB)과 rate limit 압력.
 IMAGE_WORKERS = _int("IMAGE_WORKERS", 8)
 
 # DB 파일 경로. 배포 시 반드시 영구 디스크 경로를 지정할 것 (예: /var/data/sessions.db).

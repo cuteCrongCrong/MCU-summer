@@ -16,8 +16,7 @@ from datetime import datetime
 from flask import Blueprint, request, jsonify, Response
 
 from db import get_conn, json_col, owner_clause, LEGACY_PROVIDER
-# current_owner: (user_id, guest_id) 튜플. 게스트도 브라우저별로 서로 격리된다.
-from features.auth import current_owner
+from features.auth import current_owner   # (user_id, guest_id) 튜플
 from features import extract_cache
 from providers.base import (
     ProviderError, ProviderAuthError, ProviderRateLimitError,
@@ -53,8 +52,8 @@ GEN_MAX_TOKENS = 8000
 
 def _row_provider(row) -> str:
     """
-    행의 provider 값을 읽되, 다중 프로바이더 지원 이전 데이터(컬럼 없음/NULL)는
-    전북대 게이트웨이로 간주한다. 오래된 세션도 그대로 재사용할 수 있게 하는 하위 호환.
+    행의 provider 값. 다중 프로바이더 지원 이전 데이터(컬럼 없음/NULL)는 게이트웨이로
+    간주한다 — 오래된 세션도 그대로 재사용할 수 있게 하는 하위 호환.
     """
     if "provider" not in row.keys():
         return LEGACY_PROVIDER
@@ -62,10 +61,7 @@ def _row_provider(row) -> str:
 
 
 def _row_title(row) -> str:
-    """
-    회차에 붙은 이름. 이름을 안 붙였거나 컬럼이 없던 구버전 행은 빈 문자열.
-    화면은 빈 값을 '제N회'로 대체한다.
-    """
+    """회차에 붙은 이름. 없으면 빈 문자열 — 화면이 '제N회'로 대체한다."""
     if "title" not in row.keys():
         return ""
     return row["title"] or ""
@@ -198,8 +194,6 @@ def save_generation(session_id: int, count: int, weight: int, model: str,
     한 번의 문제 생성 결과를 세션에 연결해 이력으로 저장.
     title은 사용자가 붙인 이름 — 비우면 NULL로 두고 화면에서 '제N회'로 대체한다.
     usage·credits는 이 회차에 쓴 양 — 없으면 NULL로 두어 '모름'과 0을 구분한다.
-    저장된 세션을 재사용한 회차는 분석을 건너뛰므로 사용량이 훨씬 작게 잡히는데,
-    그게 사실이라 그대로 둔다 (재사용이 얼마나 아꼈는지가 회차마다 드러난다).
     """
     conn = get_conn()
     try:
@@ -231,11 +225,9 @@ def save_generation(session_id: int, count: int, weight: int, model: str,
 
 def generation_ordinal(session_id: int, gid: int) -> int:
     """
-    같은 세션 안에서 이 회차가 몇 번째인지 (오래된 것이 제1회).
-
-    보관함 목록이 화면에서 세는 규칙과 같다 — 세션별로 묶어 id 오름차순.
-    앞 회차를 지우면 번호가 밀리므로 DB에 저장하지 않고 그때그때 센다.
-    (저장해 두면 삭제 후 목록과 결과 화면의 번호가 어긋난다)
+    같은 세션 안에서 이 회차가 몇 번째인지 (오래된 것이 제1회. 보관함 목록과 같은 규칙).
+    DB에 저장하지 않고 그때그때 센다 — 앞 회차를 지우면 번호가 밀리므로,
+    저장해 두면 목록과 결과 화면의 번호가 어긋난다.
     """
     conn = get_conn()
     try:
@@ -554,14 +546,10 @@ def read_generate_params() -> dict:
     model = request.form.get("model", "").strip() or provider.default_model
     # 분석 단계 전용 모델 — 그림 읽기(extract)와 개념·형식 분석(concepts·format)을 맡는다.
     # 문제를 실제로 만드는 것은 위 model이다.
-    #
-    # 이 화면에서도 사용자가 고르지 않는다(주제 분석 탭과 같은 방식). 제공사가
-    # analysis_model을 선언했으면 그 모델로 고정하고, 아니면 위 model을 그대로 쓴다.
-    #   - 고정: 입력 토큰의 90%가 이 단계에서 나가는데(실측 generation 92 — 전체 입력
-    #           119,521토큰 중 103,392), 같은 자료로 두 모델을 재보니 싼 쪽이 오히려
-    #           나았다. 근거 실측은 providers/jbnu_gateway.py의 ANALYSIS_MODEL 주석.
-    #   - 나머지 제공사: 모델 id가 제공사 안에서만 유효해 고정할 값이 없다.
-    #           고를 칸을 남기느니 나누기 전처럼 한 모델로 도는 편이 화면이 단순하다.
+    # 사용자가 고르지 않는다: 제공사가 analysis_model을 선언했으면(게이트웨이) 그 모델로
+    # 고정하고, 아니면 위 model을 그대로 쓴다. 입력 토큰의 90%가 이 단계에서 나가는데
+    # (실측 generation 92: 119,521토큰 중 103,392) 싼 쪽이 오히려 나았다 —
+    # 근거 실측은 providers/jbnu_gateway.py의 ANALYSIS_MODEL 주석.
     # 폼의 analysis_model은 **일부러 읽지 않는다** — 열어둔 옛날 탭이나 직접 만든 요청이
     # 비싼 모델을 그 90%에 밀어넣는 길이 되어선 안 된다.
     analysis_model = getattr(provider, "analysis_model", "") or model
@@ -614,17 +602,14 @@ def _join_side(parts, image_mode, by_question=False,
     """
     한쪽(강의자료 전체 / 기출 전체)의 파일별 텍스트를 예산 안에서 잘라 하나로 합친다.
 
-    parts: llm.read_labeled_pdfs가 돌려준 목록. 파일명·페이지·이미지 몫이 다 들어 있어
-           파일 목록을 따로 받아 zip하지 않는다 (예전에는 이름만 얻으려고 그랬다).
-    예산을 파일 수로 나눠 배정하므로, 파일이 1개면 그 쪽 예산 전부를 쓴다.
-    파일이 여럿이면 어디부터 다른 자료인지 LLM이 알 수 있게 파일명 구분선을 넣는다.
-    by_question: 기출 쪽이면 True — 상한을 넘길 때 문항 경계로 자른다. 반쪽짜리 문항이
-                 남으면 few-shot 예시로 그대로 실려 생성 문제의 본이 된다.
+    parts: llm.read_labeled_pdfs가 돌려준 목록 (파일명·페이지·이미지 몫이 다 들어 있다).
+    예산을 파일 수로 나눠 배정하므로 파일이 1개면 그 쪽 예산 전부를 쓴다. 여럿이면
+    어디부터 다른 자료인지 LLM이 알 수 있게 파일명 구분선을 넣는다.
+    by_question: 기출 쪽이면 True — 문항 경계로 자른다. 반쪽짜리 문항이 남으면
+                 few-shot 예시로 그대로 실려 생성 문제의 본이 된다.
     side_budget: 이 쪽에 배정된 글자 예산. 생략하면 한쪽 몫(GEN_SIDE_CHAR_BUDGET).
-                 기출은 강의자료가 남긴 몫을 받으므로 호출부가 remaining_gen_budget()으로
-                 계산해 넘긴다 — 칸막이를 고정하면 한쪽에 예산이 남는데 반대쪽만 잘린다.
+                 기출은 호출부가 remaining_gen_budget()으로 계산해 넘긴다.
     반환: (합친 텍스트, 반영 범위 dict, 잘린 파일 목록)
-          범위는 파일들을 합산한 값이고, 잘린 목록은 진행 전 경고에 쓴다.
     """
     per_doc = max(GEN_DOC_MIN_CHARS, side_budget // len(parts))
     chunks, chars, used, cuts = [], 0, 0, []
@@ -651,11 +636,9 @@ def _join_side(parts, image_mode, by_question=False,
 
 def _image_warnings(parts, side: str) -> list:
     """
-    상한에 걸려 못 읽은 그림·필기 쪽이 있는 파일을 화면용 경고로.
-
-    상한 자체는 '한쪽 전체'에 걸리지만(llm.read_labeled_pdfs), 경고는 파일마다 따로
-    낸다 — 사용자가 확인할 것은 "어느 파일의 몇 쪽이 안 읽혔나"이지 합계가 아니다.
-    없으면 빈 리스트 — 그때는 확인 모달이 안 뜬다.
+    상한에 걸려 못 읽은 그림·필기 쪽이 있는 파일을 화면용 경고로. 없으면 빈 리스트.
+    상한 자체는 '한쪽 전체'에 걸리지만 경고는 파일마다 따로 낸다 — 사용자가 확인할 것은
+    "어느 파일의 몇 쪽이 안 읽혔나"이지 합계가 아니다.
     """
     out = []
     for p in parts:
@@ -670,7 +653,8 @@ def _batch_targets(type_slots, offset, batch_count) -> dict:
     if type_slots is None:
         return {}
     batch_slice = type_slots[offset: offset + batch_count]
-    return {t: batch_slice.count(t) for t in QUESTION_TYPES if batch_slice.count(t)}
+    counts = {t: batch_slice.count(t) for t in QUESTION_TYPES}
+    return {t: n for t, n in counts.items() if n}
 
 
 def run_generation_events(p: dict):
@@ -689,8 +673,7 @@ def run_generation_events(p: dict):
     """
     api_key, provider = p["api_key"], p["provider"]
     model, count, weight = p["model"], p["count"], p["weight"]
-    # 분석·이미지 설명용 모델. 지정하지 않았으면 생성 모델과 같다.
-    # (.get 으로 읽는 이유 — 이 키가 없던 시절의 호출부/테스트도 그대로 돌게)
+    # 분석·이미지 설명용 모델 (.get — 이 키가 없던 시절의 호출부/테스트도 그대로 돌게)
     analysis_model = p.get("analysis_model") or model
     session_id, owner = p["session_id"], p["owner"]
 
@@ -701,6 +684,14 @@ def run_generation_events(p: dict):
     # 크레딧으로 과금하는 제공사는 생성 전 잔액을 먼저 찍어둔다 (LLM 호출 이전이어야
     # 이번 생성분만 차이로 잡힌다). 지원하지 않는 제공사는 None.
     credits_before = credits_snapshot(provider, api_key)
+
+    def spend() -> dict:
+        """오류 응답에 실을 사용량. (주제 분석의 같은 이름 함수와 같은 역할)"""
+        return {
+            "usage":   usage.summary(),
+            "credits": credits_result(credits_before,
+                                      credits_snapshot(provider, api_key)),
+        }
 
     try:
         # ── 경로 A: 저장된 세션 재사용 (분석 LLM 호출 0회 → 토큰 절약) ──
@@ -734,15 +725,11 @@ def run_generation_events(p: dict):
                 imgs = cached["img_count"]
                 yield {"type": "progress", "key": "extract", "done": imgs, "total": imgs}
             else:
-                # 강의자료: 그림 속 글자만 그대로 전사 (손글씨·판서 보존). 그림 해설은 안 한다 —
-                #  해설은 LLM이 지어낸 문장이라 강의자료에 없는 용어를 끌어들인다.
-                # 기출문제: 이미지/그림 페이지는 Vision LLM 설명으로 보존
-                #  (예: 신체 부위 그림 → 부위 이름 쓰기 문제 등)
-                # 여기까지는 LLM 호출이 없다 (페이지 선정만) — 진행률 총계를 먼저 알아야 하므로
-                # 양쪽 파일을 모두 읽어 대상 페이지를 센 뒤에 Vision 호출을 시작한다.
-                #
+                # 강의자료는 그림 속 글자만 전사(손글씨·판서 보존 / 해설은 LLM이 지어낸
+                # 문장이라 없는 용어를 끌어들인다), 기출은 그림 설명(그림 문제를 살린다).
+                # 여기까지는 LLM 호출이 없다 (페이지 선정만) — 진행률 총계를 먼저 알아야
+                # 하므로 양쪽을 모두 읽어 대상 페이지를 센 뒤에 Vision 호출을 시작한다.
                 # 이미지 상한은 **한쪽 전체**에 걸린다 (파일당이 아니다).
-                # 읽기·예산 배분은 주제 분석과 같은 함수를 쓴다 — llm.read_labeled_pdfs.
                 lec_parts  = read_labeled_pdfs(p["lecture_files"], "강의자료",
                                                api_key, IMAGE_TRANSCRIBE)
                 exam_parts = read_labeled_pdfs(p["exam_files"], "기출",
@@ -763,10 +750,7 @@ def run_generation_events(p: dict):
 
                 lecture_text, lecture_src, lecture_cuts = _join_side(
                     lec_parts, IMAGE_TRANSCRIBE)
-                # 기출은 강의자료가 쓰고 남긴 몫까지 받는다 — 예산을 한쪽씩 고정하면
-                # 강의자료에 수만 자가 놀고 있는데 기출만 잘린다(실측: 기출 반영률 63%,
-                # 같은 시점 강의자료는 제 예산의 55%만 사용). 기출이 잘리면 유형통계·
-                # 대표문제·빈출포인트가 전부 잘린 텍스트 위에서 계산되므로 손해가 크다.
+                # 기출은 강의자료가 쓰고 남긴 몫까지 받는다 (근거는 llm.GEN_TOTAL_CHAR_BUDGET).
                 # 강의자료를 먼저 합친 지금은 실사용량이 확정돼 있어 여기서 계산할 수 있다.
                 exam_text, exam_src, exam_cuts = _join_side(
                     exam_parts, IMAGE_DESCRIBE, by_question=True,
@@ -778,9 +762,9 @@ def run_generation_events(p: dict):
                 session_base = _session_base(p)
 
                 # 상한을 넘겨 일부가 버려지는 파일이 있으면 진행 전에 물어본다.
-                # 추출 결과를 잠시 보관하고 토큰만 내려보낸다 — 확인 후 재추출하면 Vision 재과금.
-                # 글자수 초과와 그림 쪽수 초과를 한 목록에 담는다 (kind로 구분) —
-                # 사용자에게는 "이대로 진행할까"라는 같은 질문이라 모달을 두 번 띄우면 안 된다.
+                # 추출 결과를 잠시 보관하고 토큰만 내려보낸다 — 재추출하면 Vision 재과금.
+                # 글자수 초과와 그림 쪽수 초과를 한 목록에 담는다(kind로 구분) —
+                # 사용자에게는 "이대로 진행할까"라는 같은 질문이라 모달이 두 번 뜨면 안 된다.
                 warnings = ([{"kind": "text", "side": "강의자료", **c} for c in lecture_cuts]
                             + [{"kind": "text", "side": "기출문제", **c} for c in exam_cuts]
                             + _image_warnings(lec_parts, "강의자료")
@@ -815,8 +799,6 @@ def run_generation_events(p: dict):
 
             usage.set_stage("format")
             yield {"type": "stage", "key": "format", "status": "active"}
-            # 예전에는 2회(예시 추출 → 형식 분석)였다. 예시 추출이 1단계로 합쳐지면서
-            # 여기는 형식 분석 1회만 남았다 — 기출 전문을 다시 보내지 않는다.
             yield {"type": "progress", "key": "format", "done": 0, "total": 1}
             gen2 = analyze_format_progressively(part1["sample_questions"],
                                                 api_key, analysis_model, provider,
@@ -852,13 +834,10 @@ def run_generation_events(p: dict):
         }}
 
         # ── 공통: 예상문제 생성 (분석 자산 재사용) ──
-        # 문제마다 증례 지문+선택지+해설+함정포인트를 요구하는 출력 포맷이라
-        # count가 커지면 한 번의 LLM 호출로는 max_tokens을 넘겨 응답이 잘리고
-        # (---END--- 누락) 파싱이 전부 버려버리는 문제가 있었다.
-        # → GEN_BATCH_SIZE 문제씩 여러 번 호출해 잘림을 방지하고 결과를 합친다.
-        #
-        # 유형별 목표를 슬롯 리스트로 펼쳐서 배치 단위로 잘라내면(비율 재계산 없이)
-        # 각 유형의 합계가 배치를 나눠도 원래 type_targets와 정확히 일치한다.
+        # count가 크면 한 번의 호출로는 max_tokens을 넘겨 응답이 잘리고(---END--- 누락)
+        # 파싱이 전부 버려진다 → GEN_BATCH_SIZE 문제씩 나눠 호출해 결과를 합친다.
+        # 유형별 목표를 슬롯 리스트로 펼쳐 배치 단위로 잘라내면(비율 재계산 없이)
+        # 배치를 나눠도 각 유형의 합계가 원래 type_targets와 정확히 일치한다.
         type_slots = None
         if type_targets:
             type_slots = []
@@ -881,8 +860,8 @@ def run_generation_events(p: dict):
                 analysis.get("exam_concepts", {}),
                 analysis.get("priority_topics", []),
                 weight, _batch_targets(type_slots, offset, batch_count),
-                # 앞 배치들이 만든 문제를 넘겨 같은 문제가 다시 나오지 않게 한다.
-                # questions 는 배치를 가로질러 누적되므로 여기서 그대로 쓸 수 있다.
+                # 앞 배치들이 만든 문제를 넘겨 같은 문제가 다시 나오지 않게 한다
+                # (questions 는 배치를 가로질러 누적된다)
                 avoid_questions=[q.get("문제", "") for q in questions],
             )
             # 조각을 받는 즉시 파싱해, 완성된 문제부터 화면에 내보낸다
@@ -948,31 +927,20 @@ def run_generation_events(p: dict):
 
     # 스트리밍은 HTTP 상태를 이미 보낸 뒤라 오류도 이벤트로 흘려보내야 한다
     except ProviderAuthError as e:
-        # 키가 틀린 경우엔 잔액 조회도 실패하므로 credits는 None이 된다
+        # 키가 틀리면 잔액 조회도 실패한다 — 헛 왕복을 아끼려고 바로 None을 싣는다
         yield {"type": "error", "status": 401, "message": str(e),
                "usage": usage.summary(), "credits": None}
     except ProviderRateLimitError as e:
-        yield {"type": "error", "status": 429, "message": str(e),
-               "usage": usage.summary(),
-               "credits": credits_result(credits_before,
-                                          credits_snapshot(provider, api_key))}
+        yield {"type": "error", "status": 429, "message": str(e), **spend()}
     except ProviderError as e:
-        yield {"type": "error", "status": 400, "message": str(e),
-               "usage": usage.summary(),
-               "credits": credits_result(credits_before,
-                                          credits_snapshot(provider, api_key))}
+        yield {"type": "error", "status": 400, "message": str(e), **spend()}
     except ValueError as e:
         # 손상·암호 걸린 PDF 등 사용자가 고칠 수 있는 입력 문제 (llm.read_labeled_pdfs가
         # 어느 파일인지까지 넣어 던진다). 500 '서버 오류'로 뭉개면 고칠 방법이 안 보인다.
-        yield {"type": "error", "status": 400, "message": str(e),
-               "usage": usage.summary(),
-               "credits": credits_result(credits_before,
-                                          credits_snapshot(provider, api_key))}
+        yield {"type": "error", "status": 400, "message": str(e), **spend()}
     except Exception as e:
         yield {"type": "error", "status": 500, "message": f"서버 오류: {str(e)}",
-               "usage": usage.summary(),
-               "credits": credits_result(credits_before,
-                                          credits_snapshot(provider, api_key))}
+               **spend()}
 
 
 @gen_bp.route("/generate", methods=["POST"])

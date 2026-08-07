@@ -83,10 +83,9 @@ init_db()  # 앱 로드 시 DB 테이블 보장 (serve.py / flask run / gunicorn
 
 if __name__ == "__main__":
     # ── 로컬 개발 전용 실행 경로 (배포는 serve.py를 쓴다) ──
-    # 리로더를 켜면 이 파일이 두 프로세스에서 실행된다: 부모(파일 변경 감시)와
-    # 자식(실제 서버). 자식에만 WERKZEUG_RUN_MAIN이 붙으므로 그걸로 구분한다.
-    # 안내문·브라우저 열기를 자식에서 하면 파일을 저장할 때마다(=리로드할 때마다)
-    # 배너가 다시 찍히고 탭이 새로 열리므로, 한 번만 하도록 부모로 제한한다.
+    # 리로더를 켜면 이 파일이 부모(파일 변경 감시)와 자식(실제 서버) 두 프로세스에서
+    # 실행된다. 자식에만 WERKZEUG_RUN_MAIN이 붙으므로 그걸로 구분해, 안내문·브라우저
+    # 열기를 부모에서만 한다 — 안 그러면 저장할 때마다 배너가 찍히고 탭이 새로 열린다.
     is_reload_child = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
 
     if not is_reload_child:
@@ -108,10 +107,9 @@ if __name__ == "__main__":
             1.5, lambda: webbrowser.open(f"http://localhost:{config.PORT}")
         ).start()
     try:
-        # 개발 중에는 리로더를 켠다 — 끄면 .py를 고쳐도 서버가 옛 코드를 메모리에
-        # 들고 있어서 "저장했는데 반영이 안 된다"로 보인다. (HTML·CSS·JS는 요청마다
-        # 디스크에서 읽으므로 영향 없음 → 파이썬만 이 문제가 생긴다)
-        # 배포 모드에서는 config.DEBUG가 False라 리로더도 함께 꺼진다.
+        # 개발 중에는 리로더를 켠다 — 끄면 .py를 고쳐도 서버가 옛 코드를 들고 있어서
+        # "저장했는데 반영이 안 된다"로 보인다. (HTML·CSS·JS는 요청마다 디스크에서
+        # 읽으므로 영향 없다) 배포 모드에서는 config.DEBUG가 False라 함께 꺼진다.
         app.run(host=config.HOST, port=config.PORT,
                 debug=config.DEBUG, use_reloader=config.DEBUG)
     except OSError as e:

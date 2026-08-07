@@ -20,15 +20,13 @@ async function loadHome() {
       fetchJson('/sessions').then(d => d.sessions || []),
       fetchJson('/wrong-folders').then(d => d.folders || []),
       fetchJson('/me').catch(() => ({})),   // 로그인 정보는 없어도 홈은 동작한다
-      // 보관함 카드의 '분석 N건'에만 쓰인다. 요청이 하나뿐이라 여기 묶어 둔다
-      // (세션 수만큼 나가는 countPapers와 달리 첫 렌더를 눈에 띄게 늦추지 않는다).
+      // 보관함 카드의 '분석 N건'에만 쓰인다. 요청이 하나뿐이라 여기 묶어 둔다.
       // 실패해도 홈 전체를 오류로 만들지 않는다 → null (0건과 구분되는 '조회 실패').
       fetchJson('/topic-analyses').then(d => d.analyses || []).catch(() => null),
     ]);
   } catch (err) {
-    // 이걸 잡지 않으면 아래 render 함수들이 하나도 실행되지 않는다.
-    // 이어서하기는 마크업에서 hidden으로 시작하므로 뜨지 않고,
-    // '기능 카드 4장만 덩그러니 있는 화면'이 나가면서 실패한 줄도 알 수 없다.
+    // 이걸 잡지 않으면 아래 render 함수들이 하나도 안 돌아, 실패한 줄도 모른 채
+    // '기능 카드 4장만 덩그러니 있는 화면'이 나간다.
     showHomeLoadError();
     return;
   }
@@ -39,26 +37,19 @@ async function loadHome() {
   renderResumeCard(sessions[0]);
   renderHomeCounts(sessions, folders);
 
-  // 시험지 수만 뒤늦게 채운다. 세션 수만큼 요청이 나가는 유일한 항목이라
-  // 이것을 await로 묶으면 이미 알고 있는 세션 수·오답 수까지 같이 늦어진다.
-  // (분석 건수는 위에서 이미 받아왔으므로 다시 조회하지 않는다)
+  // 시험지 수만 뒤늦게 채운다. 세션 수만큼 요청이 나가는 유일한 항목이라, await로
+  // 묶으면 이미 알고 있는 세션 수·오답 수까지 같이 늦어진다.
   countPapers(sessions).then(papers => {
     if (seq !== homeLoadSeq) return;
     renderArchiveCount(papers, analyses === null ? null : analyses.length);
   });
 }
 
-// 불러오기 자체가 실패한 경우. 실패를 화면 어딘가에는 반드시 남긴다 —
-// 아무 말 없이 '기능 카드만 덩그러니 있는 화면'이 나가면 사용자는 저장된 게
-// 없는 것으로 오해하고, 실패한 줄도 모른다. (기능 카드는 정적 링크라
-//  그대로 눌러 들어갈 수 있으므로 진입 자체를 막지는 않는다)
-//
-// 부제가 있으면 거기에 쓴다. 부제 외에는 아무것도 건드리지 않는다 —
-// 탭을 오가다 실패한 경우 직전에 성공한 화면이 그대로 남아 있는데,
-// 인사말만 지우면 이름은 사라지고 이어서하기 카드는 남는 어긋난 상태가 된다.
-//
-// 부제를 마크업에서 뺀 경우(지금이 그렇다)에는 전용 자리 #home-error 에 쓴다.
-// 예전에는 '최근 활동' 카드를 빌려 썼는데, 그 카드를 없애면서 자리를 따로 뒀다.
+// 불러오기 자체가 실패한 경우. 실패를 화면 어딘가에는 반드시 남긴다 — 아무 말 없이
+// '기능 카드만 덩그러니 있는 화면'이 나가면 저장된 게 없는 것으로 오해한다.
+// 부제 외에는 아무것도 건드리지 않는다: 탭을 오가다 실패하면 직전에 성공한 화면이
+// 그대로 남아 있는데, 인사말만 지우면 이름은 사라지고 카드는 남는 어긋난 상태가 된다.
+// 부제가 마크업에 없으면(지금이 그렇다) 전용 자리 #home-error 에 쓴다.
 function showHomeLoadError() {
   const msg = '저장된 내용을 불러오지 못했습니다. 새로고침해 주세요.';
 
@@ -75,9 +66,8 @@ function showHomeLoadError() {
   box.classList.remove('hidden');
 }
 
-// 성공한 로드는 반드시 이걸 부른다. 알림을 띄우는 쪽만 있으면 한 번 실패한 뒤
-// 탭을 오갈 때마다 새로 불러와 성공해도 빨간 줄이 그대로 남는다.
-// (부제 쪽은 renderHomeGreeting 이 색을 되돌리는 것으로 같은 일을 한다)
+// 성공한 로드는 반드시 이걸 부른다 — 안 그러면 한 번 실패한 뒤 다시 성공해도 빨간 줄이
+// 남는다. (부제 쪽은 renderHomeGreeting 이 색을 되돌리는 것으로 같은 일을 한다)
 function clearHomeLoadError() {
   const box = document.getElementById('home-error');
   if (!box) return;
@@ -86,9 +76,9 @@ function clearHomeLoadError() {
 }
 
 // 보관함 요약(시험지 수·문제 수) — 세션별 회차 목록을 합산한다.
-// 세션마다 요청이 따로 나가므로 '일부만' 실패할 수 있다. 실패를 0으로 접으면
-// 시험지가 30장 있어도 아무것도 안 만든 사용자와 화면이 완전히 같아지므로,
-// 성공한 것만 합산하고 실패 건수를 그대로 들고 나간다.
+// 세션마다 요청이 따로 나가 '일부만' 실패할 수 있다. 실패를 0으로 접으면 시험지가
+// 30장 있어도 아무것도 안 만든 사용자와 화면이 같아지므로, 성공한 것만 합산하고
+// 실패 건수를 그대로 들고 나간다.
 async function countPapers(sessions) {
   if (!sessions.length) return { count: 0, questions: 0, failed: 0, total: 0 };
 
@@ -117,8 +107,7 @@ async function fetchJson(url) {
   return resp.json();
 }
 
-// 인사말 영역은 마크업에서 빼도 되게 두었다 (헤더에 이미 서비스 이름이 있어서
-// 함께 두면 같은 말이 두 번 나온다). 없으면 조용히 건너뛴다 —
+// 인사말 영역은 마크업에서 빼도 되게 두었다. 없으면 조용히 건너뛴다 —
 // 여기서 터지면 이 아래 렌더가 하나도 실행되지 않아 홈이 통째로 빈다.
 function renderHomeGreeting(me, sessions) {
   const hello = document.getElementById('home-hello');
@@ -162,9 +151,8 @@ function renderResumeCard(latest) {
   document.getElementById('resume-btn').onclick = () => openSessionFromHome(latest);
 }
 
-// 생성 탭으로 이동. 반드시 설정(입력) 화면부터 보이게 한다 —
-// showGenInput()을 거치지 않으면 직전에 만든 결과 화면이 그대로 떠서
-// '새로 만들러 왔는데 예전 문제가 보이는' 상태가 된다.
+// 생성 탭으로 이동. 반드시 설정(입력) 화면부터 보이게 한다 — showGenInput()을 안 거치면
+// 직전 결과 화면이 그대로 떠서 '새로 만들러 왔는데 예전 문제가 보이는' 상태가 된다.
 //   fresh=true 면 물려 있던 세션도 해제한다 ('다른 자료로 시작').
 function openGenerator(fresh) {
   if (fresh) clearSession();
@@ -193,9 +181,8 @@ function renderHomeCounts(sessions, folders) {
 }
 
 // 보관함 합계 — countPapers와 분석 건수가 도착한 뒤에 호출된다.
-// 시험지·분석을 한 줄씩 보여준다 (보관함이 두 갈래이므로).
-// 전부 실패한 경우를 '0장'과 반드시 구분한다. 일부만 실패하면 합계가
-// 실제보다 적으므로 '이상'을 붙여 확정 수치인 척하지 않게 한다.
+// 전부 실패한 경우를 '0장'과 반드시 구분하고, 일부만 실패하면 합계가 실제보다 적으므로
+// '이상'을 붙여 확정 수치인 척하지 않게 한다.
 //   analyses: 분석 건수. null이면 조회 실패 (0건과 구분).
 function renderArchiveCount(papers, analyses) {
   const el = document.getElementById('home-archive-desc');

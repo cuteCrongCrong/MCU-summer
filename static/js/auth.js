@@ -64,15 +64,14 @@ async function authLogout() {
 
 // ══════════════════════════════════════════════
 // 첫 방문 안내 모달 — "로그인하면 계정에 저장, 비로그인은 이 브라우저에만 임시 보관"
-//   /me 응답만으로 판단하므로 추가 API가 필요 없다.
-//   표시 여부는 localStorage에 남긴다(서버 저장 X — 브라우저마다 한 번씩 뜬다).
+//   표시 여부는 localStorage에 남긴다 (서버 저장 X — 브라우저마다 한 번씩 뜬다).
 // ══════════════════════════════════════════════
 
 // 문구를 크게 고쳐 다시 알려야 할 때는 뒤의 버전을 올린다 (예: _v2).
 const WELCOME_KEY = 'mcu_welcome_seen_v1';
 
-// localStorage는 시크릿 모드·차단 설정에서 예외를 던질 수 있다.
-// 안내가 매번 뜨는 건 괜찮지만 앱이 멈추면 안 되므로 전부 삼킨다.
+// localStorage는 시크릿 모드·차단 설정에서 예외를 던진다. 안내가 매번 뜨는 건
+// 괜찮지만 앱이 멈추면 안 되므로 전부 삼킨다.
 function authWelcomeSeen() {
   try { return localStorage.getItem(WELCOME_KEY) === '1'; }
   catch (e) { return false; }
@@ -85,8 +84,8 @@ function authMarkWelcomeSeen() {
 function authMaybeShowWelcome(d) {
   // 로그인 미설정(secret_config 비어있음) → 로그인 버튼 자체가 없으므로 안내도 무의미
   if (!d || !d.login_enabled) return;
-  // 이미 로그인한 사용자에게는 띄우지 않는다.
-  // 플래그를 심어두면 나중에 로그아웃했을 때 갑자기 팝업이 뜨지 않는다.
+  // 로그인한 사용자에겐 띄우지 않는다. 여기서 플래그를 심어두면 나중에 로그아웃했을 때
+  // 갑자기 팝업이 뜨지 않는다.
   if (d.user) { authMarkWelcomeSeen(); return; }
   if (authWelcomeSeen()) return;
   const modal = document.getElementById('welcome-modal');

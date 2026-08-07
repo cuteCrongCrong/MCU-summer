@@ -55,12 +55,9 @@ class OpenAICompatibleProvider(Provider):
 
     # 문제 생성은 30문항 + 해설까지 나올 수 있어 넉넉히 잡는다.
     max_tokens       = 4096
-    # 이미지 호출 기본 한도. 호출부가 llm.py의 모드별 max_output을 넘기므로 보통은
-    # 그 값이 쓰이고, 이건 지정하지 않은 호출을 위한 하한이다.
-    # 1024였는데 올렸다 — 사고(thinking)를 하는 모델은 사고 토큰도 이 한도에 포함되어,
-    # 1024로는 사고가 예산을 다 먹고 전사가 단어 중간에서 잘리는 일이 있었다.
-    # (gemini_provider.py가 같은 이유로 max_tokens를 16000으로 올려뒀는데, 이미지 쪽은
-    #  빠져 있었다. 게이트웨이는 두 값을 다 상속하므로 모든 모델이 영향을 받았다)
+    # 이미지 호출 기본 한도 — 호출부가 llm.py의 모드별 max_output을 넘기므로 보통은 그
+    # 값이 쓰이고, 이건 지정하지 않은 호출을 위한 하한이다. 사고(thinking)를 하는 모델은
+    # 사고 토큰도 이 한도에 포함되므로 빠듯하게 잡으면 전사가 단어 중간에서 잘린다.
     image_max_tokens = 2048
 
     def _client(self, api_key: str) -> OpenAI:
@@ -69,9 +66,8 @@ class OpenAICompatibleProvider(Provider):
     @staticmethod
     def _messages(prompt: str, cache_prefix: str = None) -> list:
         """
-        Chat Completions에는 캐시 경계를 지정하는 필드가 없다. 그냥 이어붙인다.
-        (자동 프롬프트 캐싱이 있는 서버라면 접두부가 앞에 몰려 있는 것만으로 이득이고,
-         없는 서버여도 예전과 완전히 같은 요청이 된다)
+        Chat Completions에는 캐시 경계를 지정하는 필드가 없어 그냥 이어붙인다.
+        (자동 프롬프트 캐싱이 있는 서버라면 접두부가 앞에 몰린 것만으로 이득이다)
         """
         return [{"role": "user", "content": (cache_prefix or "") + prompt}]
 

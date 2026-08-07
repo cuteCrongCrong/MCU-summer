@@ -46,9 +46,8 @@ def _ensure_column(conn, table: str, col: str, decl: str) -> bool:
 def json_col(row, name):
     """
     나중에 붙인 JSON 컬럼을 읽는다. 컬럼이 없는 구버전 행이거나 값이 NULL이면 None.
-
-    None은 '모름'이라는 뜻이고, 화면은 이걸 0(안 씀)과 다르게 다뤄야 한다.
-    (사용량 컬럼은 백필하지 않으므로 추가 이전 행은 전부 여기로 떨어진다)
+    None은 '모름'이고 화면은 이걸 0(안 씀)과 다르게 다뤄야 한다 — 사용량 컬럼은
+    백필하지 않으므로 추가 이전 행은 전부 여기로 떨어진다.
     """
     if name not in row.keys() or not row[name]:
         return None
@@ -66,9 +65,8 @@ def owner_clause(owner, prefix: str = ""):
       - 로그인 사용자 → (id, None)   → "user_id = ?",  [id]
       - 게스트        → (None, gid)  → "guest_id = ?", [gid]
         (gid = 브라우저별로 발급된 익명 소유자 id. 게스트끼리도 서로 격리된다.)
-
     prefix 는 JOIN 시 테이블 별칭 (예: "f." → "f.guest_id").
-    사용 예:
+
         frag, params = owner_clause(owner)
         conn.execute(f"SELECT ... WHERE {frag}", params)
     """
@@ -83,17 +81,10 @@ def owner_clause(owner, prefix: str = ""):
 
 # ──────────────────────────────────────────────
 # 이미지 설명 캐시 (llm.py가 쓴다 — 특정 기능 전용이 아니라 공용 인프라)
-#
-# 같은 PDF를 다시 올리면 예전에는 Vision 호출을 처음부터 다시 냈다. 학생들이
-# 같은 기출을 여러 번 돌리는 게 흔해서, 재실행 비용의 대부분이 여기서 나왔다.
-#
-# 키(cache_key)는 llm.image_cache_key() 가 만든다 — '프롬프트 + 렌더된 PNG'의 해시다.
-# 파일명·페이지 번호로 잡으면 렌더 해상도를 바꿨을 때 옛 설명이 재사용되고,
-# PNG만 해싱하면 같은 페이지를 기출(그림 설명)과 강의록(글자 전사)으로 각각 올렸을 때
-# 먼저 넣은 쪽이 반대쪽 요청에 그대로 돌아온다. 둘 다 키에 넣어야 섞이지 않는다.
-#
-# 소유자(user_id/guest_id) 컬럼이 없는 이유 — 내용 주소 방식이라 같은 이미지를
-# 이미 갖고 있어야만 꺼낼 수 있다. 남의 자료가 새어나가는 경로가 아니다.
+#   같은 기출을 여러 번 돌리는 게 흔해서 재실행 비용의 대부분이 여기서 나왔다.
+#   키(cache_key)는 llm.image_cache_key() 가 만든다 — 그 함수 주석에 무엇을 왜 해싱하는지.
+#   소유자 컬럼이 없는 이유: 내용 주소 방식이라 같은 이미지를 이미 갖고 있어야만
+#   꺼낼 수 있다 — 남의 자료가 새어나가는 경로가 아니다.
 # ──────────────────────────────────────────────
 
 def get_cached_image_desc(cache_key: str, provider: str, model: str):
@@ -234,11 +225,9 @@ def init_db():
                     f"UPDATE {table} SET provider=? WHERE provider IS NULL",
                     (LEGACY_PROVIDER,),
                 )
-        # 생성 회차에 사용자가 붙인 이름. 백필하지 않는다 —
-        # NULL(이름 없음)과 사용자가 지은 이름을 구분해야 화면에서 '제N회'로 대체할 수 있다.
+        # 아래 세 컬럼은 백필하지 않는다 — NULL('이름 없음' / '사용량 모름')과
+        # 실제 값을 구분해야 화면에서 '제N회'로 대체하거나 상자를 숨길 수 있다.
         _ensure_column(conn, "generations", "title", "TEXT")
-        # 회차 한 번에 쓴 LLM 사용량. 백필하지 않는 이유는 topic_analyses 쪽과 같다
-        # (아래 주석 참고) — 컬럼 추가 이전 회차는 사용량을 알 길이 없다.
         _ensure_column(conn, "generations", "usage", "TEXT")     # JSON: usage.summary()
         _ensure_column(conn, "generations", "credits", "TEXT")   # JSON: 쓴 크레딧만
 
@@ -269,18 +258,14 @@ def init_db():
         )
         # 분석 한 번에 쓴 LLM 사용량. 위 CREATE TABLE이 아니라 여기서 붙이는 이유는
         # 이미 만들어진 DB에는 CREATE TABLE이 다시 실행되지 않기 때문. (CONTRIBUTING 3번)
-        # 백필하지 않는다 — 추가 이전에 만든 분석은 사용량을 알 길이 없고,
-        # NULL(모름)과 0(안 씀)은 화면에서 다르게 보여줘야 한다.
+        # 백필하지 않는 이유는 generations 쪽과 같다.
         _ensure_column(conn, "topic_analyses", "usage", "TEXT")     # JSON: usage.summary()
         _ensure_column(conn, "topic_analyses", "credits", "TEXT")   # JSON: 쓴 크레딧만
 
         # ── 이미지 처리 결과 캐시 (llm.py 담당 — 위 헬퍼 함수 주석 참고) ──
-        # 모델까지 키에 넣는 이유: 모델이 다르면 결과 품질도 다르다. 싼 모델로 만든
-        # 설명을 비싼 모델을 고른 회차에 그대로 물려주면 안 된다.
-        #
-        # 키 컬럼이 image_sha256이던 초기 버전은 프롬프트를 키에 넣지 않아, 같은 페이지를
-        # 기출과 강의록으로 각각 올리면 서로의 결과를 돌려줬다. 이건 순수 캐시라 버려도
-        # 다시 만들어지므로, 옛 스키마가 보이면 그냥 지우고 새로 만든다.
+        # 모델까지 키에 넣는 이유: 싼 모델로 만든 설명을 비싼 모델을 고른 회차에 물려주면 안 된다.
+        # 키 컬럼이 image_sha256이던 초기 버전은 프롬프트를 키에 넣지 않아 기출과 강의록이
+        # 서로의 결과를 돌려받았다. 순수 캐시라 버려도 다시 만들어지므로 옛 스키마는 지운다.
         cols = [r[1] for r in conn.execute(
             "PRAGMA table_info(image_desc_cache)").fetchall()]
         if cols and "cache_key" not in cols:
