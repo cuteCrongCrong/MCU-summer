@@ -1341,14 +1341,16 @@ main { margin-top: 20px; }
 
 /* 한 줄 요약 (복사용) — "📌 기출에 나온 주제" 제목 바로 밑에 접어두고, 아래 주제
    목록과 같은 형식(테두리 있는 흰 카드 행)으로 보이게 한다.
-   굵게 강조하지 않은 평문 한 줄 = 주제 하나. */
+   굵게 강조하지 않은 평문 한 줄 = 주제 하나.
+   읽고 그대로 옮겨 적는 용도라 글씨는 다른 폴드보다 크게 둔다. */
+.topic-summary-fold > summary { font-size: 0.95rem; }
 .topic-summary-list {
   display: flex; flex-direction: column; gap: 8px; margin-top: 10px;
 }
 .topic-summary-row {
   border: 1.5px solid var(--border); border-radius: 10px;
-  padding: 10px 14px; background: var(--surface);
-  font-size: 0.86rem; line-height: 1.6; color: var(--text);
+  padding: 11px 14px; background: var(--surface);
+  font-size: 0.95rem; line-height: 1.65; color: var(--text);
 }
 
 #topic-search { margin-top: 4px; }

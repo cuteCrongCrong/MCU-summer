@@ -497,7 +497,7 @@ function topicRenderList(topics, viewKey) {
   const rowsHtml = lines.map(l => `<div class="topic-summary-row">${escHtml(l)}</div>`).join('');
   const key = viewKey || 'main';
   summaryEl.innerHTML = `
-    <details>
+    <details class="topic-summary-fold">
       <summary>📋 한 줄 요약 보기 (복사용)</summary>
       <button class="check-btn" style="margin:10px 0;" onclick="topicCopyLines('${key}')">📋 전체 복사</button>
       <div class="topic-summary-list">${rowsHtml}</div>
