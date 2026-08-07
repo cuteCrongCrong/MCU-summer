@@ -528,10 +528,8 @@ function topicRenderList(topics, viewKey) {
   }).join('');
 
   // 한 줄 요약 (복사용) — "주제: 강의록 몇p - 기출 몇번" 평문 한 줄 = 카드 한 장.
-  // "📌 기출에 나온 주제" 제목 바로 밑에 접어둔다 — 전체를 훑거나 복사하려는 사람이
-  // 긴 주제 목록을 끝까지 스크롤하지 않아도 되게. 형식은 아래 주제 목록과 같은
-  // 테두리 있는 흰 카드 행이되 굵게 강조하지는 않는다.
-  // 복사 텍스트는 DOM을 다시 읽지 않고 이 배열을 그대로 쓴다.
+  // 제목 바로 밑에 접어둬, 전체를 훑거나 복사하려는 사람이 긴 목록을 끝까지
+  // 스크롤하지 않아도 되게 한다. 복사 텍스트는 DOM이 아니라 이 배열을 그대로 쓴다.
   const lines = topics.map(t => `${t['주제']}: ${topicRefLine(t)}`);
   view.summaryLines = lines;
   const rowsHtml = lines.map(l => `<div class="topic-summary-row">${escHtml(l)}</div>`).join('');

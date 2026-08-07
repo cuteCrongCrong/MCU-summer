@@ -3,14 +3,12 @@
 //   common.js 이후 로드. escHtml / typeInfoOf / answerIndexOf / blankAnswersOf 재사용.
 //
 // ⚠️ 이 파일의 가장 중요한 성질:
-//   buildPrintDoc 은 **화면 DOM을 한 번도 읽지 않는다.** 인자로 받은 문제 배열만 쓴다.
-//   화면 카드는 사용자가 '정답 확인'을 누르면 정답이 열리고 선택지에 채점 색이 남는데,
-//   DOM을 긁어 인쇄하면 그 흔적이 종이에 그대로 나온다("문제만"인데 정답이 찍힌다).
-//   원본 배열로 새로 그리면 정답 문자열이 애초에 문서에 들어가지 않는다.
-//   → 숨기는 게 아니라 만들지 않는다. 이 차이가 콘솔 한 줄로 검증된다:
+//   buildPrintDoc 은 **화면 DOM을 한 번도 읽지 않는다** — 인자로 받은 문제 배열만 쓴다.
+//   DOM을 긁으면 '정답 확인'으로 열린 정답·채점 색이 "문제지"에 그대로 찍힌다.
+//   원본 배열로 새로 그리면 정답 문자열이 애초에 문서에 들어가지 않는다
+//   (숨기는 게 아니라 만들지 않는다). 콘솔 한 줄로 검증된다:
 //        const qs = getQuestions('arc-');
-//        const doc = buildPrintDoc('q', qs, meta);
-//        qs.every(q => !doc.includes(q['정답']));   // ← true 여야 한다
+//        qs.every(q => !buildPrintDoc('q', qs, meta).includes(q['정답']));   // true 여야 함
 //   common.js 의 buildQuestionCard 를 고칠 때 이 파일도 같이 봐야 한다.
 // ══════════════════════════════════════════════
 
@@ -119,8 +117,7 @@ function buildAnswerSheet(questions, meta) {
     const t = typeInfoOf(q);
     const label = t.rawType || (t.isObjective ? '객관식' : '단답형');
     // 번호만으로는 무엇에 대한 답인지 알 수 없어 본문 앞부분을 함께 싣는다.
-    // CSS 로 자르면 글자 높이 중간에서 잘리므로 문자열을 직접 자른다.
-    // 여기도 자르기 전에 평문으로 (40자에서 LaTeX 명령어 중간이 잘리지 않게)
+    // CSS 로 자르면 글자 높이 중간에서 잘리므로 문자열을 직접 자른다 (위와 같이 평문으로 먼저).
     const flat = mathToText(q['문제'] || '').replace(/\s+/g, ' ').trim();
     const ex = flat.length > PRINT_EXCERPT_LEN
       ? flat.slice(0, PRINT_EXCERPT_LEN) + '…' : flat;

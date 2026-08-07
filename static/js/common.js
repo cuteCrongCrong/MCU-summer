@@ -5,8 +5,6 @@
 // ══════════════════════════════════════════════
 
 // ── 공용 유틸 ──
-function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
-
 function escHtml(str) {
   return String(str)
     .replace(/&/g,'&amp;')
@@ -16,22 +14,15 @@ function escHtml(str) {
 }
 
 // ── LaTeX 표기를 읽히는 평문으로 ──
-// 이 앱에는 수식 렌더러(KaTeX·MathJax)가 없다. 그런데 생화학·생리학처럼 수식이
-// 나오는 과목을 넣으면 LLM이 '$\Delta G^\circ < 0$' 같은 LaTeX를 그대로 내보내고,
-// escHtml 을 거쳐 글자 그대로 화면에 찍힌다. (한글 글꼴이 역슬래시를 ₩ 로 그려서
-// 더 이상하게 보인다 — 데이터는 U+005C 로 멀쩡하다.)
+// 이 앱에는 수식 렌더러(KaTeX·MathJax)가 없어서, 생화학처럼 수식이 나오는 과목이면
+// LLM이 내보낸 '$\Delta G^\circ < 0$' 이 글자 그대로 화면에 찍힌다.
+// 완전한 LaTeX 파서가 아니라 의대 문항에 실제로 나오는 표기만 다룬다 — 그리스 문자,
+// 비교·연산 기호, 단위를 감싸는 \text{}, 간단한 위·아래 첨자. 분수·적분처럼 못 바꾸는
+// 것은 원문 그대로 남긴다(잘못 바꾸느니 원문이 낫다).
+// 표시 전용이라 저장된 데이터는 그대로다 — 수식 렌더러를 붙이면 이 함수만 걷어내면 된다.
 //
-// 완전한 LaTeX 파서가 아니다. 의대 문항에 실제로 나오는 표기만 다룬다 —
-// 그리스 문자, 비교·연산 기호, 단위를 감싸는 \text{}, 간단한 위·아래 첨자.
-// 분수·적분처럼 못 바꾸는 것은 건드리지 않고 원문 그대로 남긴다.
-// 잘못 바꾸느니 원문이 낫다.
-//
-// 표시 전용이다. 저장된 데이터는 바꾸지 않으므로, 렌더링을 제대로 붙이게 되면
-// 이 함수만 걷어내면 된다.
-// 두 갈래로 나눠 둔다. LaTeX 는 명령어 뒤 공백 하나를 '구분자'로 먹는데,
-// 그걸 그대로 따르면 '\Delta G' 는 'ΔG'(맞음)가 되지만 '\approx 4.18' 은
-// '≈4.18'(붙어버림)이 된다. 글자처럼 붙는 것과 좌우에 공백이 있어야 읽히는
-// 연산·비교 기호를 달리 취급한다.
+// 기호를 두 갈래로 나눈 이유: LaTeX 는 명령어 뒤 공백 하나를 구분자로 먹는데, 그대로
+// 따르면 '\Delta G' → 'ΔG'(맞음)지만 '\approx 4.18' → '≈4.18'(붙어버림)이 된다.
 const MATH_LETTERS = {          // 뒤 공백을 먹는다 → ΔG
   Delta: 'Δ', delta: 'δ', alpha: 'α', beta: 'β', gamma: 'γ', lambda: 'λ',
   mu: 'μ', pi: 'π', sigma: 'σ', omega: 'ω', Sigma: 'Σ', Omega: 'Ω',
@@ -147,39 +138,10 @@ function typeBadgeHtml(rawType, isObjective) {
     : `<span class="type-badge type-short">단답형</span>`;
 }
 
-// 원문 반영 범위 배너 (전체 읽음 / 일부만 반영)
-function renderSourceInfo(sourceInfo) {
-  const docs = [['lecture', '📄 강의자료'], ['exam', '📝 기출문제']];
-  const rows = [];
-  let anyTrunc = false;
-  for (const [key, label] of docs) {
-    const s = sourceInfo[key];
-    if (!s || typeof s.chars !== 'number') continue;
-    const nf = n => n.toLocaleString('ko-KR');
-    if (s.truncated) {
-      anyTrunc = true;
-      rows.push(`<div style="margin-top:4px;">⚠️ <b>${label}</b>: 추출 ${nf(s.chars)}자 중 <b>약 ${nf(s.used)}자(${s.coverage}%)</b>만 반영 — 분량 초과로 앞·뒤 일부만 사용, 중간 생략`);
-    } else {
-      rows.push(`<div style="margin-top:4px;">✅ <b>${label}</b>: 추출 ${nf(s.chars)}자 <b>전체 반영</b>`);
-    }
-  }
-  if (!rows.length) return '';
-  const bg = anyTrunc ? '#fffbeb' : '#f0fdf4';
-  const bd = anyTrunc ? '#fcd34d' : '#86efac';
-  const fg = anyTrunc ? '#92400e' : '#166534';
-  return `
-    <div style="background:${bg};border:1.5px solid ${bd};border-radius:10px;padding:12px 16px;font-size:0.84rem;color:${fg};">
-      <b>${anyTrunc ? '⚠️ 일부 문서가 잘렸습니다' : '✅ 파일 전체가 반영되었습니다'}</b>
-      ${rows.join('')}
-      ${anyTrunc ? `<div style="font-size:0.75rem;color:#a16207;margin-top:6px;">더 많이 반영하려면 파일을 나눠 올리거나, 서버의 상한(현재 ${(100000).toLocaleString('ko-KR')}자)을 높이면 됩니다.</div>` : ''}
-    </div>`;
-}
-
 // ── 문제 카드 렌더링 (생성 결과 · 오답 폴더 보기 공용) ──
 // viewOpts.folder = {id, name, items} 이면 오답 폴더 보기 모드 (넣기 버튼 대신 빼기 버튼)
 // viewOpts.containerId / titleId 로 렌더링 대상 지정 (기본: 생성기 결과 영역)
-// viewOpts.ns = 카드 DOM id 접두사. 여러 컨테이너가 동시에 카드를 들고 있어도
-//   서로의 카드를 집지 않도록 반드시 컨테이너마다 다른 값을 준다. (기본 '' = 생성기)
+// viewOpts.ns = 카드 DOM id 접두사. 컨테이너마다 다른 값을 준다 (기본 '' = 생성기).
 //   ⚠️ ns 없이 두 컨테이너를 함께 쓰면 getElementById가 문서 앞쪽 카드를 집어
 //      '정답 확인'이 엉뚱한 카드를 여는 버그가 난다.
 // viewOpts.paged = true 면 10문제씩 끊어 보여주고 번호 바로가기 줄을 붙인다
@@ -188,8 +150,8 @@ const questionsByNs = {};              // ns → 그 컨테이너에 그려진 �
 function getQuestions(ns) { return questionsByNs[ns || ''] || []; }
 
 // ── 문제 dict 판정 (화면 카드와 인쇄 문서가 같은 규칙을 쓰게 하려고 분리) ──
-// print.js 의 buildPrintDoc 도 이 셋을 쓴다. 유형 판별 규칙이 갈리면
-// 화면과 종이의 문제 유형이 달라지므로 반드시 여기 한 곳만 고칠 것.
+// print.js 의 buildPrintDoc 도 이 셋을 쓴다 — 규칙이 갈리면 화면과 종이의 유형이
+// 달라지므로 반드시 여기 한 곳만 고칠 것.
 
 // 빈칸 표시(____ · □□ · ( ))를 찾는 정규식. 인쇄에서는 이걸 손글씨용 밑줄로 바꾼다.
 const BLANK_MARK_RE = /_{2,}|□{2,}|\(\s*\)/g;
@@ -369,8 +331,7 @@ function revealAnswer(ns, qIdx) {
 
 // 빈칸채우기(빈칸 2개 이상): 빈칸별 입력값을 정답과 각각 비교해 O/X 표시
 function checkBlanks(ns, qIdx) {
-  const q = getQuestions(ns)[qIdx] || {};
-  const answers = (q['정답'] || '').split('|').map(s => s.trim()).filter(Boolean);
+  const answers = blankAnswersOf(getQuestions(ns)[qIdx] || {});
   // 화면에 보이는 것과 같은 기준으로 비교한다. 정답이 '$\Delta G$' 로 저장돼 있으면
   // 화면에는 'ΔG' 로 보이는데, 사용자가 본 대로 'ΔG' 를 쳐도 원문과 달라 오답이 된다.
   const norm = s => mathToText(s || '').trim().replace(/\s+/g, '').toLowerCase();
@@ -414,16 +375,14 @@ function viewOriginalImage(src, title) {
 
 // ══════════════════════════════════════════════
 // 목록 페이지 나누기 — 보관함의 두 목록(시험지 · 분석한 주제) 공용
-//   카드가 계속 쌓이면 옛날 것을 찾으려 끝까지 스크롤해야 한다.
 //   두 목록은 같은 .paper-grid 마크업을 쓰므로 자르는 규칙도 한 곳에 둔다.
-//   ⚠️ 문제 카드 목록(renderQuestions)에는 쓰지 않는다 — 고른 선택지·입력한 답·
-//      채점 색이 전부 DOM 에만 있어서, 잘라 다시 그리면 답안이 날아간다.
-//      문제 쪽 페이지 나누기는 파일 맨 아래 '문제 페이지 나누기' 절에 따로 있다
-//      (카드는 전부 만들어 두고 보이기/숨기기만 바꾸는 방식).
+//   ⚠️ 문제 카드 목록(renderQuestions)에는 쓰지 않는다 — 고른 선택지·입력한 답·채점
+//      색이 전부 DOM 에만 있어서 잘라 다시 그리면 답안이 날아간다. 문제 쪽 페이지
+//      나누기는 파일 맨 아래에 따로 있다(전부 만들어 두고 보이기/숨기기만 바꾼다).
 // ══════════════════════════════════════════════
 
 // 목록 key → 한 페이지 개수 + 그 목록을 다시 그리는 함수.
-// render 를 화살표로 감싼 것은 호출 시점에 찾게 하려는 것이다 — 이 파일은
+// render 를 화살표로 감싼 것은 호출 시점에 찾게 하려는 것 — 이 파일은
 // archive.js/topic_archive.js 보다 먼저 로드돼서 직접 적으면 undefined 다.
 const PAGED_LISTS = {
   papers: { perPage: 8, render: () => renderArchive() },
@@ -605,17 +564,15 @@ async function describeHttpError(resp, endpoint) {
 
 // ══════════════════════════════════════════════
 // 문제 페이지 나누기 + 번호 바로가기 — 시험지 화면(생성 결과 · 보관함) 공용
-//   30문제짜리 시험지는 한 화면에 다 담기지 않아, 뒤쪽 문제로 가려면 계속 굴려야 했다.
 //   ① 10문제씩 끊어 보여주고 아래에 페이지 버튼을 둔다.
-//   ② 넓은 화면에서 비어 있던 본문 왼쪽 여백에 문제 번호를 늘어놓아, 몇 번이든
-//      한 번에 간다(다른 페이지의 번호를 누르면 그 페이지로 넘어간 뒤 그 문제로).
-//      번호 줄은 넓은 화면에만 나온다 — 좁은 화면은 CSS 가 통째로 감춘다(.q-rail).
-//      만드는 쪽은 화면 폭을 따지지 않는다. 폭이 바뀌면 다시 그려야 하기 때문이다.
+//   ② 넓은 화면의 본문 왼쪽 여백에 문제 번호를 늘어놓아 몇 번이든 한 번에 간다
+//      (다른 페이지의 번호를 누르면 그 페이지로 넘어간 뒤 그 문제로).
+//      번호 줄은 좁은 화면에서 CSS 가 통째로 감춘다(.q-rail) — 만드는 쪽은 폭을
+//      따지지 않는다. 폭이 바뀔 때마다 다시 그려야 하기 때문이다.
 //
 //   ⚠️ 위의 목록 페이저(PAGED_LISTS)와 달리 **다시 그리지 않는다.** 고른 선택지·
-//      입력한 답·채점 색·열어 둔 정답이 전부 DOM 에만 있어서, 페이지를 넘길 때마다
-//      다시 그리면 앞 페이지에 쓴 답이 통째로 날아간다. 그래서 카드는 처음에 전부
-//      만들어 두고 .q-off 로 보이기/숨기기만 바꾼다. 돌아오면 답안이 그대로 있다.
+//      입력한 답·채점 색·열어 둔 정답이 전부 DOM 에만 있어서, 넘길 때마다 다시 그리면
+//      앞 페이지에 쓴 답이 날아간다. 카드는 전부 만들어 두고 .q-off 로 숨기기만 한다.
 // ══════════════════════════════════════════════
 
 const QUESTIONS_PER_PAGE = 10;
@@ -660,12 +617,10 @@ function setupQuestionPages(ns, container, total) {
 }
 
 // ── 번호 줄의 세로 자리 — 헤더 아래에서 시작해, 헤더가 밀려 올라가면 화면 맨 위 ──
-//   CSS 로는 못 한다. fixed 는 스크롤을 모르고, sticky 는 흐름 안에 있어야 하는데
-//   이 줄은 본문 옆 여백에 띄우느라 흐름 밖에 있다. 그래서 top 만 스크롤에 맞춰
-//   다시 준다 (가로 자리는 CSS 가 잡은 그대로 둔다).
-//
-//   헤더 높이를 상수로 박지 않고 매번 재는 이유 — 응원 문구 길이와 화면 폭에 따라
-//   헤더가 한 줄 더 늘거나 줄어든다(문구 바꾸기 버튼도 있다). 재면 늘 맞는다.
+//   CSS 로는 못 한다: fixed 는 스크롤을 모르고, sticky 는 흐름 안에 있어야 하는데 이
+//   줄은 본문 옆 여백에 띄우느라 흐름 밖이다. 그래서 top 만 스크롤에 맞춰 다시 준다.
+//   헤더 높이를 상수로 안 박고 매번 재는 이유 — 응원 문구 길이와 화면 폭에 따라
+//   헤더가 한 줄 늘거나 줄어든다.
 const Q_RAIL_TOP_MIN = 16;      // 헤더가 사라진 뒤 화면 맨 위에서 띄울 간격
 const Q_RAIL_HEADER_GAP = 18;   // 헤더 아래끝과 줄 사이 간격
 const qRailMedia = window.matchMedia('(min-width: 960px)');   // style.css 의 표시 기준과 같은 값
@@ -780,8 +735,8 @@ function markRailPage(ns, page, info) {
 
 // ══════════════════════════════════════════════
 // 사용량 표시 (토큰 / 크레딧) — 문제 생성기·기출 주제 분석 공용
-//   두 탭이 각자 자기 결과 화면에 같은 모양의 접힌 상자를 띄운다.
-//   그래서 대상 상자 id와 작업 이름('생성'/'분석')을 인자로 받는다.
+//   두 탭이 각자 자기 결과 화면에 같은 모양의 접힌 상자를 띄우므로, 대상 상자 id와
+//   작업 이름('생성'/'분석')을 인자로 받는다.
 //   계산은 서버(providers/usage.py)에서 끝났고 여기서는 그리기만 한다.
 // ══════════════════════════════════════════════
 
@@ -793,8 +748,8 @@ function fmtCredit(v) {
   return v.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: max });
 }
 
-// 제공사에 따라 크레딧과 토큰 중 맞는 쪽을 보여준다.
-// 전북대 게이트웨이는 크레딧으로 과금하므로 토큰 수를 보여주지 않는다.
+// 제공사에 따라 크레딧과 토큰 중 맞는 쪽을 보여준다 (게이트웨이는 크레딧 과금이라
+// 토큰 수를 보여주지 않는다). 아래 두 함수의 유일한 진입점 — 기본값도 여기서만 채운다.
 // opts: { boxId: 상자 element id, noun: '생성' | '분석' }
 function renderSpend(payload, opts) {
   const o = Object.assign({ boxId: 'usage-box', noun: '생성' }, opts || {});
@@ -802,9 +757,8 @@ function renderSpend(payload, opts) {
   return renderUsage(payload && payload.usage, o);
 }
 
-// 결과 화면 — 이번 작업에 쓴 크레딧 + 남은 총 크레딧
-function renderCredits(credits, opts) {
-  const o = Object.assign({ boxId: 'usage-box', noun: '생성' }, opts || {});
+// 결과 화면 — 이번 작업에 쓴 크레딧 + 남은 총 크레딧. (o는 renderSpend가 채워 넘긴다)
+function renderCredits(credits, o) {
   const box = document.getElementById(o.boxId);
   if (!box) return;
   box.hidden = false;
@@ -853,9 +807,8 @@ function renderCredits(credits, opts) {
                 + (body ? `<div class="usage-body">${body}</div>` : '');
 }
 
-// ── 토큰 사용량 (이번 작업) ──
-function renderUsage(usage, opts) {
-  const o = Object.assign({ boxId: 'usage-box', noun: '생성' }, opts || {});
+// ── 토큰 사용량 (이번 작업) ── (o는 renderSpend가 채워 넘긴다)
+function renderUsage(usage, o) {
   const box = document.getElementById(o.boxId);
   if (!box) return;
   box.classList.remove('no-body');   // 같은 상자에 크레딧을 그렸던 흔적을 지운다
@@ -939,9 +892,9 @@ function usageSuffix(usage) {
 }
 
 // ── 크레딧 잔액 한 줄 (키 입력란 아래) — 문제 생성기·기출 주제 분석 공용 ──
-// 작업을 시작하기 전에 남은 크레딧을 확인하는 용도라, 끝난 뒤에 그리는 usage-box와는 별개다.
-// 조회를 지원하는 제공사(전북대 게이트웨이)에서만 상자를 띄우고 나머지는 숨긴다.
-// 탭마다 제공사·키를 따로 들고 있으므로(topic_analysis.js 머리말) 값은 인자로 받는다.
+// 작업 '전에' 잔액을 확인하는 용도라, 끝난 뒤에 그리는 usage-box와는 별개다.
+// 조회를 지원하는 제공사(전북대 게이트웨이)에서만 띄우고 나머지는 숨긴다.
+// 탭마다 제공사·키를 따로 들고 있으므로 값은 인자로 받는다.
 // opts: { barId: 상자 element id, textId: 문구 element id }
 async function refreshCreditsBar(info, providerName, apiKey, opts) {
   const o = Object.assign({ barId: 'credits-bar', textId: 'credits-bar-text' }, opts || {});
@@ -1008,8 +961,8 @@ function renderKeyHelp(info, boxId) {
 
 // ══════════════════════════════════════════════
 // 분량 초과 경고 모달 (주제 분석·문제 생성 공용)
-//   서버가 needs_confirm 을 주면 어느 파일의 몇 번째 줄이 버려지는지 보여주고
-//   진행 여부를 묻는다. 확인을 받아야만 실제 분석/생성이 돈다.
+//   서버가 needs_confirm 을 주면 어디가 버려지는지 보여주고 진행 여부를 묻는다.
+//   확인을 받아야만 실제 분석/생성이 돈다.
 // ══════════════════════════════════════════════
 
 let _cutResolve = null;

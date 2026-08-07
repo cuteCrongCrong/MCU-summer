@@ -37,9 +37,6 @@ from features import extract_cache
 
 topic_bp = Blueprint("topic", __name__)
 
-# 업로드 파일 개수 상한은 글자 예산과 맞물려 있어 llm.py에서 한 번만 정한다
-# (MAX_FILES_PER_SIDE — 문제 생성기와 공용).
-
 
 class TopicParamError(Exception):
     """요청 값이 잘못된 경우 — 라우트가 상태 코드와 함께 그대로 응답한다."""
@@ -63,9 +60,8 @@ def _analysis_payload(result, lecture_docs, exam_docs, model, provider, title,
     """
     분석 결과를 보관하고 응답 본문(dict)을 만든다.
     바로 진행한 경우와 '분량 초과 확인 후 진행'한 경우가 같은 응답을 내도록 공유한다.
-
     owner 를 인자로 받는 이유: 스트리밍 경로는 요청 컨텍스트가 닫힌 뒤에 실행돼서
-    여기서 current_owner() 를 부르면 터진다. 라우트가 미리 읽어 넘긴다.
+    여기서 current_owner() 를 부르면 터진다.
     """
     # 응답과 보관에 같은 값을 쓴다 (한 번만 조회 — 잔액 조회가 왕복 요청이라서)
     spent = spend()
@@ -101,10 +97,10 @@ def _analysis_payload(result, lecture_docs, exam_docs, model, provider, title,
 def truncation_warnings(*doc_groups) -> list:
     """
     상한을 넘겨 일부가 버려지는 문서만 골라 화면용 경고 목록으로. 없으면 빈 리스트.
-    (llm.extract_labeled_docs가 doc["cut"]·doc["img"]에 넣어둔 계산 결과를 옮겨 담는다)
+    (llm.finish_labeled_docs가 doc["cut"]·doc["img"]에 넣어둔 계산 결과를 옮겨 담는다)
 
-    두 종류를 한 목록에 담고 kind로 구분한다 — 사용자 입장에서는 "이대로 진행할까"를
-    묻는 같은 질문이라, 모달을 두 번 띄우면 확인을 두 번 받아야 한다.
+    두 종류를 한 목록에 담고 kind로 구분한다 — 사용자에게는 "이대로 진행할까"라는 같은
+    질문이라, 모달을 두 번 띄우면 확인을 두 번 받아야 한다.
       kind="text"  : 글자수 상한 초과 (어느 구간이 버려지는지)
       kind="image" : 그림·필기 쪽수 상한 초과 (몇 쪽 중 몇 쪽만 읽었는지)
     """
@@ -332,20 +328,14 @@ def read_topic_params() -> dict:
                 f"강의록·기출은 각각 최대 {MAX_FILES_PER_SIDE}개까지 올릴 수 있습니다.")
 
     model = request.form.get("model", "").strip() or provider.default_model
-    # 이미지 전용 모델. 주제 대조 자체는 위 model이 하고, 이 값은 이미지 호출에만
-    # 쓰인다 — 기출 그림 설명(IMAGE_DESCRIBE)과 **강의록 글자 전사(IMAGE_TRANSCRIBE)
-    # 양쪽 다**다.
-    #
-    # 이 화면에서는 사용자가 고르지 않는다. 제공사가 image_model을 선언했으면
-    # (게이트웨이) 그 모델로 고정하고, 아니면 위 model을 그대로 쓴다.
-    #   - 고정: 하는 일이 '읽고 옮기기'라 본작업과 체급을 맞출 이유가 없다.
-    #           근거 실측은 providers/jbnu_gateway.py 참고.
-    #   - 나머지 제공사: 모델 id가 제공사 안에서만 유효해 고정할 값이 없다.
-    #           고를 칸을 남기느니 나누기 전처럼 한 모델로 도는 편이 화면이 단순하다.
-    # 폼의 analysis_model은 **일부러 읽지 않는다** — 열어둔 옛날 탭이나 직접 만든
-    # 요청이 비싼 모델을 이미지 수십 장에 밀어넣는 길이 되어선 안 된다.
-    # (문제 생성기 /generate도 같은 방식이다. 다만 거기는 이 값이 이미지뿐 아니라
-    #  개념·형식 분석까지 맡아서 provider.analysis_model이라는 다른 값을 본다)
+    # 이미지 호출 전용 모델 — 기출 그림 설명(IMAGE_DESCRIBE)과 강의록 글자 전사
+    # (IMAGE_TRANSCRIBE) 양쪽 다. 주제 대조 자체는 위 model이 한다.
+    # 사용자가 고르지 않는다: 제공사가 image_model을 선언했으면(게이트웨이) 그 모델로
+    # 고정하고, 아니면 위 model을 그대로 쓴다. 하는 일이 '읽고 옮기기'라 본작업과 체급을
+    # 맞출 이유가 없다 — 근거 실측은 providers/jbnu_gateway.py 참고.
+    # 폼의 analysis_model은 **일부러 읽지 않는다** — 열어둔 옛날 탭이나 직접 만든 요청이
+    # 비싼 모델을 이미지 수십 장에 밀어넣는 길이 되어선 안 된다.
+    # (문제 생성기도 같은 방식이지만, 거기는 개념·형식 분석까지 맡아 analysis_model을 본다)
     analysis_model = getattr(provider, "image_model", "") or model
 
     return {
@@ -379,8 +369,8 @@ def run_topic_analysis_events(p: dict):
     provider = p["provider"]
     model    = p["model"]
     owner    = p["owner"]
-    # 이미지 호출 전용 모델 (주제 대조는 위 model이 한다). read_topic_params 주석 참고.
-    # .get 으로 읽는 이유 — 이 키가 없던 시절의 호출부/테스트도 그대로 돌게.
+    # 이미지 호출 전용 모델 (read_topic_params 주석 참고).
+    # .get — 이 키가 없던 시절의 호출부/테스트도 그대로 돌게.
     analysis_model = p.get("analysis_model") or model
 
     # 이번 분석에 쓴 토큰을 단계별로 모은다. 오류로 끝나도 그 시점까지의 사용량은
@@ -436,11 +426,10 @@ def run_topic_analysis_events(p: dict):
             total_imgs = sum(len(x["img_jobs"]) for x in lec_parts + exam_parts)
             yield {"type": "progress", "key": "extract", "done": 0, "total": total_imgs}
             done_imgs = 0
-            # 강의록: 그림 속 '글자만' 전사 (손글씨·판서 포함), 그림 해설은 금지.
-            #   주제 이름은 '강의록에 있는 단어'만 써야 한다. 그림이 무엇인지 설명하게 하면
-            #   LLM이 지어낸 문장이 강의록 텍스트에 섞이고, 그 표현까지 '강의록에 있는 것'이
-            #   되어 용어 규칙이 무력해진다. 전사만 시키면 손글씨는 살리면서 그 위험은 없다.
-            # 기출: 그림 문제(부위 이름 쓰기 등)를 놓치지 않도록 그림 해설 포함 (문제 생성기와 동일)
+            # 강의록: 그림 속 '글자만' 전사(손글씨·판서 포함), 그림 해설은 금지 —
+            #   주제 이름은 '강의록에 있는 단어'만 써야 하는데, 설명을 시키면 LLM이 지어낸
+            #   문장까지 '강의록에 있는 것'이 되어 용어 규칙이 무력해진다.
+            # 기출: 그림 문제(부위 이름 쓰기 등)를 놓치지 않도록 그림 해설 포함.
             for parts, mode in ((lec_parts, IMAGE_TRANSCRIBE), (exam_parts, IMAGE_DESCRIBE)):
                 for x in parts:
                     # 이미지 호출만 analysis_model로 간다 (주제 대조는 아래에서 model이 한다)
@@ -452,8 +441,7 @@ def run_topic_analysis_events(p: dict):
                     done_imgs += len(x["img_jobs"])
 
             lecture_docs = finish_labeled_docs(lec_parts, image_mode=IMAGE_TRANSCRIBE)
-            # 기출의 글자 예산은 강의록이 쓰고 남긴 몫까지 받는다 — 강의록보다 기출이 훨씬
-            # 긴 것이 보통이라(강의록 5만 자 · 기출 15만 자), 칸막이를 치면 기출만 잘렸다.
+            # 기출은 강의록이 쓰고 남긴 몫까지 받는다 (근거는 llm.TOPIC_TOTAL_CHAR_BUDGET).
             # 강의록 조립이 끝난 지금은 실사용량이 확정돼 있으므로 여기서 계산할 수 있다.
             # by_question: 상한을 넘길 때 문항 번호 경계로 자른다 (반쪽짜리 문항 방지).
             exam_docs    = finish_labeled_docs(exam_parts, image_mode=IMAGE_DESCRIBE,
@@ -475,7 +463,7 @@ def run_topic_analysis_events(p: dict):
                 return
 
             # 상한을 넘겨 일부가 버려지는 파일이 있으면 진행 전에 물어본다.
-            # 추출 결과를 잠시 보관하고 토큰만 내려보낸다 — 확인 후 재추출하면 Vision 재과금.
+            # 추출 결과를 잠시 보관하고 토큰만 내려보낸다 — 재추출하면 Vision 재과금.
             warnings = truncation_warnings(("강의록", lecture_docs), ("기출문제", exam_docs))
             if warnings:
                 token = extract_cache.put({

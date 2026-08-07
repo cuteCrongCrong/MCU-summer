@@ -37,31 +37,27 @@ IMAGE_FALLBACK_MODEL = "gemini-3.6-flash"
 #  모델 선택 근거 — 값을 바꾸기 전에 읽을 것
 # ══════════════════════════════════════════════════════════════════
 #
-# ① IMAGE_MODEL — 저가 모델로 내려도 되는 근거는 실측이다.
-#    image_desc_cache에서 cache_key가 같은 행(= 같은 PNG·같은 프롬프트·같은 출력 한도)
-#    끼리 짝지어 비교한 강의록 전사 결과:
-#        gemini-3.6-flash 783자 · gpt-5.6-luna 776자          (53쪽, 동일 조건)
-#        claude-sonnet-4-6 806자 · gpt-5.6-luna 790자          (같은 문서 54쪽)
-#    체급 차이가 거의 없다. 출력 한도를 풀고 나서 갈린 것은 모델이 아니라 한도였다
-#    (llm.py의 DESCRIBE_MAX_OUTPUT 주석 참고). 그러면 가장 싼 것을 쓰는 게 맞다.
+# ① IMAGE_MODEL — 저가 모델로 내려도 되는 근거는 실측이다. image_desc_cache에서
+#    cache_key가 같은 행(= 같은 PNG·프롬프트·출력 한도)끼리 짝지은 강의록 전사 글자수:
+#        gemini-3.6-flash 783 · gpt-5.6-luna 776   (53쪽)
+#        claude-sonnet-4-6 806 · gpt-5.6-luna 790  (54쪽)
+#    체급 차이가 거의 없다. 갈린 것은 모델이 아니라 출력 한도였다
+#    (llm.py의 DESCRIBE_MAX_OUTPUT 주석). 그러면 가장 싼 것을 쓰는 게 맞다.
 #
-# ② ANALYSIS_MODEL — 값이 ①과 같지만 근거는 따로다. ①은 '옮겨 적기'라 체급이 필요 없다는
-#    것이고, 이쪽은 텍스트 추론(기출 분석·대표문제 추출)까지 포함해 그 논리가 안 통한다.
-#    그래서 같은 자료로 luna와 terra를 각각 돌려 비교했다
-#    (session 63 vs 64, 생성 모델은 양쪽 다 claude-opus-5로 고정):
-#        크레딧      luna 225.63  ·  terra 397.82   ← terra는 이미지 호출값이 빠진 수치다
+# ② ANALYSIS_MODEL — 값이 ①과 같지만 근거는 따로다. 이쪽은 텍스트 추론(기출 분석·
+#    대표문제 추출)까지 포함해 '옮겨 적기'라는 ①의 논리가 안 통한다. 같은 자료로 비교
+#    (session 63 vs 64, 생성 모델은 양쪽 다 claude-opus-5 고정):
+#        크레딧      luna 225.63  ·  terra 397.82   ← terra는 이미지 호출값이 빠진 수치
 #        대표문제    luna 5개(4유형 전부) · terra 4개(서술형 누락)
-#        빈출포인트  luna 11 · terra 8
-#        유형통계    luna 107문항 · terra 98문항
+#        빈출포인트  luna 11 · terra 8   |   유형통계  luna 107문항 · terra 98문항
 #        금지 규칙 위반((필기:·판독불가·이미지 설명 누출)은 양쪽 다 0
 #    싼 쪽이 더 나았으므로 luna로 고정한다.
 #    ⚠️ 이 측정은 기출이 38% 잘린 입력(coverage 61~63%)에서 나왔다. 예산을 올린 뒤
-#       (llm.py GEN_SIDE_CHAR_BUDGET) 다시 재보지 않았으므로 재측정하면 뒤집힐 수 있다.
+#       (llm.py GEN_SIDE_CHAR_BUDGET) 재측정하지 않았으므로 다시 재면 뒤집힐 수 있다.
 #
-# ③ IMAGE_FALLBACK_MODEL — 게이트웨이는 여러 제공사 모델을 한 키로 부를 수 있어서
-#    한쪽이 죽어도 다른 쪽이 산다. 제공사를 일부러 다르게 골랐다 — 같은 제공사의 다른
-#    모델은 장애가 같이 나기 쉽다. ①의 실측에서 전사량이 luna와 동률이라, 폴백으로
-#    넘어가도 결과가 얇아지지 않는다.
+# ③ IMAGE_FALLBACK_MODEL — 제공사를 일부러 다르게 골랐다. 같은 제공사의 다른 모델은
+#    장애가 같이 나기 쉽다. ①의 실측에서 전사량이 luna와 동률이라 폴백으로 넘어가도
+#    결과가 얇아지지 않는다.
 
 GATEWAY_BASE_URL = "https://factchat-cloud.mindlogic.ai/v1/gateway"
 
@@ -94,17 +90,6 @@ class JbnuGatewayProvider(OpenAICompatibleProvider):
     analysis_model       = ANALYSIS_MODEL
     image_fallback_model = IMAGE_FALLBACK_MODEL
 
-    # ── 여기 채워주세요 ──────────────────────────────────────────────
-    # 다른 프로바이더는 스스로 키를 발급받지만, 게이트웨이는 학교에서 배부하는
-    # 방식이라 절차를 코드에서 알 수 없어 비워 뒀다.
-    #
-    # key_help_steps가 빈 리스트인 동안에는 화면에서 도움말 자체가 숨겨진다.
-    # 아래 두 줄을 채우면 그 순간부터 키 입력란 아래에 접힌 도움말로 나타난다.
-    # (다른 프로바이더 예시는 openai_provider.py 참고)
-    #
-    #   - key_help_url:   신청·발급 페이지 주소. 없으면 "" 그대로 두면 버튼이 빠진다
-    #   - key_help_steps: 한 문장 = 한 단계. 평문으로 쓸 것 (HTML 태그 금지)
-    #   - key_help_note:  한도·유효기간 같은 주의사항 한 줄 (선택)
     key_help_url    = "https://gpt.jbnu.ai/dashboard/developers"
     key_help_steps  = [
         "gpt.jbnu.ai에 로그인합니다.",
