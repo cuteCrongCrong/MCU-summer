@@ -158,6 +158,8 @@ async function generate() {
   if (document.getElementById('preserve-types').checked) form.append('preserve_types', '1');
   form.append('weight', weight);
   form.append('model', model);
+  // 분석용 모델은 보내지 않는다 — 서버가 제공사별로 정한다(question_gen.py).
+  // 보내봐야 무시되므로, 화면과 요청이 어긋나 보이지 않게 아예 넣지 않는다.
   form.append('provider', currentProvider || '');
   form.append('title', document.getElementById('gen-title').value.trim());
   if (useSession) {
@@ -285,41 +287,14 @@ function setResultTitle(title, ordinal) {
   document.getElementById('result-title').textContent = `📋 ${name}`;
 }
 
-// 생성 직후 결과를 화면에 반영 (제목 + 이름 변경 버튼 상태)
-// 키 입력란 아래 한 줄 — 생성 전에 잔액을 확인하는 용도
-async function loadCredits() {
-  const info = currentProviderInfo();
-  const bar  = document.getElementById('credits-bar');
-  if (!info || !info.supports_credits) {      // 지원하지 않는 제공사면 아예 숨긴다
-    bar.hidden = true;
-    return;
-  }
-  bar.hidden = false;
-
-  const text   = document.getElementById('credits-bar-text');
-  const apiKey = document.getElementById('api-key').value.trim();
-  if (!apiKey) {
-    text.textContent = 'API 키를 입력하면 잔액을 조회합니다.';
-    return;
-  }
-  text.textContent = '조회 중…';
-  try {
-    const resp = await fetch('/credits?provider=' + encodeURIComponent(currentProvider || ''),
-                             { headers: { 'X-Api-Key': apiKey } });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok || data.error) {
-      text.textContent = '잔액 조회 실패 — ' + (data.error || resp.status);
-      return;
-    }
-    const t = data.total || {};
-    text.textContent = `남은 크레딧 ${fmtCredit(t.remaining)}`
-      + (t.quota != null ? ` / 할당 ${fmtCredit(t.quota)}` : '')
-      + (t.used  != null ? ` (누적 사용 ${fmtCredit(t.used)})` : '');
-  } catch (err) {
-    text.textContent = '잔액을 조회하지 못했습니다.';
-  }
+// 키 입력란 아래 한 줄 — 생성 전에 잔액을 확인하는 용도.
+// 그리는 일은 common.js의 공용 함수가 하고, 여기서는 이 탭의 제공사·키만 넘긴다.
+function loadCredits() {
+  return refreshCreditsBar(currentProviderInfo(), currentProvider,
+                           document.getElementById('api-key').value.trim());
 }
 
+// 생성 직후 결과를 화면에 반영 (제목 + 이름 변경 버튼 상태)
 function applyGenerationResult(payload) {
   renderSpend(payload);
   lastGeneration = {

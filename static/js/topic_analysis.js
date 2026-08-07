@@ -81,6 +81,18 @@ async function topicLoadProviders() {
   }
 }
 
+function topicCurrentProviderInfo() {
+  return topicProviders.find(p => p.name === topicCurrentProvider) || null;
+}
+
+// 키 입력란 아래 한 줄 — 분석 전에 잔액을 확인하는 용도.
+// 그리는 일은 common.js의 공용 함수가 하고, 여기서는 이 탭의 제공사·키만 넘긴다.
+function topicLoadCredits() {
+  return refreshCreditsBar(topicCurrentProviderInfo(), topicCurrentProvider,
+                           document.getElementById('topic-api-key').value.trim(),
+                           { barId: 'topic-credits-bar', textId: 'topic-credits-bar-text' });
+}
+
 function topicSelectProvider(name) {
   const info = topicProviders.find(p => p.name === name);
   if (!info) return;
@@ -94,6 +106,7 @@ function topicSelectProvider(name) {
   keyInput.placeholder = info.key_placeholder || 'API 키 입력';
   keyInput.value = topicApiKeyByProvider[name] || '';
   renderKeyHelp(info, 'topic-key-help');
+  topicLoadCredits();
 
   topicPopulateModels([info.default_model]);
   topicLoadModels();
@@ -110,6 +123,7 @@ async function topicLoadModels() {
   }
   msg.textContent = '불러오는 중…';
   msg.style.color = '#4f8a76';
+  topicLoadCredits();     // 키가 들어온 시점 — 잔액도 같이 갱신
   try {
     const url = '/models?provider=' + encodeURIComponent(topicCurrentProvider || '');
     const resp = await fetch(url, { headers: { 'X-Api-Key': apiKey } });
@@ -182,6 +196,7 @@ async function topicAnalyze() {
 
   document.getElementById('topic-analyze-btn').disabled = true;
   document.getElementById('topic-status-box').classList.remove('hidden');
+  document.getElementById('topic-cancel-btn').style.display = 'inline-block';
   document.getElementById('topic-error-box').style.display = 'none';
   topicRenderSpend(null, 'main');   // 지난 회차의 사용량 표가 남아 보이지 않게
   topicResetSteps();
@@ -189,13 +204,16 @@ async function topicAnalyze() {
   const form = new FormData();
   form.append('api_key', apiKey);
   form.append('model', model);
+  // 그림 읽기용 모델은 보내지 않는다 — 이 화면은 모델을 하나만 고르고,
+  // 그림을 읽을 모델은 서버가 정한다 (features/topic_analysis.py).
   form.append('provider', topicCurrentProvider || '');
   form.append('title', document.getElementById('topic-title').value.trim());
   lectureFiles.forEach(f => form.append('lectures', f));
   examFiles.forEach(f => form.append('exams', f));
 
+  topicAbort = new AbortController();
   try {
-    let out = await topicRunAnalysis(form);
+    let out = await topicRunAnalysis(form, topicAbort.signal);
 
     // 분량 상한을 넘는 파일이 있으면 서버가 추출까지만 하고 멈춰 물어본다.
     // 추출 결과는 서버에 보관돼 있으므로, 진행하면 토큰만 보내 이어서 돈다.
@@ -212,21 +230,43 @@ async function topicAnalyze() {
       again.append('api_key', apiKey);
       again.append('title', document.getElementById('topic-title').value.trim());
       again.append('extract_token', out.payload.extract_token);
-      await topicRunAnalysis(again);
+      await topicRunAnalysis(again, topicAbort.signal);
     }
   } catch (err) {
-    topicShowError('서버 연결에 실패했습니다. Flask 서버가 실행 중인지 확인하세요.\n' + err.message);
+    if (err.name === 'AbortError') {
+      TOPIC_STAGES.forEach(k => setStep('topic-step-' + k, 'wait'));
+      topicShowError('분석을 중지했습니다.\n'
+        + '중지한 순간 이미 나가 있던 LLM 호출 한 건은 끝까지 가므로 그만큼은 크레딧·토큰이 '
+        + '나갑니다. 주제 대응표까지 끝난 뒤였다면 그 결과는 보관함에 저장됩니다.\n'
+        + '잠시 뒤 키 입력란 아래 ↻ 조회로 남은 크레딧을 확인하세요.');
+    } else {
+      topicShowError('서버 연결에 실패했습니다. Flask 서버가 실행 중인지 확인하세요.\n' + err.message);
+    }
   } finally {
+    topicAbort = null;
     document.getElementById('topic-analyze-btn').disabled = false;
+    document.getElementById('topic-cancel-btn').style.display = 'none';
   }
+}
+
+// ── 중지 ──
+// 이 탭도 이제 SSE라, 연결을 끊으면 서버 제너레이터가 다음 yield에서 멈춘다
+// (문제 생성 탭과 같다). 다만 그 순간 이미 나가 있던 LLM 호출 한 건은 끝까지
+// 가므로 그만큼은 과금된다 — 아래 문구가 그걸 알려준다.
+let topicAbort = null;
+
+function topicCancelAnalyze() {
+  if (topicAbort) topicAbort.abort();
 }
 
 // 요청 한 번을 끝까지 처리한다.
 // 분량 초과로 멈추면 {needsConfirm, payload}, 그 밖에는 아무것도 돌려주지 않는다.
-async function topicRunAnalysis(form) {
-  if (!canReadStream()) return topicFallbackAnalyze(form);
+// signal: 중지 버튼용. 스트림을 못 쓰는 환경의 폴백까지 같은 신호를 넘긴다.
+async function topicRunAnalysis(form, signal) {
+  if (!canReadStream()) return topicFallbackAnalyze(form, signal);
 
-  const resp = await fetch('/analyze-topics/stream', { method: 'POST', body: form });
+  const resp = await fetch('/analyze-topics/stream',
+                           { method: 'POST', body: form, signal });
 
   // 스트림이 시작되기 전 오류(키 누락 등)는 평범한 JSON으로 온다
   if (!resp.ok) {
@@ -268,9 +308,9 @@ async function topicRunAnalysis(form) {
 
 // 스트리밍을 못 쓰는 환경 — 예전처럼 한 번에 받아서 그린다.
 // 진행률은 중간값을 알 수 없으므로 요청 전후로 0% → 100%만 움직인다.
-async function topicFallbackAnalyze(form) {
+async function topicFallbackAnalyze(form, signal) {
   TOPIC_STAGES.forEach(k => setStep('topic-step-' + k, 'active'));
-  const resp = await fetch('/analyze-topics', { method: 'POST', body: form });
+  const resp = await fetch('/analyze-topics', { method: 'POST', body: form, signal });
   const data = await resp.json().catch(() => null);
   TOPIC_STAGES.forEach(k => {
     setStep('topic-step-' + k, 'done');

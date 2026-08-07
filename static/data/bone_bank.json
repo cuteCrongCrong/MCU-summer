@@ -108,9 +108,6 @@
             "shaft of femur"
           ]
         }
-      ],
-      "structure": [
-        "femur"
       ]
     },
     {
@@ -188,9 +185,6 @@
             "trochlear surface"
           ]
         }
-      ],
-      "structure": [
-        "femur"
       ]
     },
     {
@@ -244,12 +238,6 @@
             "anterior intercondylar area"
           ]
         }
-      ],
-      "structure": [
-        "tibia and fibula"
-      ],
-      "view": [
-        "superior view"
       ]
     },
     {
@@ -308,12 +296,6 @@
             "tibia"
           ]
         }
-      ],
-      "structure": [
-        "tibia and fibula"
-      ],
-      "view": [
-        "inferior view"
       ]
     },
     {
@@ -414,9 +396,6 @@
             "shaft of femur"
           ]
         }
-      ],
-      "structure": [
-        "femur"
       ]
     },
     {
@@ -548,12 +527,6 @@
             "tibial tuberosity"
           ]
         }
-      ],
-      "structure": [
-        "knee joint"
-      ],
-      "view": [
-        "posterior view"
       ]
     },
     {
@@ -624,12 +597,6 @@
             "anterior border"
           ]
         }
-      ],
-      "structure": [
-        "tibia and fibula"
-      ],
-      "view": [
-        "transverse section"
       ]
     },
     {
@@ -799,9 +766,6 @@
             "medial condyle"
           ]
         }
-      ],
-      "structure": [
-        "femur"
       ]
     },
     {
@@ -1079,9 +1043,6 @@
             "lateral malleolus"
           ]
         }
-      ],
-      "structure": [
-        "tibia and fibula"
       ]
     },
     {
@@ -1134,9 +1095,6 @@
             "surface for patellar ligament"
           ]
         }
-      ],
-      "structure": [
-        "patella"
       ]
     },
     {
@@ -1196,12 +1154,6 @@
             "tuberosity of the fifth metatarsal"
           ]
         }
-      ],
-      "structure": [
-        "foot bones"
-      ],
-      "view": [
-        "lateral view"
       ]
     },
     {
@@ -1322,13 +1274,6 @@
             "interphalangeal joints"
           ]
         }
-      ],
-      "structure": [
-        "foot bones"
-      ],
-      "view": [
-        "anterior view",
-        "dorsal view"
       ]
     },
     {
@@ -1429,12 +1374,6 @@
             "calcaneus"
           ]
         }
-      ],
-      "structure": [
-        "foot bones"
-      ],
-      "view": [
-        "superior view"
       ]
     },
     {
@@ -1514,12 +1453,6 @@
             "sesamoid bones"
           ]
         }
-      ],
-      "structure": [
-        "foot bones"
-      ],
-      "view": [
-        "medial view"
       ]
     },
     {
@@ -1669,13 +1602,6 @@
             "lesser trochanter of femur"
           ]
         }
-      ],
-      "structure": [
-        "hip bone",
-        "pelvic bone"
-      ],
-      "view": [
-        "anterior view"
       ]
     },
     {
@@ -1818,13 +1744,6 @@
             "obturator foramen"
           ]
         }
-      ],
-      "structure": [
-        "hip bone",
-        "pelvic bone"
-      ],
-      "view": [
-        "lateral view"
       ]
     },
     {
@@ -2003,10 +1922,6 @@
             "ramus of ischium"
           ]
         }
-      ],
-      "structure": [
-        "hip bone",
-        "pelvic bone"
       ]
     },
     {
@@ -2139,13 +2054,6 @@
             "ischial tuberosity"
           ]
         }
-      ],
-      "structure": [
-        "hip bone",
-        "pelvic bone"
-      ],
-      "view": [
-        "medial view"
       ]
     },
     {
@@ -2253,14 +2161,6 @@
             "metacarpals"
           ]
         }
-      ],
-      "structure": [
-        "wrist bones",
-        "carpal bones"
-      ],
-      "view": [
-        "anterior view",
-        "palmar view"
       ]
     },
     {
@@ -2356,14 +2256,6 @@
             "metacarpals"
           ]
         }
-      ],
-      "structure": [
-        "wrist bones",
-        "carpal bones"
-      ],
-      "view": [
-        "posterior view",
-        "dorsal view"
       ]
     },
     {
@@ -2497,9 +2389,6 @@
             "scaphoid"
           ]
         }
-      ],
-      "structure": [
-        "hand bones"
       ]
     },
     {
@@ -2547,12 +2436,6 @@
             "anterior"
           ]
         }
-      ],
-      "structure": [
-        "clavicle"
-      ],
-      "view": [
-        "superior view"
       ]
     },
     {
@@ -2618,12 +2501,6 @@
             "subclavian groove"
           ]
         }
-      ],
-      "structure": [
-        "clavicle"
-      ],
-      "view": [
-        "inferior view"
       ]
     },
     {
@@ -2689,12 +2566,6 @@
             "inferior angle"
           ]
         }
-      ],
-      "structure": [
-        "scapula"
-      ],
-      "view": [
-        "lateral view"
       ]
     },
     {
@@ -2845,12 +2716,6 @@
             "humerus"
           ]
         }
-      ],
-      "structure": [
-        "shoulder girdle"
-      ],
-      "view": [
-        "anterior view"
       ]
     },
     {
@@ -3001,12 +2866,6 @@
             "radial groove"
           ]
         }
-      ],
-      "structure": [
-        "shoulder girdle"
-      ],
-      "view": [
-        "posterior view"
       ]
     },
     {
@@ -3076,9 +2935,6 @@
             "surgical neck"
           ]
         }
-      ],
-      "structure": [
-        "humerus"
       ]
     },
     {
@@ -3128,12 +2984,6 @@
             "teres minor facet"
           ]
         }
-      ],
-      "structure": [
-        "humerus"
-      ],
-      "view": [
-        "posterior view"
       ]
     },
     {
@@ -3228,13 +3078,6 @@
             "ulna"
           ]
         }
-      ],
-      "structure": [
-        "elbow",
-        "elbow joint"
-      ],
-      "view": [
-        "anterior view"
       ]
     },
     {
@@ -3311,13 +3154,6 @@
             "radius"
           ]
         }
-      ],
-      "structure": [
-        "elbow",
-        "elbow joint"
-      ],
-      "view": [
-        "posterior view"
       ]
     },
     {
@@ -3437,9 +3273,6 @@
             "condyle of humerus"
           ]
         }
-      ],
-      "structure": [
-        "humerus"
       ]
     },
     {
@@ -3560,9 +3393,6 @@
             "posterior view"
           ]
         }
-      ],
-      "structure": [
-        "humerus"
       ]
     },
     {
@@ -3669,9 +3499,6 @@
             "anterior"
           ]
         }
-      ],
-      "structure": [
-        "radius and ulna"
       ]
     },
     {
@@ -3748,9 +3575,6 @@
             "posterior"
           ]
         }
-      ],
-      "structure": [
-        "radius and ulna"
       ]
     },
     {
@@ -3899,9 +3723,6 @@
             "posterior"
           ]
         }
-      ],
-      "structure": [
-        "radius and ulna"
       ]
     },
     {
@@ -3984,13 +3805,6 @@
             "posterior tubercle"
           ]
         }
-      ],
-      "structure": [
-        "atlas",
-        "C1"
-      ],
-      "view": [
-        "superior view"
       ]
     },
     {
@@ -4055,13 +3869,6 @@
             "anterior tubercle"
           ]
         }
-      ],
-      "structure": [
-        "atlas",
-        "C1"
-      ],
-      "view": [
-        "inferior view"
       ]
     },
     {
@@ -4120,13 +3927,6 @@
             "body"
           ]
         }
-      ],
-      "structure": [
-        "axis",
-        "C2"
-      ],
-      "view": [
-        "anterior view"
       ]
     },
     {
@@ -4179,13 +3979,6 @@
             "inferior articular process"
           ]
         }
-      ],
-      "structure": [
-        "axis",
-        "C2"
-      ],
-      "view": [
-        "posterior view"
       ]
     },
     {
@@ -4269,13 +4062,6 @@
             "spinous process"
           ]
         }
-      ],
-      "structure": [
-        "axis",
-        "C2"
-      ],
-      "view": [
-        "superior view"
       ]
     },
     {
@@ -4335,12 +4121,6 @@
             "spinous process"
           ]
         }
-      ],
-      "structure": [
-        "cervical vertebra"
-      ],
-      "view": [
-        "superior view"
       ]
     },
     {
@@ -4405,12 +4185,6 @@
             "spinous process"
           ]
         }
-      ],
-      "structure": [
-        "thoracic vertebra"
-      ],
-      "view": [
-        "superior view"
       ]
     },
     {
@@ -4481,12 +4255,6 @@
             "spinous process"
           ]
         }
-      ],
-      "structure": [
-        "thoracic vertebra"
-      ],
-      "view": [
-        "lateral view"
       ]
     },
     {
@@ -4551,12 +4319,6 @@
             "spinous process"
           ]
         }
-      ],
-      "structure": [
-        "lumbar vertebra"
-      ],
-      "view": [
-        "superior view"
       ]
     },
     {
@@ -4621,12 +4383,6 @@
             "facet"
           ]
         }
-      ],
-      "structure": [
-        "lumbar vertebra"
-      ],
-      "view": [
-        "lateral view"
       ]
     },
     {
@@ -4706,12 +4462,6 @@
             "transverse process of coccyx"
           ]
         }
-      ],
-      "structure": [
-        "sacrum and coccyx"
-      ],
-      "view": [
-        "anterior view"
       ]
     },
     {
@@ -4776,9 +4526,6 @@
             "costal groove"
           ]
         }
-      ],
-      "structure": [
-        "rib"
       ]
     },
     {
@@ -4846,12 +4593,6 @@
             "xiphoid process"
           ]
         }
-      ],
-      "structure": [
-        "sternum"
-      ],
-      "view": [
-        "anterior view"
       ]
     },
     {
@@ -4941,12 +4682,6 @@
             "xiphoid process of sternum"
           ]
         }
-      ],
-      "structure": [
-        "sternum"
-      ],
-      "view": [
-        "lateral view"
       ]
     },
     {
@@ -5025,870 +4760,1984 @@
             "transverse process of coccyx"
           ]
         }
-      ],
-      "structure": [
-        "sacrum and coccyx"
-      ],
-      "view": [
-        "posterior view"
       ]
     },
     {
-      "id": "skull_posterior",
-      "title": "두개골 전체 (Skull) 후면",
+      "id": "calvaria_superior",
+      "title": "두개관 상면 (Calvaria, Superior view)",
       "category": "skull",
-      "subcategory": "entire_skull",
-      "image": "/static/images/bones/skull_posterior_final.png",
-      "original": "/static/images/bones/skull-posterior.jpg",
-      "structure": [
-        "skull",
-        "cranium"
-      ],
-      "view": [
-        "posterior view"
-      ],
+      "subcategory": "",
+      "image": "/static/images/bones/calvaria_superior_numbered.jpg",
+      "original": "/static/images/bones/calvaria-superior.jpg",
       "parts": [
         {
           "num": 1,
           "answers": [
-            "parietal bones",
-            "parietal bone"
+            "Occipital bone"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "sagittal suture"
+            "Sutural (wormian) bone"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "lambdoid suture"
+            "Lambdoid suture"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "occipital bone"
+            "Lambda"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "external occipital protuberance"
+            "Parietal foramen (for emissary vein)"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "temporal bone"
+            "Sagittal suture"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "superior nuchal line"
+            "Parietal bone"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "mastoid process"
+            "Bregma"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "occipital condyle"
+            "Coronal suture"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "foramen magnum"
-          ]
-        },
-        {
-          "num": 11,
-          "answers": [
-            "zygomatic bone"
+            "Frontal bone"
           ]
         }
       ]
     },
     {
-      "id": "skull_superior",
-      "title": "두개골 전체 (Skull) 상면",
+      "id": "calvaria_inferior",
+      "title": "두개관 하면 (Calvaria, Inferior view)",
       "category": "skull",
-      "subcategory": "entire_skull",
-      "image": "/static/images/bones/skull_superior_final.png",
-      "original": "/static/images/bones/skull-superior.jpg",
-      "structure": [
-        "skull",
-        "cranium"
-      ],
-      "view": [
-        "superior view"
-      ],
+      "subcategory": "",
+      "image": "/static/images/bones/calvaria_inferior_numbered.jpg",
+      "original": "/static/images/bones/calvaria-inferior.jpg",
       "parts": [
         {
           "num": 1,
           "answers": [
-            "frontal bone"
+            "Frontal bone"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "coronal suture"
+            "Frontal crest"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "bregma"
+            "Groove for superior sagittal sinus"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "sagittal suture"
+            "Coronal suture"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "parietal bone"
+            "Parietal bone"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "parietal foramen"
+            "Granular foveolae (for arachnoid granulations)"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "lambdoid suture"
+            "Grooves for branches of middle meningeal vessels"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "occipital bone"
+            "Groove for superior sagittal sinus"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "lambda"
+            "Sagittal suture"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "Lambdoid suture"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "Occipital bone"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "right_orbit",
+      "title": "우측 안와 (Right Orbit, frontal and slightly lateral view)",
+      "category": "skull",
+      "subcategory": "",
+      "image": "/static/images/bones/right_orbit_numbered.jpg",
+      "original": "/static/images/bones/right-orbit.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "Supra-orbital notch"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "Posterior and Anterior ethmoidal foramina"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "Orbital plate of ethmoidal bone"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "Lacrimal bone"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "Fossa for lacrimal sac"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "Orbital process of palatine bone"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "Orbital surface of maxilla"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "Infra-orbital foramen"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "Infra-orbital groove"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "Inferior orbital fissure"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "Zygomaticofacial foramen"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "Orbital surface of zygomatic bone"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "Orbital surface of greater wing of sphenoidal bone"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "Optic canal (foramen)"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "Superior orbital fissure"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "Orbital surface of lesser wing of sphenoidal bone"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "Orbital surface of frontal bone"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "skull_posterior",
+      "title": "두개골 후면 (Skull, Posterior view)",
+      "category": "skull",
+      "subcategory": "",
+      "image": "/static/images/bones/skull_posterior_numbered.jpg",
+      "original": "/static/images/bones/skull-posterior.jpg",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "Parietal foramen"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "Parietal bone"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "Lambdoid suture"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "Squamous part"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "Temporal bone"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "Petrous part"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "Stylomastoid foramen"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "Mastoid foramen"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "Mastoid process"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "Styloid process"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "Occipital condyle"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "Foramen magnum"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "Condyloid fossa"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "External occipital crest"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "Inferior nuchal line"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "External occipital protuberance"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "Superior nuchal line"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "Supreme nuchal line"
+          ]
+        },
+        {
+          "num": 19,
+          "answers": [
+            "Occipital bone"
+          ]
+        },
+        {
+          "num": 20,
+          "answers": [
+            "Sagittal suture"
           ]
         }
       ]
     },
     {
       "id": "skull_inferior",
-      "title": "두개골 전체 (Skull) 하면",
+      "title": "두개골 하면 (Skull, Inferior view)",
       "category": "skull",
-      "subcategory": "entire_skull",
-      "image": "/static/images/bones/skull_inferior_final.png",
+      "subcategory": "",
+      "image": "/static/images/bones/skull_inferior_numbered.jpg",
       "original": "/static/images/bones/skull-inferior.jpg",
-      "structure": [
-        "skull",
-        "cranium"
-      ],
-      "view": [
-        "inferior view"
-      ],
       "parts": [
         {
           "num": 1,
           "answers": [
-            "vomer"
+            "Maxilla"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "maxilla"
+            "Palatine process"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "palatine process"
+            "Zygomatic bone"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "zygomatic"
+            "Palatine bone (horizontal plate)"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "palatine"
+            "Medial and lateral pterygoid plates"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "zygomatic arch"
+            "Articular tubercle"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "medial"
+            "Foramen ovale"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "articular"
+            "Mandibular fossa"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "sphenoid"
+            "External auditory meatus"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "foramen"
+            "Mastoid process"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "spinosum"
+            "Styloid process"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "lacerum"
+            "Stylomastoid foramen"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "mandibular"
+            "Entrance to carotid canal"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "foramen"
+            "External occipital protuberance"
           ]
         },
         {
           "num": 15,
           "answers": [
-            "external"
+            "Superior nuchal line"
           ]
         },
         {
           "num": 16,
           "answers": [
-            "condyle"
+            "Foramen magnum"
           ]
         },
         {
           "num": 17,
           "answers": [
-            "mastoid"
+            "Occipital bone"
           ]
         },
         {
           "num": 18,
           "answers": [
-            "temporal"
+            "Temporal bone"
           ]
         },
         {
           "num": 19,
           "answers": [
-            "styloid"
+            "Occipital condyle"
           ]
         },
         {
           "num": 20,
           "answers": [
-            "magnum"
+            "Jugular foramen"
           ]
         },
         {
           "num": 21,
           "answers": [
-            "stylomastoid"
+            "Foramen lacerum"
           ]
         },
         {
           "num": 22,
           "answers": [
-            "occipital"
+            "Foramen spinosum"
           ]
         },
         {
           "num": 23,
           "answers": [
-            "entrance"
+            "Sphenoid bone"
           ]
         },
         {
           "num": 24,
           "answers": [
-            "external"
+            "Zygomatic arch"
           ]
         },
         {
           "num": 25,
           "answers": [
-            "nuchal line"
+            "Vomer"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "skull_lateral_infratemporal",
+      "title": "측두하와 (Infratemporal Fossa, 관골궁·하악골 제거)",
+      "category": "skull",
+      "subcategory": "",
+      "image": "/static/images/bones/skull_lateral_infratemporal_numbered.jpg",
+      "original": "/static/images/bones/skull-lateral-infratemporal.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "Sphenoidal bone"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "Greater wing"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "Infratemporal crest"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "Lateral plate of pterygoid process"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "Pterygoid hamulus (of medial plate of pterygoid process)"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "Temporal bone"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "External acoustic meatus"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "Mandibular fossa"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "Articular tubercle"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "Foramen ovale"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "Styloid process"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "Pterygopalatine fossa"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "Sphenopalatine foramen"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "Tuberosity of maxilla"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "Alveolar foramina"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "Infratemporal surface of maxilla"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "Inferior orbital fissure"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "Pterygomaxillary fissure"
+          ]
+        },
+        {
+          "num": 19,
+          "answers": [
+            "Infratemporal fossa"
           ]
         }
       ]
     },
     {
       "id": "skull_transverse_superior",
-      "title": "두개골 전체 (Skull) 횡단면 상면",
+      "title": "두개저 상면 (Skull Base, Superior view)",
       "category": "skull",
-      "subcategory": "entire_skull",
-      "image": "/static/images/bones/skull_transverse_superior_final.png",
+      "subcategory": "",
+      "image": "/static/images/bones/skull_transverse_superior_numbered.jpg",
       "original": "/static/images/bones/skull-transverse-superior.jpg",
-      "structure": [
-        "skull",
-        "cranium",
-        "cranial base"
-      ],
-      "view": [
-        "transverse view"
-      ],
       "parts": [
         {
           "num": 1,
           "answers": [
-            "frontal"
+            "Frontal"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "ethmoid"
+            "Ethmoid"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "crista gali"
+            "Crista galli"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "superior"
+            "Cribriform"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "cribriform"
+            "Sphenoid"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "sphenoid"
+            "Lesser wing"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "lesser wing"
+            "Hypophyseal fossa"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "sella"
+            "Sella turcica"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "rotundum"
+            "Foramen lacerum"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "hypophyseal fossa"
+            "exit of carotid canal"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "ovale"
+            "Temporal"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "foramen"
+            "Petrous portion (petrous ridge)"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "spinosum"
+            "Jugular foramen"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "exit of cartoid"
+            "Parietal"
           ]
         },
         {
           "num": 15,
           "answers": [
-            "meatus"
+            "Occipital"
           ]
         },
         {
           "num": 16,
           "answers": [
-            "temporal"
+            "Foramen magnum"
           ]
         },
         {
           "num": 17,
           "answers": [
-            "canal"
+            "Hypoglossal canal"
           ]
         },
         {
           "num": 18,
           "answers": [
-            "petrous"
+            "Internal acoustic meatus"
           ]
         },
         {
           "num": 19,
           "answers": [
-            "magnum"
+            "Foramen spinosum"
           ]
         },
         {
           "num": 20,
           "answers": [
-            "occipital"
+            "Foramen ovale"
           ]
         },
         {
           "num": 21,
           "answers": [
-            "jugular"
+            "Foramen rotundum"
           ]
         },
         {
           "num": 22,
           "answers": [
-            "parietal"
+            "Superior orbital fissure"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "skull_inferior_detailed_1",
+      "title": "두개골 하면 상세 1 (Skull Inferior view, detailed)",
+      "category": "skull",
+      "subcategory": "",
+      "image": "/static/images/bones/skull_inferior_detailed_1_numbered.jpg",
+      "original": "/static/images/bones/skull-inferior-detailed-1.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "Palatomaxillary suture"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "Palatine bone"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "Horizontal plate"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "Greater palatine foramen"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "Pyramidal process"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "Lesser palatine foramina"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "Posterior nasal spine"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "Choanae"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "Spine"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "Foramen spinosum"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "Foramen ovale"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "Greater wing"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "Scaphoid fossa"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "Lateral plate"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "Pterygoid fossa"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "Medial plate"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "Hamulus"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "Sphenoidal bone"
+          ]
+        },
+        {
+          "num": 19,
+          "answers": [
+            "Frontal bone"
+          ]
+        },
+        {
+          "num": 20,
+          "answers": [
+            "Zygomatic bone"
+          ]
+        },
+        {
+          "num": 21,
+          "answers": [
+            "Zygomatic process"
+          ]
+        },
+        {
+          "num": 22,
+          "answers": [
+            "Intermaxillary suture"
+          ]
+        },
+        {
+          "num": 23,
+          "answers": [
+            "Palatine process"
+          ]
+        },
+        {
+          "num": 24,
+          "answers": [
+            "Incisive fossa"
+          ]
+        },
+        {
+          "num": 25,
+          "answers": [
+            "Maxilla"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "skull_inferior_detailed",
+      "title": "두개골 하면 상세 2 (Skull Inferior view, detailed)",
+      "category": "skull",
+      "subcategory": "",
+      "image": "/static/images/bones/skull_inferior_detailed_numbered.jpg",
+      "original": "/static/images/bones/skull-inferior-detailed.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "Vomer"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "Ala"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "Groove for pharyngotympanic (auditory, eustachian) tube"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "Foramen lacerum"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "External occipital protuberance"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "Superior nuchal line"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "External occipital crest"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "Inferior nuchal line"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "Foramen magnum"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "Pharyngeal tubercle"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "Basilar part"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "Condylar canal and fossa"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "Occipital condyle"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "Hypoglossal canal"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "Occipital bone"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "Parietal bone"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "Mastoid foramen"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "Jugular fossa"
+          ]
+        },
+        {
+          "num": 19,
+          "answers": [
+            "Occipital groove"
+          ]
+        },
+        {
+          "num": 20,
+          "answers": [
+            "Mastoid notch"
+          ]
+        },
+        {
+          "num": 21,
+          "answers": [
+            "Petrous part"
+          ]
+        },
+        {
+          "num": 22,
+          "answers": [
+            "Stylomastoid foramen"
+          ]
+        },
+        {
+          "num": 23,
+          "answers": [
+            "Mastoid process"
+          ]
+        },
+        {
+          "num": 24,
+          "answers": [
+            "Mastoid canaliculus"
+          ]
+        },
+        {
+          "num": 25,
+          "answers": [
+            "External acoustic meatus"
+          ]
+        },
+        {
+          "num": 26,
+          "answers": [
+            "Tympanic canaliculus"
+          ]
+        },
+        {
+          "num": 27,
+          "answers": [
+            "Carotid canal (external opening)"
+          ]
+        },
+        {
+          "num": 28,
+          "answers": [
+            "Petrotympanic fissure"
+          ]
+        },
+        {
+          "num": 29,
+          "answers": [
+            "Styloid process"
+          ]
+        },
+        {
+          "num": 30,
+          "answers": [
+            "Mandibular fossa"
+          ]
+        },
+        {
+          "num": 31,
+          "answers": [
+            "Articular tubercle"
+          ]
+        },
+        {
+          "num": 32,
+          "answers": [
+            "Zygomatic process"
+          ]
+        },
+        {
+          "num": 33,
+          "answers": [
+            "Temporal bone"
           ]
         }
       ]
     },
     {
       "id": "skull_anterior",
-      "title": "두개골 전체 (Skull) 전면",
+      "title": "두개골 전면 (Skull, Anterior view)",
       "category": "skull",
-      "subcategory": "entire_skull",
-      "image": "/static/images/bones/skull_anterior_final.png",
-      "original": "/static/images/bones/skull-anterior.jpg",
-      "structure": [
-        "skull",
-        "cranium"
-      ],
-      "view": [
-        "anterior view"
-      ],
+      "subcategory": "",
+      "image": "/static/images/bones/skull_anterior_numbered.jpg",
+      "original": "/static/images/bones/skull-anterior.png",
       "parts": [
         {
           "num": 1,
           "answers": [
-            "coronal suture"
+            "Coronal suture"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "glabella"
+            "Parietal bone"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "frontal"
+            "Nasion"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "orbital foramen"
+            "Sphenoidal bone"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "parietal"
+            "Lesser wing"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "orbital margin"
+            "Greater wing"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "orbit"
+            "Temporal bone"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "sphenoid"
+            "Ethmoidal bone"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "optic canal"
+            "Orbital plate"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "temporal"
+            "Perpendicular plate"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "superior orbital fissure"
+            "Middle nasal concha"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "ethmoid"
+            "Inferior nasal concha"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "lacrimal"
+            "Vomer"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "nasal"
+            "Mandible"
           ]
         },
         {
           "num": 15,
           "answers": [
-            "palatine"
+            "Ramus"
           ]
         },
         {
           "num": 16,
           "answers": [
-            "inferior orbital fissure"
+            "Body"
           ]
         },
         {
           "num": 17,
           "answers": [
-            "nasal septum"
+            "Mental foramen"
           ]
         },
         {
           "num": 18,
           "answers": [
-            "zygomatic"
+            "Mental tubercle"
           ]
         },
         {
           "num": 19,
           "answers": [
-            "perpendicular plate"
+            "Mental protuberance"
           ]
         },
         {
           "num": 20,
           "answers": [
-            "infraorbital foramen"
+            "Anterior nasal spine"
           ]
         },
         {
           "num": 21,
           "answers": [
-            "vomer"
+            "Alveolar process"
           ]
         },
         {
           "num": 22,
           "answers": [
-            "middle nasal concha"
+            "Infra-orbital foramen"
           ]
         },
         {
           "num": 23,
           "answers": [
-            "inferior nasal concha"
+            "Frontal process"
           ]
         },
         {
           "num": 24,
           "answers": [
-            "maxilla"
+            "Orbital surface"
           ]
         },
         {
           "num": 25,
           "answers": [
-            "alveolar process"
+            "Zygomatic process"
           ]
         },
         {
           "num": 26,
           "answers": [
-            "maxilla"
+            "Maxilla"
           ]
         },
         {
           "num": 27,
           "answers": [
-            "alveolar process"
+            "Zygomaticofacial foramen"
           ]
         },
         {
           "num": 28,
           "answers": [
-            "mental foramen"
+            "Temporal process"
           ]
         },
         {
           "num": 29,
           "answers": [
-            "mandible"
+            "Orbital surface"
           ]
         },
         {
           "num": 30,
           "answers": [
-            "mandible"
+            "Frontal process"
+          ]
+        },
+        {
+          "num": 31,
+          "answers": [
+            "Zygomatic bone"
+          ]
+        },
+        {
+          "num": 32,
+          "answers": [
+            "Lacrimal bone"
+          ]
+        },
+        {
+          "num": 33,
+          "answers": [
+            "Nasal bone"
+          ]
+        },
+        {
+          "num": 34,
+          "answers": [
+            "Orbital surface"
+          ]
+        },
+        {
+          "num": 35,
+          "answers": [
+            "Supra-orbital notch (foramen)"
+          ]
+        },
+        {
+          "num": 36,
+          "answers": [
+            "Glabella"
+          ]
+        },
+        {
+          "num": 37,
+          "answers": [
+            "Frontal bone"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "skull_sagittal_section",
+      "title": "두개골 시상단면 (Skull, Sagittal section)",
+      "category": "skull",
+      "subcategory": "",
+      "image": "/static/images/bones/skull_sagittal_section_numbered.jpg",
+      "original": "/static/images/bones/skull-sagittal-section.png",
+      "parts": [
+        {
+          "num": 1,
+          "answers": [
+            "Grooves for branches of middle meningeal vessels"
+          ]
+        },
+        {
+          "num": 2,
+          "answers": [
+            "Parietal bone"
+          ]
+        },
+        {
+          "num": 3,
+          "answers": [
+            "Temporal bone"
+          ]
+        },
+        {
+          "num": 4,
+          "answers": [
+            "Squamous part"
+          ]
+        },
+        {
+          "num": 5,
+          "answers": [
+            "Petrous part"
+          ]
+        },
+        {
+          "num": 6,
+          "answers": [
+            "Internal acoustic meatus"
+          ]
+        },
+        {
+          "num": 7,
+          "answers": [
+            "Groove for superior petrosal sinus"
+          ]
+        },
+        {
+          "num": 8,
+          "answers": [
+            "Opening of vestibular aqueduct"
+          ]
+        },
+        {
+          "num": 9,
+          "answers": [
+            "Groove for sigmoid sinus"
+          ]
+        },
+        {
+          "num": 10,
+          "answers": [
+            "Lambdoid suture"
+          ]
+        },
+        {
+          "num": 11,
+          "answers": [
+            "Occipital bone"
+          ]
+        },
+        {
+          "num": 12,
+          "answers": [
+            "Groove for transverse sinus"
+          ]
+        },
+        {
+          "num": 13,
+          "answers": [
+            "External occipital protuberance (inion)"
+          ]
+        },
+        {
+          "num": 14,
+          "answers": [
+            "Jugular foramen"
+          ]
+        },
+        {
+          "num": 15,
+          "answers": [
+            "Groove for inferior petrosal sinus"
+          ]
+        },
+        {
+          "num": 16,
+          "answers": [
+            "Hypoglossal canal"
+          ]
+        },
+        {
+          "num": 17,
+          "answers": [
+            "Foramen magnum"
+          ]
+        },
+        {
+          "num": 18,
+          "answers": [
+            "Occipital condyle"
+          ]
+        },
+        {
+          "num": 19,
+          "answers": [
+            "Basilar part"
+          ]
+        },
+        {
+          "num": 20,
+          "answers": [
+            "Palatine bone"
+          ]
+        },
+        {
+          "num": 21,
+          "answers": [
+            "Vomer"
+          ]
+        },
+        {
+          "num": 22,
+          "answers": [
+            "Alveolar process"
+          ]
+        },
+        {
+          "num": 23,
+          "answers": [
+            "Palatine process"
+          ]
+        },
+        {
+          "num": 24,
+          "answers": [
+            "Incisive canal"
+          ]
+        },
+        {
+          "num": 25,
+          "answers": [
+            "Nasal surface"
+          ]
+        },
+        {
+          "num": 26,
+          "answers": [
+            "Anterior nasal spine"
+          ]
+        },
+        {
+          "num": 27,
+          "answers": [
+            "Maxilla"
+          ]
+        },
+        {
+          "num": 28,
+          "answers": [
+            "Inferior nasal concha"
+          ]
+        },
+        {
+          "num": 29,
+          "answers": [
+            "Nasal bone"
+          ]
+        },
+        {
+          "num": 30,
+          "answers": [
+            "Perpendicular plate (bony nasal septum)"
+          ]
+        },
+        {
+          "num": 31,
+          "answers": [
+            "Cribriform plate"
+          ]
+        },
+        {
+          "num": 32,
+          "answers": [
+            "Crista galli"
+          ]
+        },
+        {
+          "num": 33,
+          "answers": [
+            "Ethmoidal bone"
+          ]
+        },
+        {
+          "num": 34,
+          "answers": [
+            "Frontal sinus"
+          ]
+        },
+        {
+          "num": 35,
+          "answers": [
+            "Frontal bone"
+          ]
+        },
+        {
+          "num": 36,
+          "answers": [
+            "Medial and lateral plates of pterygoid process"
+          ]
+        },
+        {
+          "num": 37,
+          "answers": [
+            "Body"
+          ]
+        },
+        {
+          "num": 38,
+          "answers": [
+            "Sphenoidal sinus"
+          ]
+        },
+        {
+          "num": 39,
+          "answers": [
+            "Sella turcica"
+          ]
+        },
+        {
+          "num": 40,
+          "answers": [
+            "Optic canal"
+          ]
+        },
+        {
+          "num": 41,
+          "answers": [
+            "Anterior clinoid process"
+          ]
+        },
+        {
+          "num": 42,
+          "answers": [
+            "Lesser wing"
+          ]
+        },
+        {
+          "num": 43,
+          "answers": [
+            "Greater wing"
+          ]
+        },
+        {
+          "num": 44,
+          "answers": [
+            "Sphenoidal bone"
+          ]
+        },
+        {
+          "num": 45,
+          "answers": [
+            "Coronal suture"
           ]
         }
       ]
     },
     {
       "id": "skull_lateral",
-      "title": "두개골 전체 (Skull) 측면",
+      "title": "두개골 측면 (Skull, Lateral view)",
       "category": "skull",
-      "subcategory": "entire_skull",
-      "image": "/static/images/bones/skull_lateral_final.png",
-      "original": "/static/images/bones/skull-lateral.jpg",
-      "structure": [
-        "skull",
-        "cranium"
-      ],
-      "view": [
-        "lateral view"
-      ],
+      "subcategory": "",
+      "image": "/static/images/bones/skull_lateral_numbered.jpg",
+      "original": "/static/images/bones/skull-lateral.png",
       "parts": [
         {
           "num": 1,
           "answers": [
-            "zygomatic arch"
+            "Temporal fossa"
           ]
         },
         {
           "num": 2,
           "answers": [
-            "pterion"
+            "Superior temporal line"
           ]
         },
         {
           "num": 3,
           "answers": [
-            "coronal suture"
+            "Inferior temporal line"
           ]
         },
         {
           "num": 4,
           "answers": [
-            "parietal"
+            "Temporal bone"
           ]
         },
         {
           "num": 5,
           "answers": [
-            "frontal"
+            "Squamous part"
           ]
         },
         {
           "num": 6,
           "answers": [
-            "greater wing"
+            "Zygomatic process"
           ]
         },
         {
           "num": 7,
           "answers": [
-            "squamous suture"
+            "Articular tubercle"
           ]
         },
         {
           "num": 8,
           "answers": [
-            "sphenoid"
+            "Groove for posterior deep temporal artery"
           ]
         },
         {
           "num": 9,
           "answers": [
-            "ethmoid"
+            "Supramastoid crest"
           ]
         },
         {
           "num": 10,
           "answers": [
-            "temporal"
+            "External acoustic meatus"
           ]
         },
         {
           "num": 11,
           "answers": [
-            "lacrimal"
+            "Mastoid process"
           ]
         },
         {
           "num": 12,
           "answers": [
-            "temporal"
+            "Lambdoid suture"
           ]
         },
         {
           "num": 13,
           "answers": [
-            "lacrimal fossa"
+            "Occipital bone"
           ]
         },
         {
           "num": 14,
           "answers": [
-            "zygomatic process"
+            "Sutural (wormian) bone"
           ]
         },
         {
           "num": 15,
           "answers": [
-            "nasal"
+            "External occipital protuberance (inion)"
           ]
         },
         {
           "num": 16,
           "answers": [
-            "acoustic meatus"
+            "Asterion"
           ]
         },
         {
           "num": 17,
           "answers": [
-            "zygomatic"
+            "Mandible"
           ]
         },
         {
           "num": 18,
           "answers": [
-            "lambdoid suture"
+            "Head of condylar process"
           ]
         },
         {
           "num": 19,
           "answers": [
-            "mastoid portion"
+            "Mandibular notch"
           ]
         },
         {
           "num": 20,
           "answers": [
-            "temporal process"
+            "Coronoid process"
           ]
         },
         {
           "num": 21,
           "answers": [
-            "styloid process"
+            "Ramus"
           ]
         },
         {
           "num": 22,
           "answers": [
-            "maxilla"
+            "Body"
           ]
         },
         {
           "num": 23,
           "answers": [
-            "mastoid process"
+            "Oblique line"
           ]
         },
         {
           "num": 24,
           "answers": [
-            "articular tubercle"
+            "Mental foramen"
           ]
         },
         {
           "num": 25,
           "answers": [
-            "occipital"
+            "Zygomatic arch"
           ]
         },
         {
           "num": 26,
           "answers": [
-            "mandibular fossa"
+            "Temporal process"
           ]
         },
         {
           "num": 27,
           "answers": [
-            "mandible"
+            "Zygomaticofacial foramen"
           ]
         },
         {
           "num": 28,
           "answers": [
-            "mental protuberance"
+            "Zygomatic bone"
           ]
         },
         {
           "num": 29,
           "answers": [
-            "mandible"
+            "Alveolar process"
+          ]
+        },
+        {
+          "num": 30,
+          "answers": [
+            "Anterior nasal spine"
+          ]
+        },
+        {
+          "num": 31,
+          "answers": [
+            "Infra-orbital foramen"
+          ]
+        },
+        {
+          "num": 32,
+          "answers": [
+            "Frontal process"
+          ]
+        },
+        {
+          "num": 33,
+          "answers": [
+            "Maxilla"
+          ]
+        },
+        {
+          "num": 34,
+          "answers": [
+            "Nasal bone"
+          ]
+        },
+        {
+          "num": 35,
+          "answers": [
+            "Fossa for lacrimal sac"
+          ]
+        },
+        {
+          "num": 36,
+          "answers": [
+            "Lacrimal bone"
+          ]
+        },
+        {
+          "num": 37,
+          "answers": [
+            "Orbital plate"
+          ]
+        },
+        {
+          "num": 38,
+          "answers": [
+            "Ethmoidal bone"
+          ]
+        },
+        {
+          "num": 39,
+          "answers": [
+            "Glabella"
+          ]
+        },
+        {
+          "num": 40,
+          "answers": [
+            "Supra-orbital notch (foramen)"
+          ]
+        },
+        {
+          "num": 41,
+          "answers": [
+            "Frontal bone"
+          ]
+        },
+        {
+          "num": 42,
+          "answers": [
+            "Sphenoidal bone"
+          ]
+        },
+        {
+          "num": 43,
+          "answers": [
+            "Greater wing"
+          ]
+        },
+        {
+          "num": 44,
+          "answers": [
+            "Pterion"
+          ]
+        },
+        {
+          "num": 45,
+          "answers": [
+            "Coronal suture"
+          ]
+        },
+        {
+          "num": 46,
+          "answers": [
+            "Parietal bone"
           ]
         }
       ]

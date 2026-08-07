@@ -938,6 +938,44 @@ function usageSuffix(usage) {
   return `\n여기까지 쓴 토큰: ${num(usage.total)}개 (호출 ${num(usage.calls)}회)`;
 }
 
+// ── 크레딧 잔액 한 줄 (키 입력란 아래) — 문제 생성기·기출 주제 분석 공용 ──
+// 작업을 시작하기 전에 남은 크레딧을 확인하는 용도라, 끝난 뒤에 그리는 usage-box와는 별개다.
+// 조회를 지원하는 제공사(전북대 게이트웨이)에서만 상자를 띄우고 나머지는 숨긴다.
+// 탭마다 제공사·키를 따로 들고 있으므로(topic_analysis.js 머리말) 값은 인자로 받는다.
+// opts: { barId: 상자 element id, textId: 문구 element id }
+async function refreshCreditsBar(info, providerName, apiKey, opts) {
+  const o = Object.assign({ barId: 'credits-bar', textId: 'credits-bar-text' }, opts || {});
+  const bar = document.getElementById(o.barId);
+  if (!bar) return;
+  if (!info || !info.supports_credits) {      // 지원하지 않는 제공사면 아예 숨긴다
+    bar.hidden = true;
+    return;
+  }
+  bar.hidden = false;
+
+  const text = document.getElementById(o.textId);
+  if (!apiKey) {
+    text.textContent = 'API 키를 입력하면 잔액을 조회합니다.';
+    return;
+  }
+  text.textContent = '조회 중…';
+  try {
+    const resp = await fetch('/credits?provider=' + encodeURIComponent(providerName || ''),
+                             { headers: { 'X-Api-Key': apiKey } });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data.error) {
+      text.textContent = '잔액 조회 실패 — ' + (data.error || resp.status);
+      return;
+    }
+    // 누적 사용량은 총·남은 크레딧으로 계산되는 값이라 여기서는 뺀다 (결과 화면의 usage-box에 있다).
+    const t = data.total || {};
+    text.textContent = (t.quota != null ? `총 크레딧: ${fmtCredit(t.quota)} / ` : '')
+      + `남은 크레딧: ${fmtCredit(t.remaining)}`;
+  } catch (err) {
+    text.textContent = '잔액을 조회하지 못했습니다.';
+  }
+}
+
 // ── API 키 발급 도움말 (키 입력란 아래 접힌 안내) — 문제 생성기·기출 주제 분석 공용 ──
 // 내용은 제공사가 /providers로 알려준다 (providers/base.py의 key_help_* 필드).
 // 발급 절차를 아직 모르는 제공사(전북대 게이트웨이)는 steps가 비어 있다 → 도움말째로 숨긴다.
@@ -976,7 +1014,8 @@ function renderKeyHelp(info, boxId) {
 
 let _cutResolve = null;
 
-// 모달의 두 버튼과 배경 클릭이 부른다 (index.html)
+// 모달의 두 버튼만 부른다 (index.html). 배경 클릭으로는 닫히지 않는다 —
+// 취소는 이미 돈을 낸 추출 결과를 버리는 일이라 명시적으로 눌러야 한다.
 function resolveCutModal(ok) {
   document.getElementById('cut-modal').classList.remove('open');
   const done = _cutResolve;
@@ -1004,10 +1043,22 @@ function cutSpendText(payload) {
   return `LLM 호출 ${u.calls.toLocaleString('ko-KR')}회`;
 }
 
+// 건너뛴 쪽 번호를 "12, 13, 14쪽 외 5쪽"으로. 전부 나열하면 모달이 번호로 가득 찬다.
+const CUT_PAGE_PREVIEW = 8;
+function cutPageList(pages) {
+  const list = pages || [];
+  if (!list.length) return '';
+  const head = list.slice(0, CUT_PAGE_PREVIEW).join(', ');
+  const rest = list.length - CUT_PAGE_PREVIEW;
+  return rest > 0 ? `${head}쪽 외 ${rest}쪽` : `${head}쪽`;
+}
+
 /**
  * 경고를 띄우고 사용자의 선택을 기다린다.
- * @param {Array}  warnings 서버가 준 목록 — {side, name, coverage,
- *                          from_page, from_words, to_page, to_words}
+ * @param {Array}  warnings 서버가 준 목록. kind로 두 종류가 섞여 온다 —
+ *                 kind='text'  {side, name, coverage, from_page, from_words, to_page, to_words}
+ *                 kind='image' {side, name, candidates, processed, skipped, skipped_pages}
+ *                 (kind가 없으면 예전 형식이므로 text로 본다)
  * @param {Object} spend    같은 응답의 {usage, credits} — 추출까지 쓴 양
  * @returns {Promise<boolean>} 진행하면 true
  */
@@ -1016,21 +1067,36 @@ function confirmTruncation(warnings, spend) {
   const at = (page, words) =>
     (page ? `<b>${page}쪽</b> ` : '') + `“${escHtml(words || '…')}”`;
 
+  const head = w => `
+    <div class="cut-file">
+      <b>${escHtml(w.side)}</b>
+      <span class="cut-name">${escHtml(w.name)}</span>
+      <span class="cut-pct">${w.kind === 'image'
+        ? `그림 ${w.candidates}쪽 중 ${w.processed}쪽만 반영`
+        : `${w.coverage}%만 반영`}</span>
+    </div>`;
+
   const rows = warnings.map(w => `
     <div class="cut-row">
-      <div class="cut-file">
-        <b>${escHtml(w.side)}</b>
-        <span class="cut-name">${escHtml(w.name)}</span>
-        <span class="cut-pct">${w.coverage}%만 반영</span>
-      </div>
+      ${head(w)}
       <div class="cut-range">
-        ${at(w.from_page, w.from_words)}<span class="cut-arrow">→</span>${at(w.to_page, w.to_words)}
-        <span style="color:#94a3b8;">사이를 버립니다</span>
+        ${w.kind === 'image'
+          ? `<span style="color:#94a3b8;">그림·필기를 읽지 않는 쪽</span>
+             ${escHtml(cutPageList(w.skipped_pages))}`
+          : `${at(w.from_page, w.from_words)}<span class="cut-arrow">→</span>${at(w.to_page, w.to_words)}
+             <span style="color:#94a3b8;">사이를 버립니다</span>`}
       </div>
     </div>`).join('');
 
+  // 두 종류가 섞일 수 있으므로 안내 문구도 섞인 만큼만 말한다
+  const nText  = warnings.filter(w => w.kind !== 'image').length;
+  const nImage = warnings.length - nText;
+  const parts = [];
+  if (nText)  parts.push(`${nText}개 파일이 배정된 글자수를 넘습니다`);
+  if (nImage) parts.push(`${nImage}개 파일의 그림·필기가 처리 상한을 넘습니다`);
   document.getElementById('cut-modal-sub').textContent =
-    `${warnings.length}개 파일이 배정된 글자수를 넘습니다. 아래 구간이 결과에 들어가지 않습니다.`;
+    parts.join(' · ') + '. 아래 내용이 결과에 들어가지 않습니다.';
+
   document.getElementById('cut-modal-list').innerHTML = rows;
   document.getElementById('cut-modal-spend').textContent = cutSpendText(spend);
   document.getElementById('cut-modal').classList.add('open');

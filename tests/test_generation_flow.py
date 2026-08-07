@@ -70,13 +70,16 @@ class FakeProvider:
     def __init__(self):
         self.prompts = []           # 업로드 경로 테스트가 '무엇이 LLM에 갔는지' 확인용
 
-    def complete(self, prompt, api_key, model, max_tokens=None, usage=None):
-        self.prompts.append(prompt)
+    def complete(self, prompt, api_key, model, max_tokens=None, usage=None,
+                 cache_prefix=None):
+        # 캐시 접두부는 프롬프트 앞에 붙는 부분이라, '무엇이 갔는지' 볼 때 같이 봐야 한다
+        self.prompts.append((cache_prefix or "") + prompt)
         if usage is not None:
             usage.add(model, FakeUsage())
         return "{}"
 
-    def complete_stream(self, prompt, api_key, model, max_tokens=None, usage=None):
+    def complete_stream(self, prompt, api_key, model, max_tokens=None, usage=None,
+                        cache_prefix=None):
         # 조각 경계가 문제 중간을 자르는 실제 상황을 흉내낸다
         mid = len(QUESTION_BLOCK) // 2
         yield QUESTION_BLOCK[:mid]
@@ -84,7 +87,8 @@ class FakeProvider:
         if usage is not None:
             usage.add(model, FakeUsage())
 
-    def describe_image(self, png_bytes, api_key, model, usage=None, prompt=None):
+    def describe_image(self, png_bytes, api_key, model, usage=None, prompt=None,
+                       max_tokens=None):
         if usage is not None:
             usage.add(model, FakeUsage())
         return "그림 설명"
@@ -361,10 +365,62 @@ def test_truncation_confirm_flow():
         delete_session(done2["session_id"], owner)
 
 
+def test_analysis_model_pinned():
+    """
+    분석 단계(그림 읽기 + 개념·형식 분석)에 쓸 모델은 **사용자가 고르지 않는다.**
+
+      - 제공사가 analysis_model을 선언했으면(게이트웨이) 그 모델로 고정
+      - 선언이 없으면 화면에서 고른 메인 모델을 그대로 (칸을 없애기 전 기본 동작과 같다)
+
+    화면에 칸이 없는 것과 **별개로** 서버가 폼을 무시해야 한다 — 열어둔 옛날 탭이나
+    직접 만든 요청은 없어진 칸을 그냥 통과하는데, 이 단계가 입력 토큰의 90%를 쓴다.
+    (주제 분석 쪽 짝: tests/test_topic_confirm.py::test_image_model_pinned)
+    """
+    print("\n[분석 모델 — 사용자가 고르지 않는다]")
+    import app as app_module
+    from features import question_gen as qg
+
+    class PinnedProvider(FakeProvider):
+        name = "pinned"
+        analysis_model = "pinned-analysis-model"
+
+    class FreeProvider(FakeProvider):
+        name = "free"
+        analysis_model = ""
+
+    def params_for(prov):
+        # session_id를 주면 파일 없이도 파라미터 파싱이 끝까지 간다 (경로 A)
+        orig = qg.get_provider
+        qg.get_provider = lambda *a, **k: prov
+        try:
+            with app_module.app.test_request_context("/generate", method="POST", data={
+                "api_key": "test-key", "model": "main-model", "provider": prov.name,
+                "session_id": "1",
+                "analysis_model": "user-picked",   # ← 옛날 탭이 남겨 보낸 값 (무시돼야 한다)
+            }):
+                return qg.read_generate_params()
+        finally:
+            qg.get_provider = orig
+
+    pinned = params_for(PinnedProvider())
+    check("선언한 제공사는 고정 모델을 쓴다",
+          pinned["analysis_model"] == "pinned-analysis-model", pinned["analysis_model"])
+    check("생성 모델은 사용자 선택 그대로 (분석 고정이 생성까지 덮지 않는다)",
+          pinned["model"] == "main-model", pinned["model"])
+
+    free = params_for(FreeProvider())
+    check("미선언 제공사는 메인 모델을 그대로 쓴다",
+          free["analysis_model"] == "main-model", free["analysis_model"])
+
+    check("폼의 analysis_model은 어느 쪽에서도 안 쓰인다",
+          "user-picked" not in (pinned["analysis_model"], free["analysis_model"]))
+
+
 if __name__ == "__main__":
     test_flow()
     test_upload_flow()
     test_truncation_confirm_flow()
+    test_analysis_model_pinned()
     print()
     if _failures:
         print(f"실패 {len(_failures)}건: " + ", ".join(_failures))
