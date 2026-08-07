@@ -273,13 +273,16 @@ async function fallbackGenerate(form, signal) {
 }
 
 // 방금 생성한 회차 — 결과 화면에서 이름을 붙일 때 대상이 된다
-let lastGeneration = { id: null, title: '' };
+let lastGeneration = { id: null, title: '', ordinal: 0 };
 
-// 결과 화면 제목. 이름을 붙였으면 그 이름으로, 아니면 기본 문구.
+// 결과 화면 제목. 이름을 붙였으면 그 이름으로, 아니면 '제N회'.
+// '생성된 예상문제'는 어느 시험지인지 알려주지 않아 보관함 목록과 부르는 이름이
+// 어긋났다 — 목록은 이름이 없으면 '제N회'로 부른다. 여기서도 같게 맞춘다.
+// 회차 번호를 못 받은 경우(저장 실패 등)에만 예전 문구로 돌아간다.
 // renderQuestions가 제목을 기본값으로 되돌리므로 반드시 그 뒤에 부른다.
-function setResultTitle(title) {
-  document.getElementById('result-title').textContent =
-    (title || '').trim() ? `📋 ${title.trim()}` : '📋 생성된 예상문제';
+function setResultTitle(title, ordinal) {
+  const name = (title || '').trim() || (ordinal ? `제${ordinal}회` : '생성된 예상문제');
+  document.getElementById('result-title').textContent = `📋 ${name}`;
 }
 
 // 생성 직후 결과를 화면에 반영 (제목 + 이름 변경 버튼 상태)
@@ -319,8 +322,12 @@ async function loadCredits() {
 
 function applyGenerationResult(payload) {
   renderSpend(payload);
-  lastGeneration = { id: payload.generation_id, title: (payload.title || '').trim() };
-  setResultTitle(lastGeneration.title);
+  lastGeneration = {
+    id: payload.generation_id,
+    title: (payload.title || '').trim(),
+    ordinal: payload.ordinal || 0,      // 이름이 없을 때 '제N회'로 부르는 번호
+  };
+  setResultTitle(lastGeneration.title, lastGeneration.ordinal);
   // 제목 옆 아이콘 버튼 — 문구 대신 툴팁으로 상태를 알린다
   const btn = document.getElementById('result-rename-btn');
   const label = lastGeneration.title ? '이름 바꾸기' : '이름 붙이기';
@@ -343,7 +350,9 @@ async function renameCurrentResult() {
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) return alert(data.error || '이름을 바꾸지 못했습니다.');
 
-  applyGenerationResult({ generation_id: lastGeneration.id, title: next.trim() });
+  // ordinal 을 같이 넘긴다 — 이름을 지워 비우면 다시 '제N회'로 돌아가야 한다
+  applyGenerationResult({ generation_id: lastGeneration.id, title: next.trim(),
+                          ordinal: lastGeneration.ordinal });
   archiveLoaded = false;   // 보관함에도 반영되도록 캐시 무효화
 }
 

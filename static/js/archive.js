@@ -120,6 +120,21 @@ function renderSessionFilter(sessions) {
   if (prev) sel.value = prev;
 }
 
+// 시험지 id → 같은 세션 안에서 몇 번째로 만든 것인지 (오래된 것이 제1회).
+// 앞 회차를 지우면 번호가 밀리므로, 카드에는 날짜를 항상 함께 둔다.
+// ⚠️ 세는 대상은 화면에 그릴 몫이 아니라 archiveRows 전체다. 필터나 페이지로
+//    잘린 배열로 세면 '제N회'가 페이지마다 1부터 다시 시작한다.
+// 목록과 열람 화면이 같은 번호를 부르도록 한 곳에 둔다.
+function paperOrdinals() {
+  const ordinal = {};
+  const seen = {};
+  [...archiveRows].sort((a, b) => a.id - b.id).forEach(r => {
+    seen[r.session_id] = (seen[r.session_id] || 0) + 1;
+    ordinal[r.id] = seen[r.session_id];
+  });
+  return ordinal;
+}
+
 function renderArchive() {
   const grid = document.getElementById('archive-grid');
   const pager = document.getElementById('archive-pager');
@@ -144,16 +159,7 @@ function renderArchive() {
     return;
   }
 
-  // 같은 세션 안에서 몇 번째로 만든 것인지 (오래된 것이 제1회).
-  // 앞 회차를 지우면 번호가 밀리므로, 카드에는 날짜를 항상 함께 둔다.
-  // ⚠️ 세는 대상은 화면에 그릴 몫이 아니라 archiveRows 전체다. 필터나 페이지로
-  //    잘린 배열로 세면 '제N회'가 페이지마다 1부터 다시 시작한다.
-  const ordinal = {};
-  const seen = {};
-  [...archiveRows].sort((a, b) => a.id - b.id).forEach(r => {
-    seen[r.session_id] = (seen[r.session_id] || 0) + 1;
-    ordinal[r.id] = seen[r.session_id];
-  });
+  const ordinal = paperOrdinals();
 
   // 여기서부터는 이 페이지 몫(items)만 그린다 (common.js — 분석한 주제 목록과 공용)
   const { page, totalPages, items } = pageSlice('papers', rows);
@@ -211,10 +217,14 @@ let currentPaper = null;
 function applyPaperHeader(gid, g) {
   const row = archiveRows.find(r => r.id === gid) || {};
   const title = (row.title || g.title || '').trim();
+  // 이름이 없으면 목록 카드와 같은 '제N회'로 부른다. 강의자료 이름만 띄우면
+  // 같은 자료로 만든 회차끼리 구분이 안 돼 어느 시험지를 연 건지 알 수 없었다.
+  const nth = paperOrdinals()[gid];
   document.getElementById('archive-paper-title').textContent =
-    `📄 ${title || row.session_name || '시험지'}`;
+    `📄 ${title || (nth ? `제${nth}회` : row.session_name || '시험지')}`;
+  // 제목 자리에 쓰이지 않은 쪽을 메타 줄로 내린다 (목록 카드와 같은 어법)
   document.getElementById('archive-paper-meta').textContent =
-    [title ? (row.session_name || '') : '', g.created_at || '',
+    [title && nth ? `제${nth}회` : '', row.session_name || '', g.created_at || '',
      `${(g.questions || []).length}문항`, `강도 ${g.weight}/10`,
      `${providerLabel(g.provider)} / ${g.model || ''}`].filter(Boolean).join(' · ');
 }
