@@ -14,12 +14,9 @@
 // bone_bank.json의 각 문제는 category/subcategory 키로 여기에 소속된다.
 const BONE_CATEGORIES = [
   {
+    // Skull은 세부범위를 나누지 않고 카테고리 하나로 합쳐서 쓴다 (subs 없음 → 클릭 시 바로 모드 선택으로).
     key: 'skull', label: 'Skull', icon: '💀',
-    subs: [
-      { key: 'entire_skull', label: 'Entire Skull', icon: '💀' },
-      { key: 'neurocranium', label: 'Neurocranium', icon: '🧠' },
-      { key: 'viscerocranium', label: 'Viscerocranium', icon: '🦷' },
-    ],
+    subs: [],
   },
   {
     key: 'upper_limb', label: 'Upper Limb', icon: '💪',
@@ -148,7 +145,11 @@ function renderBoneCategoryGrid() {
   const total = boneCountFor(() => true);
   const tiles = BONE_CATEGORIES.map(cat => {
     const n = boneCountFor(e => e.category === cat.key);
-    return boneCatTile(cat.icon, cat.label, n, `boneOpenCategory('${cat.key}')`, n === 0);
+    // 세부범위(subs)가 없는 카테고리는 세부범위 화면을 건너뛰고 바로 모드 선택으로 간다 (예: Skull).
+    const onclick = cat.subs.length
+      ? `boneOpenCategory('${cat.key}')`
+      : `boneStartScope(e => e.category==='${cat.key}', '${cat.label}')`;
+    return boneCatTile(cat.icon, cat.label, n, onclick, n === 0);
   }).join('');
   const randomTile = boneCatTile('🎲', 'Random', total, `boneStartScope(() => true, '전체 범위 (Random)')`, total === 0);
 
@@ -341,9 +342,20 @@ function renderBoneQuestion() {
   input.focus();
 }
 
-// 비교용 정규화: 앞뒤 공백 제거 + 모든 공백 제거 + 소문자
+// 비교용 정규화: 앞뒤 공백 제거 + 모든 공백/하이픈 제거 + 소문자
+// (하이픈 유무 무시: "Supra-orbital" == "Supraorbital")
 function boneNormalize(s) {
-  return (s || '').trim().toLowerCase().replace(/\s+/g, '');
+  return (s || '').trim().toLowerCase().replace(/[\s-]+/g, '');
+}
+
+// 정답 하나(a)가 사용자 입력(val)과 일치하는지 확인.
+// 정답에 괄호가 있으면 괄호 부분은 생략 가능 (예: "Supra-orbital notch (foramen)" → "Supra-orbital notch"만 입력해도 정답)
+function boneAnswerMatches(a, val) {
+  const nVal = boneNormalize(val);
+  if (!nVal) return false;
+  if (boneNormalize(a) === nVal) return true;
+  const stripped = (a || '').replace(/\s*\([^)]*\)/g, '').trim();
+  return !!stripped && boneNormalize(stripped) === nVal;
 }
 
 function boneCheck() {
@@ -353,7 +365,7 @@ function boneCheck() {
   if (!boneNormalize(val)) { input.focus(); return; }   // 빈 답은 무시
 
   const correct = boneInstanceAnswers(boneCurrent).some(
-    a => boneNormalize(a) === boneNormalize(val)
+    a => boneAnswerMatches(a, val)
   );
   boneFinish(correct, correct ? '🎉 정답!' : '❌ 오답');
 }
@@ -475,12 +487,69 @@ function boneCanonicalTerm(answers) {
   return (answers && answers[0]) || '';
 }
 
+// "방향" 문제 단어은행 — 이미지마다 다르게 뽑지 않고, 자주 나오는 방향 전부를 고정 세트로 보여준다.
+// tibia_fibula_transverse/skull_transverse_superior처럼 횡단면은 "view"가 아니라 "section"이 정확한 용어라 함께 넣는다.
+const BONE_VIEW_BANK_TERMS = [
+  'anterior view', 'posterior view', 'lateral view', 'medial view',
+  'superior view', 'inferior view', 'transverse view', 'transverse section', 'palmar view', 'dorsal view',
+];
+
+// 카테고리 안의 다른 이미지들이 쓰는 구조물 이름 풀 (자기 자신의 구조물은 제외) — "구조 이름" 문제의 오답 후보용
+function boneCategoryStructurePool(category, ownStructure) {
+  const ownKeys = new Set((ownStructure || []).map(boneNormalize));
+  const seen = new Set();
+  const pool = [];
+  boneEntries.forEach(e => {
+    if (e.category !== category || !e.structure) return;
+    const term = boneCanonicalTerm(e.structure);
+    const key = boneNormalize(term);
+    if (!term || seen.has(key) || ownKeys.has(key)) return;
+    seen.add(key);
+    pool.push(term);
+  });
+  return pool;
+}
+
+// 이미지 1장에 대한 "구조 이름"/"방향" 문제 블록 — 클릭/빈칸쓰기 모드 공용 데이터
+function boneBuildExtraQuestions(entry) {
+  const list = [];
+  if (entry.structure) {
+    list.push({ kind: 'structure', label: boneQuestionLabel({ kind: 'structure', entry }), answers: entry.structure });
+  }
+  if (entry.view) {
+    list.push({ kind: 'view', label: boneQuestionLabel({ kind: 'view', entry }), answers: entry.view });
+  }
+  return list;
+}
+
+// 오답 노트 저장용 question 객체 (구조/방향 문제) — boneRoundWrongQuestion의 구조물/방향판
+function boneExtraWrongQuestion(entry, kind, answers) {
+  return {
+    '유형': '단답형',
+    '문제': `[골학] ${entry.title || '골학'} — ${boneQuestionLabel({ kind, entry })}`,
+    '정답': answers.join(', '),
+    '이미지': entry.image,
+    '원본이미지': entry.original || '',
+  };
+}
+
 function renderBoneClickRound(entry) {
   const slots = entry.parts.map(p => ({ num: p.num, answers: p.answers, filled: null, correct: null }));
   const bank = boneShuffle(entry.parts.map(p => ({
     text: boneCanonicalTerm(p.answers), sourceNum: p.num, used: false,
   })));
-  boneRoundState = { entry, slots, bank, selectedSlotNum: null, graded: false };
+  // 구조/방향 문제는 부위 단어은행과 섞이면 헷갈리므로 각각 자기만의 단어은행을 따로 둔다
+  // (구조: 같은 카테고리의 다른 구조물 이름들과 섞임 / 방향: 자주 나오는 방향 고정 세트).
+  const extra = boneBuildExtraQuestions(entry).map(q => {
+    const bankTerms = q.kind === 'structure'
+      ? boneShuffle([boneCanonicalTerm(q.answers), ...boneShuffle(boneCategoryStructurePool(entry.category, q.answers)).slice(0, 5)])
+      : boneShuffle(BONE_VIEW_BANK_TERMS.slice());
+    return {
+      kind: q.kind, label: q.label, answers: q.answers, filled: null, correct: null,
+      bank: bankTerms.map(text => ({ text, used: false })),
+    };
+  });
+  boneRoundState = { entry, slots, bank, extra, selectedSlotNum: null, graded: false };
 
   document.getElementById('bone-click-scope-label').textContent = `📍 ${boneScopeLabel}`;
   const img = document.getElementById('bone-click-image');
@@ -494,8 +563,69 @@ function renderBoneClickRound(entry) {
   renderBoneClickBoard();
 }
 
+// 구조/방향 문제 블록 — 슬롯 1개 + 전용 단어은행 1개짜리 미니 문제를 카드로 그린다
+function renderBoneClickExtra() {
+  const st = boneRoundState;
+  document.getElementById('bone-click-extra').innerHTML = (st.extra || []).map((ex, i) => {
+    let cls = 'bone-slot';
+    if (st.graded) cls += ex.correct ? ' bone-slot-correct' : ' bone-slot-wrong';
+    const text = ex.filled ? escHtml(ex.filled.text) : '';
+    const wrongBlock = (st.graded && !ex.correct)
+      ? `<div class="bone-slot-answer">정답: ${escHtml(ex.answers.join(', '))}
+           <button class="wrong-add-btn" onclick="event.stopPropagation();boneAddWrongClickExtra(${i})">🔖</button>
+         </div>`
+      : '';
+    const bankHtml = ex.bank.map((c, ci) =>
+      c.used ? '' : `<span class="bone-chip" onclick="boneClickExtraChip(${i},${ci})">${escHtml(c.text)}</span>`
+    ).join('') || (st.graded ? '' : '<span style="color:#94a3b8;font-size:0.82rem;">단어를 배치했습니다.</span>');
+    return `
+      <div style="margin-bottom:14px;">
+        <div style="font-size:0.8rem;font-weight:700;color:#1e293b;margin-bottom:6px;">${escHtml(ex.label)}</div>
+        <div class="${cls}" onclick="boneClickExtraSlot(${i})">
+          <span class="bone-slot-text">${text}</span>
+          ${wrongBlock}
+        </div>
+        <div class="bone-chip-bank" style="margin-top:6px;">${bankHtml}</div>
+      </div>`;
+  }).join('');
+}
+
+// 구조/방향 슬롯 클릭 — 채워져 있으면 단어은행으로 되돌린다 (슬롯이 하나뿐이라 '대상 선택' 개념이 필요 없음)
+function boneClickExtraSlot(idx) {
+  const st = boneRoundState;
+  if (st.graded) return;
+  const ex = st.extra[idx];
+  if (!ex || !ex.filled) return;
+  const chip = ex.bank.find(c => c.text === ex.filled.text);
+  if (chip) chip.used = false;
+  ex.filled = null;
+  renderBoneClickBoard();
+}
+
+// 구조/방향 단어은행 카드 클릭 — 이미 채워져 있으면 무시(먼저 슬롯을 비우게)
+function boneClickExtraChip(exIdx, chipIdx) {
+  const st = boneRoundState;
+  if (st.graded) return;
+  const ex = st.extra[exIdx];
+  if (!ex) return;
+  const chip = ex.bank[chipIdx];
+  if (!chip || chip.used || ex.filled) return;
+  ex.filled = { text: chip.text };
+  chip.used = true;
+  renderBoneClickBoard();
+}
+
+function boneAddWrongClickExtra(idx) {
+  const st = boneRoundState;
+  const ex = st.extra[idx];
+  if (!ex) return;
+  const q = boneExtraWrongQuestion(st.entry, ex.kind, ex.answers);
+  openWrongModalForQuestion(q, q['문제'], null);
+}
+
 function renderBoneClickBoard() {
   const st = boneRoundState;
+  renderBoneClickExtra();
   document.getElementById('bone-click-slots').innerHTML = st.slots.map(s => {
     let cls = 'bone-slot';
     if (st.graded) cls += s.correct ? ' bone-slot-correct' : ' bone-slot-wrong';
@@ -558,18 +688,23 @@ function boneGradeClick() {
   st.graded = true;
   st.slots.forEach(s => {
     const val = s.filled ? s.filled.text : '';
-    s.correct = !!val && s.answers.some(a => boneNormalize(a) === boneNormalize(val));
+    s.correct = !!val && s.answers.some(a => boneAnswerMatches(a, val));
   });
-  const correctCount = st.slots.filter(s => s.correct).length;
-  boneStats.total += st.slots.length;
+  (st.extra || []).forEach(ex => {
+    const val = ex.filled ? ex.filled.text : '';
+    ex.correct = !!val && ex.answers.some(a => boneAnswerMatches(a, val));
+  });
+  const totalCount = st.slots.length + (st.extra ? st.extra.length : 0);
+  const correctCount = st.slots.filter(s => s.correct).length + (st.extra || []).filter(ex => ex.correct).length;
+  boneStats.total += totalCount;
   boneStats.correct += correctCount;
   boneUpdateScore();
 
   document.getElementById('bone-click-submit-btn').style.display = 'none';
   document.getElementById('bone-click-next-btn').style.display = 'inline-block';
   document.getElementById('bone-click-summary').innerHTML =
-    `<b style="color:${correctCount === st.slots.length ? '#16a34a' : '#dc2626'};">
-       ${correctCount} / ${st.slots.length}개 정답
+    `<b style="color:${correctCount === totalCount ? '#16a34a' : '#dc2626'};">
+       ${correctCount} / ${totalCount}개 정답
      </b>`;
   renderBoneClickBoard();
   document.getElementById('bone-click-next-btn').focus();
@@ -590,7 +725,15 @@ function boneClickShowOriginal() {
 // ── 빈칸 한번에 쓰기: 번호별 입력창을 한 화면에 모두 두고 한 번에 채점 ──
 
 function renderBoneWriteRound(entry) {
-  const rows = entry.parts.map(p => ({ num: p.num, answers: p.answers, value: '', correct: null }));
+  // 구조 이름·방향 문제를 부위 번호 행보다 앞에 둔다 (label로 구분 — num은 부위 행에서만 "N번"으로 쓰인다)
+  const extraRows = boneBuildExtraQuestions(entry).map(q => ({
+    kind: q.kind, num: null, label: q.kind === 'structure' ? '구조 이름' : '방향',
+    answers: q.answers, value: '', correct: null,
+  }));
+  const partRows = entry.parts.map(p => ({
+    kind: 'part', num: p.num, label: `${p.num}번`, answers: p.answers, value: '', correct: null,
+  }));
+  const rows = extraRows.concat(partRows);
   boneRoundState = { entry, rows, graded: false };
 
   document.getElementById('bone-write-scope-label').textContent = `📍 ${boneScopeLabel}`;
@@ -614,23 +757,26 @@ function renderBoneWriteRows() {
       ? `<span class="bone-write-mark" style="color:${r.correct ? '#16a34a' : '#dc2626'};">${r.correct ? '✅' : '❌'}</span>
          ${!r.correct
             ? `<span class="bone-write-answer">정답: ${escHtml(r.answers.join(', '))}</span>
-               <button class="wrong-add-btn" onclick="boneAddWrongWrite(${r.num})">🔖</button>`
+               <button class="wrong-add-btn" onclick="boneAddWrongWrite(${i})">🔖</button>`
             : ''}`
       : '';
+    // 구조 이름/방향 행은 "N번"보다 라벨이 길어서 번호 칸 너비를 넉넉히 준다
+    const numStyle = r.kind === 'part' ? '' : ' style="width:60px;"';
     return `
       <div class="bone-write-row">
-        <label class="bone-write-num">${r.num}번</label>
+        <label class="bone-write-num"${numStyle}>${escHtml(r.label)}</label>
         <input type="text" class="bone-write-input" value="${escHtml(r.value)}"
                ${st.graded ? 'disabled' : ''}
-               oninput="boneWriteInput(${r.num}, this.value)"
+               oninput="boneWriteInput(${i}, this.value)"
                onkeydown="boneWriteKey(event, ${i})" />
         ${resultHtml}
       </div>`;
   }).join('');
 }
 
-function boneWriteInput(num, val) {
-  const row = boneRoundState.rows.find(r => r.num === num);
+// idx = st.rows 안의 배열 인덱스 (부위 행은 숫자 num, 구조/방향 행은 num이 없어 인덱스로 통일해 다룬다)
+function boneWriteInput(idx, val) {
+  const row = boneRoundState.rows[idx];
   if (row) row.value = val;
 }
 
@@ -649,7 +795,7 @@ function boneGradeWrite() {
   if (st.graded) return;
   st.graded = true;
   st.rows.forEach(r => {
-    r.correct = !!boneNormalize(r.value) && r.answers.some(a => boneNormalize(a) === boneNormalize(r.value));
+    r.correct = !!boneNormalize(r.value) && r.answers.some(a => boneAnswerMatches(a, r.value));
   });
   const correctCount = st.rows.filter(r => r.correct).length;
   boneStats.total += st.rows.length;
@@ -666,11 +812,13 @@ function boneGradeWrite() {
   document.getElementById('bone-write-next-btn').focus();
 }
 
-function boneAddWrongWrite(num) {
+function boneAddWrongWrite(idx) {
   const st = boneRoundState;
-  const row = st.rows.find(r => r.num === num);
+  const row = st.rows[idx];
   if (!row) return;
-  const q = boneRoundWrongQuestion(st.entry, num, row.answers);
+  const q = row.kind === 'part'
+    ? boneRoundWrongQuestion(st.entry, row.num, row.answers)
+    : boneExtraWrongQuestion(st.entry, row.kind, row.answers);
   openWrongModalForQuestion(q, q['문제'], null);
 }
 

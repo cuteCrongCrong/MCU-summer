@@ -396,9 +396,11 @@
                   title="새로고침" aria-label="생성한 문제 목록 새로고침" style="margin-left:auto;">↻</button>
         </div>
         <div id="archive-filter-row" class="hidden" style="margin-bottom:14px;">
-          <select id="archive-session-filter" class="select-field" onchange="renderArchive()"></select>
+          <select id="archive-session-filter" class="select-field" onchange="archiveFilterChanged()"></select>
         </div>
         <div id="archive-grid"></div>
+        <!-- 페이지 버튼 — 내용은 renderArchive()가 채운다 (한 장뿐이면 빈 채로 둔다) -->
+        <div id="archive-pager"></div>
       </div>
     </div>
 
@@ -437,6 +439,8 @@
                   title="새로고침" aria-label="분석한 주제 목록 새로고침" style="margin-left:auto;">↻</button>
         </div>
         <div id="saved-topics-grid"></div>
+        <!-- 페이지 버튼 — 내용은 renderSavedTopics()가 채운다 (한 장뿐이면 빈 채로 둔다) -->
+        <div id="topics-pager"></div>
       </div>
     </div>
 
@@ -598,6 +602,8 @@
                   style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">🖼️ 원본 보기</button>
         </div>
 
+        <div id="bone-click-extra"></div>
+
         <div style="font-size:0.78rem;font-weight:700;color:#64748b;margin:0 0 6px;">📚 단어은행</div>
         <div class="bone-chip-bank" id="bone-click-bank"></div>
 
@@ -742,25 +748,27 @@
       </button>
     </div>
 
-    <!-- 진행 상태 -->
+    <!-- 진행 상태 — id는 서버가 보내는 단계 키(stage.key)와 1:1로 대응 (생성 탭과 같은 규칙).
+         단계가 셋뿐인 이유: 주제 대응표는 LLM 호출 한 번이라 그 안을 쪼갤 수 없다. -->
     <div id="topic-status-box" class="card status-panel hidden">
-      <div class="card-title">분석 진행 상태</div>
+      <div class="card-title">
+        분석 진행 상태
+        <span id="topic-overall-pct" class="overall-pct">0%</span>
+        <button type="button" id="topic-cancel-btn" class="cancel-btn" onclick="topicCancelAnalyze()">■ 중지</button>
+      </div>
+      <div class="progress-track"><div class="progress-bar" id="topic-overall-bar"></div></div>
       <ul class="step-list">
-        <li class="step-item wait" id="topic-step1">
+        <li class="step-item wait" id="topic-step-extract">
           <span class="step-icon">📄</span>
-          <span class="step-text">PDF 텍스트·페이지 번호 추출 중...</span>
+          <span class="step-text">PDF 텍스트·페이지 번호 추출</span>
         </li>
-        <li class="step-item wait" id="topic-step2">
+        <li class="step-item wait" id="topic-step-topics">
           <span class="step-icon">📚</span>
-          <span class="step-text">강의록 주제 정리 중...</span>
+          <span class="step-text">강의록 주제 · 기출 문항 대조 분석</span>
         </li>
-        <li class="step-item wait" id="topic-step3">
-          <span class="step-icon">📝</span>
-          <span class="step-text">기출 문항과 대조 중...</span>
-        </li>
-        <li class="step-item wait" id="topic-step4">
+        <li class="step-item wait" id="topic-step-finish">
           <span class="step-icon">🔗</span>
-          <span class="step-text">주제 · 출처 연결 정리 중...</span>
+          <span class="step-text">주제 · 출처 정리</span>
         </li>
       </ul>
     </div>

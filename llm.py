@@ -1510,6 +1510,84 @@ def remaining_char_budget(docs: list) -> int:
     return max(TOPIC_SIDE_CHAR_BUDGET, TOPIC_TOTAL_CHAR_BUDGET - used)
 
 
+def read_labeled_pdfs(files, label_prefix: str, api_key: str = None,
+                      image_mode: dict = None, img_budget: int = None) -> list:
+    """
+    PDF 를 페이지 단위로 읽어만 둔다 — 여기까지는 LLM 호출이 없다.
+
+    읽기와 그림 텍스트화를 나눠 둔 이유: 진행률을 내려면 그림이 모두 몇 장인지
+    '먼저' 알아야 하는데, 강의록과 기출을 각각 끝까지 추출해 버리면 총계를
+    양쪽 다 끝낸 뒤에야 알 수 있다. 호출부가 양쪽을 다 읽어 총계를 센 뒤에
+    describe_images_progressively 를 돌리게 하려고 여기서 끊는다.
+
+    files: (파일명, FileStorage 또는 bytes) 쌍의 목록.
+           스트리밍 경로는 요청 컨텍스트가 닫힌 뒤에 도니 bytes 를 넘긴다.
+    img_budget: 이미지 처리 상한 — **파일당이 아니라 이쪽 전체 기준**. 생략하면 모드의
+           max_pages를 이쪽 전체에 쓴다. '남은 예산 ÷ 남은 파일 수'로 배정하므로 앞
+           파일이 제 몫을 다 안 쓰면 남은 만큼이 뒤 파일로 넘어간다(next_image_quota).
+    반환: [{label, name, pages, img_jobs, quota}] (img_jobs 는 pages 안 엔트리를 참조한다)
+          quota를 남기는 이유: assemble_pdf_text가 '몇 개까지만 처리됨'을 적을 때
+          이 파일에 실제로 적용된 상한을 알아야 한다. 모드의 max_pages가 아니다.
+    """
+    files = list(files or [])
+    remaining_imgs = side_image_budget(image_mode, img_budget)
+    parts = []
+    for i, (name, pdf) in enumerate(files, start=1):
+        name = name or f"{label_prefix}{i}"
+        quota = next_image_quota(remaining_imgs, len(files) - i + 1)
+        try:
+            # quota가 0이어도 image_mode는 그대로 넘긴다 (next_image_quota 주석 참고 —
+            # None으로 바꾸면 예산이 앞 파일에서 동났을 때 뒤 파일의 경고가 사라진다).
+            pages, img_jobs = read_pdf_pages(pdf, api_key, image_mode, max_images=quota)
+        except Exception as e:
+            # 손상·암호 걸린 PDF (fitz의 영문 예외를 어떤 파일이 문제인지 알려주는 문구로)
+            raise ValueError(
+                f"'{name}' 파일을 읽을 수 없습니다. "
+                f"PDF가 손상되었거나 암호가 걸려 있는지 확인해주세요. (상세: {e})"
+            ) from e
+        remaining_imgs -= len(img_jobs)
+        parts.append({"label": f"{label_prefix}{i}", "name": name,
+                      "pages": pages, "img_jobs": img_jobs, "quota": quota})
+    return parts
+
+
+def finish_labeled_docs(parts: list, side_budget: int = TOPIC_SIDE_CHAR_BUDGET,
+                        image_mode: dict = None, by_question: bool = False) -> list:
+    """
+    그림 텍스트화가 끝난 parts 를 '라벨 + 페이지 마커가 붙은 텍스트' 문서 목록으로 합친다.
+    반환 형태는 아래 extract_labeled_docs 와 완전히 같다.
+
+    by_question: 기출 쪽이면 True — 상한을 넘길 때 문항 번호 경계로 자른다
+                 (반쪽짜리 문항을 남기지 않는다. _cut_points 참고)
+    """
+    if not parts:
+        return []
+
+    # 예산을 파일 수로 나눠 배정 (파일이 많으면 문서당 최소치는 보장)
+    per_doc = max(TOPIC_DOC_MIN_CHARS, side_budget // len(parts))
+
+    docs = []
+    for p in parts:
+        raw = assemble_pdf_text(p["pages"], len(p["img_jobs"]), image_mode,
+                                p.get("quota"))
+        docs.append({
+            # 상한을 넘겼다면 몇 번째 줄이 버려지는지 (안 넘으면 None).
+            # 진행 전에 사용자에게 보여주고 확인받는 데 쓴다 — DB에는 저장하지 않는다.
+            "cut": truncation_report(raw, per_doc, by_question),
+            # 그림·필기가 몇 쪽 중 몇 쪽 반영됐는지. 'cut'과 같은 용도(진행 전 확인)라
+            # 함께 싣는다. 이미지 처리를 안 하는 경우엔 후보가 0이라 경고도 안 뜬다.
+            "img": image_coverage(p["pages"], p["img_jobs"]),
+            "label": p["label"],
+            "name": p["name"],
+            "text": truncate(raw, per_doc, by_question),
+            # 내용이 잡힌 페이지 수 (스캔 PDF 판별·안내용).
+            # '[페이지 N]'과 '[페이지 N 이미지 설명]' 두 형태를 모두 센다 (set으로 중복 제거).
+            "pages": len(set(re.findall(r"\[페이지 (\d+)[\] ]", raw))),
+            "source": build_source_info(raw, per_doc, by_question),
+        })
+    return docs
+
+
 def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
                          image_mode: dict = None, provider=None,
                          side_budget: int = TOPIC_SIDE_CHAR_BUDGET,
@@ -1532,59 +1610,24 @@ def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
     by_question:  기출 쪽이면 True — 상한을 넘길 때 문항 번호 경계로 자른다
                   (반쪽짜리 문항을 남기지 않는다. _cut_points 참고)
     반환: [{label, name, text, pages, source}]  (text에는 [페이지 N] 마커가 들어 있다)
+
+    진행률이 필요한 곳(스트리밍)은 위 두 함수와 describe_images_progressively 를
+    직접 조합한다. 결과는 동일하다.
     """
     files = list(files or [])
     if not files:
         return []
 
-    # 예산을 파일 수로 나눠 배정 (파일이 많으면 문서당 최소치는 보장)
-    per_doc = max(TOPIC_DOC_MIN_CHARS, side_budget // len(files))
-
-    # 이미지 예산은 '남은 예산 ÷ 남은 파일 수'로 배정한다. 앞 파일이 몫을 다 안 쓰면
-    # 남은 만큼이 뒤 파일로 넘어가므로, 그림이 한 파일에 몰려 있어도 낭비가 없다.
-    remaining_imgs = side_image_budget(image_mode, img_budget)
-
-    docs = []
-    for i, f in enumerate(files, start=1):
-        name = f.filename or f"{label_prefix}{i}"
-        quota = next_image_quota(remaining_imgs, len(files) - i + 1)
-        img_jobs = []
+    parts = read_labeled_pdfs([(f.filename, f) for f in files],
+                              label_prefix, api_key, image_mode, img_budget)
+    for p in parts:
         try:
-            # extract_text_from_pdf를 쓰지 않고 풀어 쓴 이유 — 이 파일이 이미지 처리를
-            # 실제로 몇 개 썼는지 알아야 남은 예산을 다음 파일로 넘길 수 있다.
-            # quota가 0이어도 image_mode는 그대로 넘긴다 (next_image_quota 주석 참고 —
-            # None으로 바꾸면 예산이 앞 파일에서 동났을 때 뒤 파일의 경고가 사라진다).
-            pages, img_jobs = read_pdf_pages(f, api_key, image_mode, max_images=quota)
-            for _ in describe_images_progressively(img_jobs, api_key, model,
+            for _ in describe_images_progressively(p["img_jobs"], api_key, model,
                                                    provider, usage, image_mode):
                 pass
-            raw = assemble_pdf_text(pages, len(img_jobs), image_mode, quota)
         except ProviderError:
-            raise                      # 키·한도 오류는 라우트가 상태코드로 구분하므로 그대로
-        except Exception as e:
-            # 손상·암호 걸린 PDF (fitz의 영문 예외를 어떤 파일이 문제인지 알려주는 문구로)
-            raise ValueError(
-                f"'{name}' 파일을 읽을 수 없습니다. "
-                f"PDF가 손상되었거나 암호가 걸려 있는지 확인해주세요. (상세: {e})"
-            ) from e
-        remaining_imgs -= len(img_jobs)
-        text = truncate(raw, per_doc, by_question)
-        docs.append({
-            # 상한을 넘겼다면 몇 번째 줄이 버려지는지 (안 넘으면 None).
-            # 진행 전에 사용자에게 보여주고 확인받는 데 쓴다 — DB에는 저장하지 않는다.
-            "cut": truncation_report(raw, per_doc, by_question),
-            # 그림·필기가 몇 쪽 중 몇 쪽 반영됐는지. 'cut'과 같은 용도(진행 전 확인)라
-            # 함께 싣는다. 이미지 처리를 안 하는 경우엔 후보가 0이라 경고도 안 뜬다.
-            "img": image_coverage(pages, img_jobs),
-            "label": f"{label_prefix}{i}",
-            "name": name,
-            "text": text,
-            # 내용이 잡힌 페이지 수 (스캔 PDF 판별·안내용).
-            # '[페이지 N]'과 '[페이지 N 이미지 설명]' 두 형태를 모두 센다 (set으로 중복 제거).
-            "pages": len(set(re.findall(r"\[페이지 (\d+)[\] ]", raw))),
-            "source": build_source_info(raw, per_doc, by_question),
-        })
-    return docs
+            raise                  # 키·한도 오류는 라우트가 상태코드로 구분하므로 그대로
+    return finish_labeled_docs(parts, side_budget, image_mode, by_question)
 
 
 def build_topic_doc_block(docs: list) -> str:

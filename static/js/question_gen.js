@@ -218,93 +218,40 @@ function cancelGenerate() {
 const STAGE_STEPS = ['extract', 'concepts', 'format', 'generate'];
 const STEP_ICONS = { extract: '📄', concepts: '🧠', format: '🔍', generate: '✏️' };
 
+// 단계별 진행 상황 — 전체 진행률 막대는 아래 가중치로 합산한다.
+// (오래 걸리는 단계일수록 크게 — 실제 소요 시간에 대략 비례)
+// 계산·표시는 common.js 의 createProgress 가 한다 (기출 주제 분석 탭과 공용).
+const genProgress = createProgress({
+  barId: 'overall-bar', pctId: 'overall-pct', stepPrefix: 'step-',
+  weights: { extract: 15, concepts: 20, format: 20, generate: 45 },
+});
+
 function resetSteps(useSession) {
   // 저장된 세션을 재사용하면 분석 단계는 아예 실행되지 않는다 → 숨기고 진행률에서도 제외
-  activeStages = useSession ? ['generate'] : STAGE_STEPS.slice();
-  stageProgress = {};
+  const active = useSession ? ['generate'] : STAGE_STEPS.slice();
 
   STAGE_STEPS.forEach(key => {
     const el = document.getElementById('step-' + key);
-    el.style.display = activeStages.includes(key) ? '' : 'none';
+    el.style.display = active.includes(key) ? '' : 'none';
     el.className = 'step-item wait';
     el.querySelector('.step-icon').textContent = STEP_ICONS[key];
     const note = el.querySelector('.step-note');
     if (note) note.remove();
   });
-  renderOverallProgress();
-}
-
-function setStepNote(key, text) {
-  const el = document.getElementById('step-' + key);
-  let note = el.querySelector('.step-note');
-  if (!note) {
-    note = document.createElement('span');
-    note.className = 'step-note';
-    el.appendChild(note);
-  }
-  note.textContent = text;
-}
-
-// 단계별 진행 상황 — 전체 진행률 막대는 아래 가중치로 합산한다.
-// (오래 걸리는 단계일수록 크게 — 실제 소요 시간에 대략 비례)
-const STAGE_WEIGHTS = { extract: 15, concepts: 20, format: 20, generate: 45 };
-let stageProgress = {};      // key -> 0~1
-let activeStages = [];       // 이번 실행에서 실제로 도는 단계
-
-function setStageProgress(key, done, total) {
-  if (!(key in STAGE_WEIGHTS)) return;
-  stageProgress[key] = total > 0 ? Math.min(1, done / total) : 0;
-  setStepNote(key, total > 0 ? `${done} / ${total}` : '진행 중…');
-  renderOverallProgress();
-}
-
-function completeStage(key) {
-  stageProgress[key] = 1;
-  setStepNote(key, '완료');     // 진행률 이벤트가 없던 단계에도 표시가 남도록
-  renderOverallProgress();
-}
-
-function renderOverallProgress() {
-  const totalWeight = activeStages.reduce((s, k) => s + STAGE_WEIGHTS[k], 0) || 1;
-  const acc = activeStages.reduce((s, k) => s + STAGE_WEIGHTS[k] * (stageProgress[k] || 0), 0);
-  const pct = Math.round(acc / totalWeight * 100);
-  document.getElementById('overall-bar').style.width = pct + '%';
-  document.getElementById('overall-pct').textContent = pct + '%';
-}
-
-// HTTP 오류를 '알 수 없는 오류'로 뭉개지 않고 원인을 알려준다.
-// (응답이 JSON이 아닌 경우 — 404 HTML, 디버그 트레이스백 등 — 이 경로로 온다)
-async function describeHttpError(resp) {
-  const text = await resp.text().catch(() => '');
-  try {
-    const parsed = JSON.parse(text);
-    if (parsed.error) return parsed.error;
-  } catch (e) { /* JSON이 아니면 아래에서 상태 코드로 안내 */ }
-
-  if (resp.status === 404) {
-    return '서버에서 스트리밍 기능(/generate/stream)을 찾을 수 없습니다.\n'
-         + 'Flask 서버가 예전 코드로 실행 중일 수 있습니다. 서버를 껐다가 다시 실행해주세요.';
-  }
-  const snippet = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
-  return `서버 오류 ${resp.status} ${resp.statusText}` + (snippet ? `\n${snippet}` : '');
-}
-
-// 스트림을 읽을 수 있는 환경인지 — 요청을 보내기 '전에' 판단해야 한다.
-// 요청 후에 폴백하면 서버가 이미 생성을 시작해 토큰을 두 번 쓰게 된다.
-function canReadStream() {
-  // 'body'는 getter이므로 프로토타입에서 값을 '읽으면' 안 된다 (Illegal invocation).
-  // 존재 여부만 확인한다.
-  return typeof ReadableStream !== 'undefined' && 'body' in Response.prototype;
+  genProgress.reset(active);
 }
 
 // 스트리밍을 못 쓰는 환경 — 예전처럼 한 번에 받아서 그린다
 async function fallbackGenerate(form, signal) {
-  activeStages.forEach(k => setStep('step-' + k, 'active'));
+  genProgress.stages.forEach(k => setStep('step-' + k, 'active'));
   const resp = await fetch('/generate', { method: 'POST', body: form, signal });
-  activeStages.forEach(k => { setStep('step-' + k, 'done'); completeStage(k); });
+  genProgress.stages.forEach(k => {
+    setStep('step-' + k, 'done');
+    genProgress.completeStage(k);
+  });
 
   if (!resp.ok) {
-    showError(await describeHttpError(resp));
+    showError(await describeHttpError(resp, '/generate'));
     return;
   }
   const data = await resp.json().catch(() => ({}));
@@ -321,20 +268,23 @@ async function fallbackGenerate(form, signal) {
     loadSessions();
   }
   document.getElementById('result-box').style.display = 'block';
-  renderQuestions(data.questions, data.raw);
+  renderQuestions(data.questions, data.raw, { paged: true });
   applyGenerationResult(data);
   showGenResult();
   archiveLoaded = false;   // 보관함 캐시 무효화 — 다음에 열 때 새 결과가 보이도록
 }
 
 // 방금 생성한 회차 — 결과 화면에서 이름을 붙일 때 대상이 된다
-let lastGeneration = { id: null, title: '' };
+let lastGeneration = { id: null, title: '', ordinal: 0 };
 
-// 결과 화면 제목. 이름을 붙였으면 그 이름으로, 아니면 기본 문구.
+// 결과 화면 제목. 이름을 붙였으면 그 이름으로, 아니면 '제N회'.
+// '생성된 예상문제'는 어느 시험지인지 알려주지 않아 보관함 목록과 부르는 이름이
+// 어긋났다 — 목록은 이름이 없으면 '제N회'로 부른다. 여기서도 같게 맞춘다.
+// 회차 번호를 못 받은 경우(저장 실패 등)에만 예전 문구로 돌아간다.
 // renderQuestions가 제목을 기본값으로 되돌리므로 반드시 그 뒤에 부른다.
-function setResultTitle(title) {
-  document.getElementById('result-title').textContent =
-    (title || '').trim() ? `📋 ${title.trim()}` : '📋 생성된 예상문제';
+function setResultTitle(title, ordinal) {
+  const name = (title || '').trim() || (ordinal ? `제${ordinal}회` : '생성된 예상문제');
+  document.getElementById('result-title').textContent = `📋 ${name}`;
 }
 
 // 키 입력란 아래 한 줄 — 생성 전에 잔액을 확인하는 용도.
@@ -347,8 +297,12 @@ function loadCredits() {
 // 생성 직후 결과를 화면에 반영 (제목 + 이름 변경 버튼 상태)
 function applyGenerationResult(payload) {
   renderSpend(payload);
-  lastGeneration = { id: payload.generation_id, title: (payload.title || '').trim() };
-  setResultTitle(lastGeneration.title);
+  lastGeneration = {
+    id: payload.generation_id,
+    title: (payload.title || '').trim(),
+    ordinal: payload.ordinal || 0,      // 이름이 없을 때 '제N회'로 부르는 번호
+  };
+  setResultTitle(lastGeneration.title, lastGeneration.ordinal);
   // 제목 옆 아이콘 버튼 — 문구 대신 툴팁으로 상태를 알린다
   const btn = document.getElementById('result-rename-btn');
   const label = lastGeneration.title ? '이름 바꾸기' : '이름 붙이기';
@@ -371,7 +325,9 @@ async function renameCurrentResult() {
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) return alert(data.error || '이름을 바꾸지 못했습니다.');
 
-  applyGenerationResult({ generation_id: lastGeneration.id, title: next.trim() });
+  // ordinal 을 같이 넘긴다 — 이름을 지워 비우면 다시 '제N회'로 돌아가야 한다
+  applyGenerationResult({ generation_id: lastGeneration.id, title: next.trim(),
+                          ordinal: lastGeneration.ordinal });
   archiveLoaded = false;   // 보관함에도 반영되도록 캐시 무효화
 }
 
@@ -382,66 +338,48 @@ async function streamGenerate(form, signal) {
 
   // 스트림이 시작되기 전 오류(키 누락 등)는 평범한 JSON으로 온다
   if (!resp.ok) {
-    showError(await describeHttpError(resp));
+    showError(await describeHttpError(resp, '/generate/stream'));
     return;
   }
 
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let started = false;      // 첫 문제가 오면 결과 화면으로 전환
   let finished = false;     // done/error 없이 스트림이 끊겼는지 판별
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    // SSE는 빈 줄로 이벤트를 구분한다
-    let sep;
-    while ((sep = buffer.indexOf('\n\n')) !== -1) {
-      const frame = buffer.slice(0, sep).trim();
-      buffer = buffer.slice(sep + 2);
-      if (!frame.startsWith('data: ')) continue;
-
-      const ev = JSON.parse(frame.slice(6));
-      if (ev.type === 'stage') {
-        setStep('step-' + ev.key, ev.status);
-        if (ev.status === 'active') {
-          setStageProgress(ev.key, 0, ev.total || 0);
-        } else if (ev.status === 'done') {
-          completeStage(ev.key);
-        }
-      } else if (ev.type === 'progress') {
-        setStageProgress(ev.key, ev.done, ev.total);
-      } else if (ev.type === 'analysis') {
-        // 분석 결과 자체는 화면에 표시하지 않는다(결과 화면은 문제만 보여준다).
-        // 다만 이 이벤트로 새로 저장된 세션을 알 수 있으므로 그것만 반영하고,
-        // 문제 컨테이너를 미리 열어둔다. 화면 전환은 문제까지 다 나온 뒤 done에서.
-        const a = ev.payload;
-        if (!a.reused && a.session_id) {
-          setActiveSession(a.session_id, a.session_name);
-          loadSessions();
-        }
-        document.getElementById('result-box').style.display = 'block';
-      } else if (ev.type === 'question') {
-        // 문제는 모아뒀다가 done에서 한 번에 보여준다 (진행률만 실시간)
-        setStageProgress('generate', ev.index, ev.total);
-      } else if (ev.type === 'done') {
-        renderQuestions(ev.payload.questions, ev.payload.raw);
-        applyGenerationResult(ev.payload);
-        showGenResult();
-        archiveLoaded = false;   // 보관함 캐시 무효화 — 다음에 열 때 새 결과가 보이도록
-        finished = true;
-      } else if (ev.type === 'needs_confirm') {
-        // 분량 초과 — 추출까지만 하고 멈춘 상태. 호출부가 확인을 받아 이어서 진행한다.
-        finished = true;
-        return { needsConfirm: true, payload: ev.payload };
-      } else if (ev.type === 'error') {
-        finished = true;
-        showError((ev.message || '생성 중 오류가 발생했습니다.') + spendSuffix(ev));
-        return;
+  // 프레임 끊기는 common.js 의 sseEvents 가 한다 (기출 주제 분석 탭과 공용)
+  for await (const ev of sseEvents(resp)) {
+    if (ev.type === 'stage') {
+      setStep('step-' + ev.key, ev.status);
+      if (ev.status === 'active') {
+        genProgress.setStageProgress(ev.key, 0, ev.total || 0);
+      } else if (ev.status === 'done') {
+        genProgress.completeStage(ev.key);
       }
+    } else if (ev.type === 'progress') {
+      genProgress.setStageProgress(ev.key, ev.done, ev.total);
+    } else if (ev.type === 'analysis') {
+      // 분석 결과 자체는 화면에 표시하지 않는다(결과 화면은 문제만 보여준다).
+      // 다만 이 이벤트로 새로 저장된 세션을 알 수 있으므로 그것만 반영하고,
+      // 문제 컨테이너를 미리 열어둔다. 화면 전환은 문제까지 다 나온 뒤 done에서.
+      const a = ev.payload;
+      if (!a.reused && a.session_id) {
+        setActiveSession(a.session_id, a.session_name);
+        loadSessions();
+      }
+      document.getElementById('result-box').style.display = 'block';
+    } else if (ev.type === 'question') {
+      // 문제는 모아뒀다가 done에서 한 번에 보여준다 (진행률만 실시간)
+      genProgress.setStageProgress('generate', ev.index, ev.total);
+    } else if (ev.type === 'done') {
+      renderQuestions(ev.payload.questions, ev.payload.raw, { paged: true });
+      applyGenerationResult(ev.payload);
+      showGenResult();
+      archiveLoaded = false;   // 보관함 캐시 무효화 — 다음에 열 때 새 결과가 보이도록
+      finished = true;
+    } else if (ev.type === 'needs_confirm') {
+      // 분량 초과 — 추출까지만 하고 멈춘 상태. 호출부가 확인을 받아 이어서 진행한다.
+      return { needsConfirm: true, payload: ev.payload };
+    } else if (ev.type === 'error') {
+      showError((ev.message || '생성 중 오류가 발생했습니다.') + spendSuffix(ev));
+      return;
     }
   }
 

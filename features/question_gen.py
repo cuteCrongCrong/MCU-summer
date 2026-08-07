@@ -229,6 +229,25 @@ def save_generation(session_id: int, count: int, weight: int, model: str,
         conn.close()
 
 
+def generation_ordinal(session_id: int, gid: int) -> int:
+    """
+    같은 세션 안에서 이 회차가 몇 번째인지 (오래된 것이 제1회).
+
+    보관함 목록이 화면에서 세는 규칙과 같다 — 세션별로 묶어 id 오름차순.
+    앞 회차를 지우면 번호가 밀리므로 DB에 저장하지 않고 그때그때 센다.
+    (저장해 두면 삭제 후 목록과 결과 화면의 번호가 어긋난다)
+    """
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM generations WHERE session_id=? AND id<=?",
+            (session_id, gid),
+        ).fetchone()
+        return row[0] if row else 0
+    finally:
+        conn.close()
+
+
 def rename_generation(gid: int, title: str, owner) -> bool:
     """소유한 세션의 이력만 이름 변경. 실제로 바뀌었으면 True."""
     frag, params = owner_clause(owner)
@@ -929,6 +948,8 @@ def run_generation_events(p: dict):
             "session_name":     analysis.get("name", ""),
             "generation_id":    generation_id,       # 방금 저장된 이력 id
             "title":            p["gen_title"],      # 사용자가 붙인 이름 (없으면 "")
+            # 이름을 안 붙였을 때 결과 화면이 '제N회'로 대신 부르는 데 쓴다
+            "ordinal":          generation_ordinal(session_id, generation_id),
             "reused":           reused,              # 저장된 세션 재사용 여부
             "concepts":         analysis.get("concepts", {}),
             "exam_concepts":    analysis.get("exam_concepts", {}),
