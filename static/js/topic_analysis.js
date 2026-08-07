@@ -1,7 +1,8 @@
 // ══════════════════════════════════════════════
 // topic_analysis.js — 기출 주제 분석 탭
 //   "강의록 몇 페이지의 주제가 어떤 기출 몇 번 문제로 나왔는가" 를 정리해 보여준다.
-//   common.js 이후 로드. escHtml/delay/setStep은 common.js 것을 재사용.
+//   common.js 이후 로드. escHtml/setStep 과 진행 상태 도구(createProgress·sseEvents)는
+//   common.js 것을 재사용한다 — 진행률 계산·SSE 파싱이 문제 생성 탭과 같은 규칙이다.
 //   이름 충돌을 막기 위해 전역·함수 모두 topic 접두사 사용. (CONTRIBUTING.md 5번)
 //   문제 생성기와 제공사/키/모델 입력을 공유하지 않고 각자 들고 있다 — 탭끼리 독립시켜
 //   한쪽 수정이 다른 쪽을 깨지 않게 하기 위함. (그래서 상태 이름이 전부 따로다)
@@ -141,6 +142,30 @@ function topicPopulateModels(models) {
   else if (models.includes(defaultModel)) sel.value = defaultModel;
 }
 
+// ── 진행 상태 ──
+// 서버의 stage.key 와 화면의 step 요소 id(topic-step-*)가 1:1로 대응한다.
+// 단계가 셋뿐인 이유: 주제 대응표는 LLM 호출 한 번이라 그 안을 쪼갤 수 없다.
+const TOPIC_STAGES = ['extract', 'topics', 'finish'];
+const TOPIC_STEP_ICONS = { extract: '📄', topics: '📚', finish: '🔗' };
+
+// 가중치 — PDF 그림을 한 장씩 읽는 추출이 가장 오래 걸리고, 정리·보관은 금방 끝난다.
+// 계산·표시는 common.js 의 createProgress 가 한다 (문제 생성 탭과 공용).
+const topicProgress = createProgress({
+  barId: 'topic-overall-bar', pctId: 'topic-overall-pct', stepPrefix: 'topic-step-',
+  weights: { extract: 55, topics: 40, finish: 5 },
+});
+
+function topicResetSteps() {
+  TOPIC_STAGES.forEach(key => {
+    const el = document.getElementById('topic-step-' + key);
+    el.className = 'step-item wait';
+    el.querySelector('.step-icon').textContent = TOPIC_STEP_ICONS[key];
+    const note = el.querySelector('.step-note');
+    if (note) note.remove();
+  });
+  topicProgress.reset(TOPIC_STAGES);
+}
+
 // ── 메인 분석 함수 ──
 async function topicAnalyze() {
   const lectureFiles = Array.from(document.getElementById('topic-lecture-file').files || []);
@@ -159,12 +184,7 @@ async function topicAnalyze() {
   document.getElementById('topic-status-box').classList.remove('hidden');
   document.getElementById('topic-error-box').style.display = 'none';
   topicRenderSpend(null, 'main');   // 지난 회차의 사용량 표가 남아 보이지 않게
-  ['topic-step1','topic-step2','topic-step3','topic-step4'].forEach(s => setStep(s, 'wait'));
-
-  // 단계 표시는 UI 피드백용 (서버는 한 번에 처리한다)
-  setStep('topic-step1', 'active');
-  await delay(400);
-  setStep('topic-step1', 'done'); setStep('topic-step2', 'active');
+  topicResetSteps();
 
   const form = new FormData();
   form.append('api_key', apiKey);
@@ -175,48 +195,106 @@ async function topicAnalyze() {
   examFiles.forEach(f => form.append('exams', f));
 
   try {
-    let resp = await fetch('/analyze-topics', { method: 'POST', body: form });
+    let out = await topicRunAnalysis(form);
 
-    setStep('topic-step2', 'done'); setStep('topic-step3', 'active');
-    await delay(300);
-    setStep('topic-step3', 'done'); setStep('topic-step4', 'active');
-
-    let data = await resp.json();
-
-    // 분량 상한을 넘는 파일이 있으면 서버가 여기서 멈추고 물어본다.
-    // 추출은 이미 끝나 서버에 보관돼 있으므로, 진행하면 토큰만 보내 이어서 돈다.
-    if (data.needs_confirm) {
-      const go = await confirmTruncation(data.warnings || [], data);
+    // 분량 상한을 넘는 파일이 있으면 서버가 추출까지만 하고 멈춰 물어본다.
+    // 추출 결과는 서버에 보관돼 있으므로, 진행하면 토큰만 보내 이어서 돈다.
+    if (out && out.needsConfirm) {
+      const go = await confirmTruncation(out.payload.warnings || [], out.payload);
       if (!go) {
-        setStep('topic-step4', 'wait');
-        topicRenderSpend(data, 'main');   // 추출까지 쓴 양은 알려준다
+        // 추출은 실제로 끝났다(그래서 경고가 나왔다) — 단계 표시도 그대로 남긴다
+        setStep('topic-step-extract', 'done');
+        topicProgress.completeStage('extract');
+        topicRenderSpend(out.payload, 'main');   // 추출까지 쓴 양은 알려준다
         return;
       }
       const again = new FormData();
       again.append('api_key', apiKey);
       again.append('title', document.getElementById('topic-title').value.trim());
-      again.append('extract_token', data.extract_token);
-      resp = await fetch('/analyze-topics', { method: 'POST', body: again });
-      data = await resp.json();
+      again.append('extract_token', out.payload.extract_token);
+      await topicRunAnalysis(again);
     }
-    setStep('topic-step4', 'done');
-
-    if (!resp.ok || data.error) {
-      // 오류로 끝나도 그때까지 쓴 토큰·크레딧은 이미 소모됐으므로 문구에 덧붙인다
-      topicShowError((data.error || '알 수 없는 오류가 발생했습니다.') + spendSuffix(data));
-      return;
-    }
-
-    topicRenderResult(data, 'main');   // 사용량 상자도 여기서 함께 그려진다
-    topicShowResult();
-    // 방금 분석한 것이 보관함에 저장됐으므로 목록 캐시를 버린다
-    // (안 버리면 보관함에 들어가도 직전에 받아둔 옛 목록이 그대로 보인다)
-    if (data.analysis_id) invalidateSavedTopics();
   } catch (err) {
     topicShowError('서버 연결에 실패했습니다. Flask 서버가 실행 중인지 확인하세요.\n' + err.message);
   } finally {
     document.getElementById('topic-analyze-btn').disabled = false;
   }
+}
+
+// 요청 한 번을 끝까지 처리한다.
+// 분량 초과로 멈추면 {needsConfirm, payload}, 그 밖에는 아무것도 돌려주지 않는다.
+async function topicRunAnalysis(form) {
+  if (!canReadStream()) return topicFallbackAnalyze(form);
+
+  const resp = await fetch('/analyze-topics/stream', { method: 'POST', body: form });
+
+  // 스트림이 시작되기 전 오류(키 누락 등)는 평범한 JSON으로 온다
+  if (!resp.ok) {
+    topicShowError(await describeHttpError(resp, '/analyze-topics/stream'));
+    return;
+  }
+
+  let finished = false;     // done/error 없이 스트림이 끊겼는지 판별
+
+  // 프레임 끊기는 common.js 의 sseEvents 가 한다 (문제 생성 탭과 공용)
+  for await (const ev of sseEvents(resp)) {
+    if (ev.type === 'stage') {
+      setStep('topic-step-' + ev.key, ev.status);
+      if (ev.status === 'active') {
+        topicProgress.setStageProgress(ev.key, 0, ev.total || 0);
+      } else if (ev.status === 'done') {
+        topicProgress.completeStage(ev.key);
+      }
+    } else if (ev.type === 'progress') {
+      topicProgress.setStageProgress(ev.key, ev.done, ev.total);
+    } else if (ev.type === 'done') {
+      finished = true;
+      topicFinish(ev.payload);
+    } else if (ev.type === 'needs_confirm') {
+      return { needsConfirm: true, payload: ev.payload };
+    } else if (ev.type === 'error') {
+      // 오류로 끝나도 그때까지 쓴 토큰·크레딧은 이미 소모됐으므로 문구에 덧붙인다
+      topicShowError((ev.message || '알 수 없는 오류가 발생했습니다.') + spendSuffix(ev));
+      return;
+    }
+  }
+
+  // done/error 없이 연결이 끊긴 경우 — 조용히 멈춘 것처럼 보이지 않도록 알린다
+  if (!finished) {
+    topicShowError('분석이 끝나기 전에 서버와의 연결이 끊겼습니다. '
+                 + '서버 상태를 확인하고 다시 시도해주세요.');
+  }
+}
+
+// 스트리밍을 못 쓰는 환경 — 예전처럼 한 번에 받아서 그린다.
+// 진행률은 중간값을 알 수 없으므로 요청 전후로 0% → 100%만 움직인다.
+async function topicFallbackAnalyze(form) {
+  TOPIC_STAGES.forEach(k => setStep('topic-step-' + k, 'active'));
+  const resp = await fetch('/analyze-topics', { method: 'POST', body: form });
+  const data = await resp.json().catch(() => null);
+  TOPIC_STAGES.forEach(k => {
+    setStep('topic-step-' + k, 'done');
+    topicProgress.completeStage(k);
+  });
+
+  if (!data) {
+    topicShowError(`서버 오류 ${resp.status} ${resp.statusText}`);
+    return;
+  }
+  if (!resp.ok || data.error) {
+    topicShowError((data.error || '알 수 없는 오류가 발생했습니다.') + spendSuffix(data));
+    return;
+  }
+  if (data.needs_confirm) return { needsConfirm: true, payload: data };
+  topicFinish(data);
+}
+
+function topicFinish(data) {
+  topicRenderResult(data, 'main');   // 사용량 상자도 여기서 함께 그려진다
+  topicShowResult();
+  // 방금 분석한 것이 보관함에 저장됐으므로 목록 캐시를 버린다
+  // (안 버리면 보관함에 들어가도 직전에 받아둔 옛 목록이 그대로 보인다)
+  if (data.analysis_id) invalidateSavedTopics();
 }
 
 // ── 결과 렌더링 ──
@@ -419,7 +497,7 @@ function topicRenderList(topics, viewKey) {
   const rowsHtml = lines.map(l => `<div class="topic-summary-row">${escHtml(l)}</div>`).join('');
   const key = viewKey || 'main';
   summaryEl.innerHTML = `
-    <details>
+    <details class="topic-summary-fold">
       <summary>📋 한 줄 요약 보기 (복사용)</summary>
       <button class="check-btn" style="margin:10px 0;" onclick="topicCopyLines('${key}')">📋 전체 복사</button>
       <div class="topic-summary-list">${rowsHtml}</div>

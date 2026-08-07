@@ -740,25 +740,28 @@
       </button>
     </div>
 
-    <!-- 진행 상태 -->
+    <!-- 진행 상태 — id는 서버가 보내는 단계 키(stage.key)와 1:1로 대응 (생성 탭과 같은 규칙).
+         단계가 셋뿐인 이유: 주제 대응표는 LLM 호출 한 번이라 그 안을 쪼갤 수 없다. -->
     <div id="topic-status-box" class="card status-panel hidden">
-      <div class="card-title">분석 진행 상태</div>
+      <div class="card-title">
+        분석 진행 상태
+        <!-- 생성 탭은 오른쪽 끝에 '중지' 버튼이 있어 퍼센트가 제목 옆에 붙는다.
+             여기는 그 버튼이 없어 퍼센트를 오른쪽 끝으로 보낸다. -->
+        <span id="topic-overall-pct" class="overall-pct" style="margin-left:auto;">0%</span>
+      </div>
+      <div class="progress-track"><div class="progress-bar" id="topic-overall-bar"></div></div>
       <ul class="step-list">
-        <li class="step-item wait" id="topic-step1">
+        <li class="step-item wait" id="topic-step-extract">
           <span class="step-icon">📄</span>
-          <span class="step-text">PDF 텍스트·페이지 번호 추출 중...</span>
+          <span class="step-text">PDF 텍스트·페이지 번호 추출</span>
         </li>
-        <li class="step-item wait" id="topic-step2">
+        <li class="step-item wait" id="topic-step-topics">
           <span class="step-icon">📚</span>
-          <span class="step-text">강의록 주제 정리 중...</span>
+          <span class="step-text">강의록 주제 · 기출 문항 대조 분석</span>
         </li>
-        <li class="step-item wait" id="topic-step3">
-          <span class="step-icon">📝</span>
-          <span class="step-text">기출 문항과 대조 중...</span>
-        </li>
-        <li class="step-item wait" id="topic-step4">
+        <li class="step-item wait" id="topic-step-finish">
           <span class="step-icon">🔗</span>
-          <span class="step-text">주제 · 출처 연결 정리 중...</span>
+          <span class="step-text">주제 · 출처 정리</span>
         </li>
       </ul>
     </div>
