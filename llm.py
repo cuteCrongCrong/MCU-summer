@@ -6,12 +6,16 @@ LLM 도메인 로직 — PDF 텍스트/이미지 추출, 프롬프트 설계, �
 라우트(HTTP)와 분리되어 있어 단위 테스트·재사용이 쉽습니다.
 """
 
+import hashlib
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import fitz  # pymupdf
 
-from providers.base import ProviderError, IMAGE_DESC_PROMPT, IMAGE_TEXT_PROMPT
+import config
+from db import get_cached_image_desc, put_cached_image_desc
+from providers.base import (ProviderAuthError, ProviderError,
+                            IMAGE_DESC_PROMPT, IMAGE_TEXT_PROMPT)
 from providers.factory import get_provider
 
 # ──────────────────────────────────────────────
@@ -20,7 +24,10 @@ from providers.factory import get_provider
 # provider 인자가 생략됐을 때 쓰는 기본 프로바이더 (전북대 게이트웨이)
 _default_provider = get_provider()
 
-# 강의/기출 텍스트를 LLM에 넣기 전 문서당 최대 글자 수.
+# truncate()·build_source_info()의 기본 상한. 실제 호출부는 아래 예산을 명시로 넘기므로
+# 이 값이 쓰이는 곳은 인자를 생략한 호출뿐이다 (예산 상수와 얽히지 않게 떼어 뒀다 —
+# 예전에는 GEN_SIDE_CHAR_BUDGET이 이 값을 그대로 받아서, 여길 건드리면 문제 생성 예산이
+# 같이 움직이고 주제 분석은 안 움직였다. 커밋 3490084의 실수가 그래서 났다).
 MAX_TEXT_CHARS = 100000
 
 # 한쪽(강의록/기출)당 업로드 파일 개수 상한 — 주제 분석·문제 생성 공통.
@@ -28,17 +35,84 @@ MAX_TEXT_CHARS = 100000
 MAX_FILES_PER_SIDE = 7
 
 # 문제 생성: 한쪽(강의자료 전체 / 기출 전체)에 배정하는 글자 예산.
-# 파일이 1개면 예전 동작(문서 하나에 MAX_TEXT_CHARS)과 정확히 같아지도록 그 값을 그대로 쓴다.
-GEN_SIDE_CHAR_BUDGET = MAX_TEXT_CHARS
+#   예전 값은 10만이었는데 근거가 없었고, 실제로는 기출만 계속 잘렸다.
+#   실측(session 63·64): 기출 151,407자 중 94,771자만 반영(coverage 63%)됐는데,
+#   같은 시점 강의록은 제 예산의 55%(54,632/100,000)만 썼다 — 한쪽에 45,000자가
+#   남는데 반대쪽만 잘린 것이다. 기출이 잘리면 유형통계·대표문제·빈출포인트가 전부
+#   잘린 텍스트 위에서 계산되고, type_stats는 생성할 문제의 유형별 개수까지 정한다.
+GEN_SIDE_CHAR_BUDGET = 500000
+# 강의자료 + 기출을 합친 총예산. 한쪽 몫의 2배라, 양쪽이 모두 상한을 채우는 최악의
+# 경우에만 예전의 칸막이 방식과 총량이 같아진다. 칸막이를 고정하지 않는 이유는 위 실측 —
+# 강의자료를 먼저 합치므로 그 시점에 실사용량이 확정된다 → 남은 몫을 기출에 넘긴다.
+# (remaining_gen_budget — 주제 분석의 remaining_char_budget과 같은 방식)
+GEN_TOTAL_CHAR_BUDGET = GEN_SIDE_CHAR_BUDGET * 2
+# 한 번의 LLM 호출에 실을 수 있는 최대 글자수 — 컨텍스트 보호용.
+#   문제 생성은 강의자료와 기출이 **서로 다른 호출**로 간다(analyze_concepts_progressively).
+#   그래서 프롬프트 크기를 정하는 건 총예산이 아니라 이 값이다. 핸드오프를 그대로 두면
+#   기출 한쪽이 총예산(=한쪽 몫의 2배)까지 받을 수 있으므로 여기서 천장을 둔다.
+#   컨텍스트를 넘기면 프로바이더가 거절해 분석이 통째로 실패한다 — 잘리더라도 경고를
+#   띄우고 진행되는 편이 낫다(그 경고는 이미 needs_confirm 모달로 나간다).
+#
+#   값의 근거: 쓰는 모델의 컨텍스트가 1M 토큰이고, 실측 환산이 1자 ≈ 0.52토큰이다
+#   (generation 92·93: 149,403자 → 78,121토큰). 150만 자면 약 78만 토큰이라
+#   프롬프트 지시문과 출력 몫을 빼도 1M 안에 들어온다.
+#   지금 예산(총 100만 자)에서는 이 천장에 닿지 않는다 — 예산을 더 올릴 때를 위한 안전장치다.
+#   ※ 모델을 바꿔 컨텍스트가 줄면 예산과 무관하게 이 값만 내리면 된다.
+GEN_CALL_CHAR_CEILING = 1500000
 # 파일을 여러 개 올려도 문서당 이만큼은 보장. 상한까지 채웠을 때의 몫으로 잡아
 # '문서당 몫 × 파일수 ≤ 예산'이 허용 개수 전 구간에서 성립하게 한다. (주제 분석과 같은 방식)
 GEN_DOC_MIN_CHARS = GEN_SIDE_CHAR_BUDGET // MAX_FILES_PER_SIDE
 
-# 이미지/스캔 페이지 → Vision LLM으로 텍스트를 남긴다 (토큰 비용 상한용)
-IMAGE_DESC_MAX = 15          # 기출: 설명할 이미지 페이지 최대 개수
-LECTURE_IMAGE_MAX = 40       # 강의록: 손글씨·판서 페이지가 많아 기출보다 넉넉히 잡는다
+# 이미지/스캔 페이지 → Vision LLM으로 텍스트를 남긴다.
+# 상한은 **한쪽(강의록 전체 / 기출 전체) 기준**이다 — 파일당이 아니다. 양쪽 탭 공통.
+#
+# 값을 정하는 건 컨텍스트가 아니다. 쓰는 모델이 모두 1M 이상이라 여기서 컨텍스트는
+# 제약이 아니고, 실제로 걸리는 건 세 가지다:
+#   ① 메모리 — 렌더한 PNG를 설명이 끝날 때까지 들고 있어서 '상한 × PNG'가 상주 메모리가
+#      된다. 그래서 값을 config에서 읽는다 (RAM 1GB인 e2-micro 배포는 .env로 낮춘다).
+#   ② 글자 예산 — 전사는 쪽당 ~800자(아래 실측)라 100쪽이면 8만 자다. 한쪽 몫
+#      (TOPIC_SIDE_CHAR_BUDGET / GEN_SIDE_CHAR_BUDGET)이 이걸 받아줄 수 있어야 한다.
+#      아니면 돈 주고 뽑은 설명을 truncate가 도로 버린다 — 그것도 가운데부터.
+#   ③ 시간 — 호출 1건이 수 초. 워커 수(IMAGE_WORKERS)와 함께 봐야 체감이 유지된다.
+# 예전 값(기출 15 / 강의록 40)은 컨텍스트가 좁던 시절 기준이라, 페이지 전체가 래스터인
+# 스캔 기출(150쪽을 넘는 경우가 흔하다)에서 앞 15쪽만 읽고 나머지를 빈 페이지로 넘겼다.
+IMAGE_DESC_MAX = config.IMAGE_CAP_EXAM        # 기출: 설명할 이미지 페이지 최대 개수
+LECTURE_IMAGE_MAX = config.IMAGE_CAP_LECTURE  # 강의록: 손글씨·판서가 많아 기출보다 넉넉히
 SPARSE_TEXT_THRESHOLD = 20   # 페이지 텍스트가 이보다 짧으면 이미지 페이지로 간주
-IMAGE_RENDER_DPI = 150       # 페이지 렌더 해상도
+
+# 페이지 렌더 해상도 — 모드마다 다르다.
+#   설명(기출): 그림이 무엇인지만 알면 되므로 낮춰도 된다. 구세대 모델은 긴 변
+#     1568px에서 서버가 자동 축소하는데, A4를 150DPI로 구우면 1754px이라 초과분이
+#     그대로 버려졌다. 110DPI는 약 1286px로 어느 모델에서도 축소되지 않는다.
+#   전사(강의록): 손글씨를 판독해야 하므로 해상도가 정확도에 직결된다. 낮추지 않는다.
+DESCRIBE_RENDER_DPI   = 110
+TRANSCRIBE_RENDER_DPI = 150
+
+# '처리할 가치가 있는 그림'의 최소 면적 비율 (페이지 대비).
+#   page.get_images()는 머리글 로고 한 점만 있어도 참이라, 본문이 멀쩡히 추출된
+#   페이지까지 Vision에 보내 텍스트와 설명을 이중으로 결제했다.
+#   전사(강의록)는 손글씨를 하나라도 놓치면 기능 자체가 무의미하므로 훨씬 헐겁게 잡는다
+#   — 여백에 적은 짧은 메모도 페이지 면적으로는 작다.
+DESCRIBE_MIN_AREA_RATIO   = 0.12
+TRANSCRIBE_MIN_AREA_RATIO = 0.03
+
+# 이미지 호출 한 번의 출력 한도.
+#   ⚠️ 사고(thinking)를 하는 모델은 **사고 토큰도 이 한도에 포함**된다. 빠듯하게 잡으면
+#      사고가 예산을 다 먹고 본문이 단어 중간에서 잘린다. 게이트웨이가 보고하는 출력
+#      토큰에는 사고분이 안 잡혀서, 사용량 표만 보면 한도에 안 걸린 것처럼 보인다.
+#   설명은 '무엇인지' 한 문단이면 되지만, 전사는 빽빽한 슬라이드 한 장을 통째로 옮긴다.
+#   한도는 천장일 뿐이라 올려도 실제 생성한 만큼만 과금된다.
+#
+#   실측 — 강의록 전사, 쪽당 글자수. image_desc_cache에서 cache_key가 같은 행
+#   (= 같은 PNG·같은 프롬프트·같은 한도)끼리 짝지어 비교했다:
+#      한도 1024:  claude-sonnet-4-6  806  vs  gemini-3.6-flash  175   ← 24%가 단어 중간에서 끊김
+#      한도 4096:  gemini-3.6-flash   783  vs  gpt-5.6-luna      776
+#   같은 gemini-3.6-flash가 175 → 783으로 뛰었다. 즉 **모델 체급이 아니라 한도가 갈랐다.**
+#   한도를 풀고 나면 저가 모델도 상위 모델과 거의 같은 양을 옮긴다 — 이게 게이트웨이의
+#   이미지 모델을 gpt-5.6-luna로 고정한 근거다 (providers/jbnu_gateway.py).
+#   ※ 이 수치를 '모델 실력'으로 인용하지 말 것. 한도에 눌린 값과 안 눌린 값이 섞여 있다.
+DESCRIBE_MAX_OUTPUT   = 2048
+TRANSCRIBE_MAX_OUTPUT = 4096
 
 # 태블릿 벡터 필기(굿노트 등) 감지 임계값 — 페이지의 '곡선' 세그먼트 개수.
 # 인쇄 슬라이드 위에 펜으로 쓴 페이지는 텍스트 레이어가 멀쩡하고 래스터 이미지도 없어서
@@ -54,14 +128,26 @@ INK_CURVE_MIN = 150
 # 라벨이 다른 이유: 프롬프트에 [페이지 N 이미지 설명]으로 들어가면 LLM이 '모델이 쓴 문장'
 # 으로 읽는다. 전사한 글자는 강의록 원문이므로 그렇게 보이면 안 된다.
 # detect_ink: 벡터 필기가 있는 페이지도 대상에 넣을지. 강의록만 켠다 —
-#   기출은 손글씨를 찾을 일이 없고, 켜면 페이지 선정이 늘어 비용만 는다.
+#   강의록의 필기는 교수 판서라 살릴 값어치가 있지만, 기출의 필기는 학생이 덧쓴
+#   정답 표시·메모라 일부러 찾아낼 이유가 없다. 켜면 비용만 는다.
+#   ⚠️ 이건 '필기만 있는 페이지를 후보로 삼지 않는다'는 뜻일 뿐, 기출에서 손글씨를
+#      못 본다는 뜻이 아니다. 스캔 기출은 페이지 전체가 래스터라 늘 후보이고,
+#      get_pixmap은 주석·벡터 획까지 함께 렌더하므로 다른 이유로 후보가 된 페이지의
+#      필기도 그대로 찍힌다. 인쇄 문제와 섞이는 것은 IMAGE_DESC_PROMPT가
+#      (필기: …)로 갈라내서 막는다.
+# dpi·min_area_ratio: 위 상수 참고. 두 모드가 목적이 반대라 값도 반대 방향이다
+#   (설명은 싸게, 전사는 놓치지 않게).
 IMAGE_DESCRIBE = {
     "prompt": IMAGE_DESC_PROMPT, "label": "이미지 설명", "max_pages": IMAGE_DESC_MAX,
     "detect_ink": False,
+    "dpi": DESCRIBE_RENDER_DPI, "min_area_ratio": DESCRIBE_MIN_AREA_RATIO,
+    "max_output": DESCRIBE_MAX_OUTPUT,
 }
 IMAGE_TRANSCRIBE = {
     "prompt": IMAGE_TEXT_PROMPT, "label": "그림 속 글자", "max_pages": LECTURE_IMAGE_MAX,
     "detect_ink": True,
+    "dpi": TRANSCRIBE_RENDER_DPI, "min_area_ratio": TRANSCRIBE_MIN_AREA_RATIO,
+    "max_output": TRANSCRIBE_MAX_OUTPUT,
 }
 
 # 문제 유형 4분류 (집계·few-shot·생성에서 공통 사용)
@@ -79,6 +165,53 @@ TYPE_DEFINITIONS = (
 # LLM / PDF 유틸
 # ──────────────────────────────────────────────
 
+def has_meaningful_image(page, min_area_ratio: float) -> bool:
+    """
+    이 페이지에 '처리할 가치가 있는' 그림이 있는가.
+
+    page.get_images()는 머리글 로고·장식 한 점만 있어도 참이라 판별에 쓸 수 없다.
+    페이지 면적 대비 min_area_ratio 이상인 그림이 하나라도 있어야 참으로 본다.
+    기준값은 모드마다 다르다 — 설명(기출)은 로고를 걸러내려고 빡빡하게,
+    전사(강의록)는 여백의 짧은 메모도 놓치지 않으려고 헐겁게 잡는다.
+    """
+    try:
+        infos = page.get_image_info()
+    except Exception:
+        # 판별할 수 없는 PyMuPDF 버전 → 예전처럼 '있으면 대상'으로 두어 놓치지 않게 한다
+        return bool(page.get_images())
+    if not infos:
+        return False
+    rect = page.rect
+    page_area = float(rect.width) * float(rect.height)
+    if page_area <= 0:
+        return True                     # 면적을 못 재면 보수적으로 대상에 넣는다
+    for info in infos:
+        bbox = info.get("bbox")
+        if not bbox or len(bbox) < 4:
+            continue
+        area = abs(bbox[2] - bbox[0]) * abs(bbox[3] - bbox[1])
+        if area / page_area >= min_area_ratio:
+            return True
+    return False
+
+
+def image_cache_key(prompt: str, png_bytes: bytes, max_output: int = 0) -> str:
+    """
+    이미지 결과 캐시의 키 — **결과를 바꾸는 입력을 전부** 해싱한다.
+
+    ① 프롬프트: 같은 페이지라도 기출로 올리면 '그림 설명'을, 강의록으로 올리면
+       '그림 속 글자 전사'를 받아야 한다. PNG만 해싱하면 먼저 넣은 쪽이 반대쪽 요청에
+       그대로 돌아와서, 강의록 원문 자리에 모델이 지어낸 설명 문장이 조용히 들어간다.
+       (주제 분석의 "주제명은 강의록에 있는 표현만" 규칙이 무력해진다)
+    ② PNG 바이트: 렌더 해상도가 바뀌면 키도 바뀐다.
+    ③ 출력 한도: 한도에 걸려 잘린 결과가 캐시에 남아 있는데 한도만 올리면, 다시 돌려도
+       잘린 옛 결과가 그대로 나온다. 한도를 키에 넣어 두면 값을 고치는 순간 자동으로
+       다시 받는다 — 캐시를 손으로 비울 일이 없다.
+    """
+    seed = f"{prompt}\x00{max_output}".encode("utf-8")
+    return hashlib.sha256(seed + b"\x00" + png_bytes).hexdigest()
+
+
 def has_vector_ink(page) -> bool:
     """
     페이지에 태블릿 펜 필기로 보이는 벡터 획이 있는지. (곡선 세그먼트 개수로 판단)
@@ -94,44 +227,126 @@ def has_vector_ink(page) -> bool:
     return False
 
 
-def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None):
+def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None,
+                   max_images: int = None):
     """
     PDF에서 텍스트 레이어를 뽑고, 이미지 처리가 필요한 페이지를 고른다. (LLM 호출 없음)
 
     image_mode: None이면 이미지 페이지를 건너뛴다 (텍스트 레이어만).
                 IMAGE_DESCRIBE(기출) / IMAGE_TRANSCRIBE(강의록) 중 하나를 넘긴다.
+    max_images: 이 PDF에서 처리할 페이지 수 상한. 생략하면 모드의 max_pages.
+                호출부가 여러 PDF에 예산을 나눠 쓸 때(주제 분석) 그 몫을 넘긴다.
     반환: (pages, img_jobs) — img_jobs는 pages 안 엔트리를 그대로 참조한다.
     """
     # 업로드 객체(FileStorage)와 bytes 모두 허용 — 스트리밍 경로는 요청 컨텍스트가
     # 닫힌 뒤에 실행되므로 라우트에서 미리 읽어둔 bytes를 넘긴다.
     pdf_bytes = pdf.read() if hasattr(pdf, "read") else pdf
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    max_pages = (image_mode or {}).get("max_pages", 0)
-    detect_ink = (image_mode or {}).get("detect_ink", False)
+    mode = image_mode or {}
+    max_pages = mode.get("max_pages", 0) if max_images is None else max_images
+    detect_ink = mode.get("detect_ink", False)
+    min_area = mode.get("min_area_ratio", DESCRIBE_MIN_AREA_RATIO)
+    dpi = mode.get("dpi", DESCRIBE_RENDER_DPI)
 
     pages = []       # {idx, text, png(optional), desc}
     img_jobs = []    # 이미지 처리 대상 페이지 (엔트리 참조)
     for i, page in enumerate(doc):
         text = page.get_text()
         entry = {"idx": i, "text": text if text.strip() else "", "desc": None}
+        # 상한 검사를 후보 판정 '밖'에 둔다 — 안에 두면 상한을 채우는 순간 뒤 페이지는
+        # 후보인지조차 따지지 않고 넘어가서, 전체가 몇 쪽이었는지가 어디에도 안 남는다.
+        # 그러면 화면 진행률이 15/15로 떠서 다 읽은 것처럼 보인다(실제로는 잘렸는데도).
+        # 세는 것은 로컬 계산이라 LLM 비용이 0이므로, 끝까지 세고 렌더·호출만 상한에 건다.
         # or가 왼쪽부터 끊기므로 비싼 has_vector_ink는 앞의 두 조건이 다 빗나갈 때만 돈다
-        want_img = (
+        is_candidate = (
             image_mode and api_key
-            and len(img_jobs) < max_pages
             and (len(text.strip()) < SPARSE_TEXT_THRESHOLD
-                 or bool(page.get_images())
+                 or has_meaningful_image(page, min_area)
                  or (detect_ink and has_vector_ink(page)))
         )
-        if want_img:
-            try:
-                pix = page.get_pixmap(dpi=IMAGE_RENDER_DPI)
-                entry["png"] = pix.tobytes("png")
-                img_jobs.append(entry)
-            except Exception:
-                pass
+        if is_candidate:
+            if len(img_jobs) < max_pages:
+                try:
+                    pix = page.get_pixmap(dpi=dpi)
+                    entry["png"] = pix.tobytes("png")
+                    img_jobs.append(entry)
+                except Exception:
+                    pass
+            else:
+                # 상한을 넘겨 못 읽는 쪽. image_coverage()가 이걸 세어 경고로 만든다.
+                entry["img_skipped"] = True
         pages.append(entry)
     doc.close()
     return pages, img_jobs
+
+
+def image_coverage(pages, img_jobs) -> dict:
+    """
+    이 PDF에서 이미지 대상이 몇 쪽이었고 그중 몇 쪽을 실제로 처리했는지.
+
+    상한에 걸려 못 읽은 쪽이 있으면 skipped_pages에 쪽 번호(1부터)가 담긴다.
+    화면은 이걸로 "그림 47쪽 중 15쪽만 반영"을 보여주고, 진행 전에 확인을 받는다.
+    """
+    skipped = [e["idx"] + 1 for e in pages if e.get("img_skipped")]
+    processed = len(img_jobs)
+    return {
+        "candidates":    processed + len(skipped),
+        "processed":     processed,
+        "skipped":       len(skipped),
+        "skipped_pages": skipped,
+    }
+
+
+def side_image_budget(image_mode: dict, img_budget: int = None) -> int:
+    """
+    한쪽(강의록 전체 / 기출 전체)에 배정할 이미지 처리 예산.
+    생략하면 모드의 max_pages를 **이쪽 전체**에 쓴다 — 파일당이 아니다.
+    """
+    if not image_mode:
+        return 0
+    return image_mode.get("max_pages", 0) if img_budget is None else img_budget
+
+
+def next_image_quota(remaining: int, files_left: int) -> int:
+    """
+    남은 이미지 예산에서 이번 파일에 줄 몫. '남은 예산 ÷ 남은 파일 수'.
+
+    앞 파일이 제 몫을 다 안 쓰면 남은 만큼이 뒤 파일로 넘어가므로, 그림이 한 파일에
+    몰려 있어도 낭비가 없다 — 파일당 고정 상한이 손해였던 게 정확히 이 지점이다
+    (기출 6개가 텍스트 PDF이고 1개가 스캔 200쪽인 경우가 흔하다).
+    예산이 남아 있는 한 최소 1은 준다.
+
+    0은 예산을 다 쓴 뒤에만 나온다. **그때도 read_pdf_pages에는 image_mode를 그대로
+    넘겨야 한다.** mode를 None으로 바꾸면 후보 판정 자체를 건너뛰어서, 못 읽은 쪽이
+    img_skipped로 남지 않는다 → 사용자 화면에서 '그림이 없는 파일'과 구분이 안 되고
+    경고가 조용히 사라진다. (read_pdf_pages의 상한 검사 주석과 같은 이유)
+    """
+    return max(1, remaining // files_left) if remaining > 0 else 0
+
+
+def _describe_one(prov, png_bytes: bytes, api_key: str, model: str, fallback: str,
+                  usage, prompt: str, max_output: int):
+    """
+    이미지 한 장을 텍스트화한다. 반환: (텍스트, 실제로 쓴 모델).
+
+    본 모델이 실패하면 fallback 모델로 **한 번만** 더 시도한다. 실패한 페이지는
+    설명 없이 문구만 남는데, 기출의 그림 문제는 설명이 없으면 문항 자체가 못 살아난다
+    — 한 번 더 물어보는 값이 헛호출 비용보다 크다.
+
+    단 **키 오류는 폴백하지 않는다.** 키가 틀렸으면 어느 모델로 보내도 똑같이 401이고,
+    워커가 병렬로 도는 탓에 상한(IMAGE_CAP_*)만큼의 헛호출이 그대로 두 배가 된다.
+    나머지(모델 없음·한도 초과·5xx·연결 실패)는 다른 모델이면 살 수 있는 것들이다.
+    """
+    try:
+        return prov.describe_image(png_bytes, api_key, model, usage=usage,
+                                   prompt=prompt, max_tokens=max_output), model
+    except ProviderAuthError:
+        raise
+    except Exception:
+        if not fallback:
+            raise
+    return prov.describe_image(png_bytes, api_key, fallback, usage=usage,
+                               prompt=prompt, max_tokens=max_output), fallback
 
 
 def describe_images_progressively(img_jobs, api_key: str, model: str, provider=None,
@@ -140,32 +355,81 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
     이미지 페이지를 병렬로 텍스트화하되, 하나 끝날 때마다 완료 개수를 yield한다.
     (진행률 표시용 — 호출부가 제너레이터를 돌리면서 이벤트를 낼 수 있게)
     image_mode를 생략하면 IMAGE_DESCRIBE(그림 설명)로 동작한다.
-    게이트웨이가 이미지를 지원하지 않으면 폴백 문구를 채운다.
+    한 장이 실패하면 프로바이더가 선언한 폴백 모델로 한 번 더 시도하고,
+    그것마저 실패하면 폴백 문구를 채운다.
+
+    캐시(image_desc_cache)를 먼저 뒤진다 — 같은 PDF를 다시 올리는 경우가 흔한데,
+    예전에는 그때마다 Vision 호출을 처음부터 다시 냈다. 캐시에서 나온 항목도
+    완료 개수에 포함해 진행률이 total까지 올라가게 한다.
     """
     if not img_jobs:
         return
     prov = provider or _default_provider
-    prompt = (image_mode or IMAGE_DESCRIBE)["prompt"]
-    with ThreadPoolExecutor(max_workers=4) as ex:
-        futs = {ex.submit(prov.describe_image, e["png"], api_key, model,
-                          usage=usage, prompt=prompt): e for e in img_jobs}
-        done = 0
+    prov_name = getattr(prov, "name", "") or ""
+    # 폴백 모델은 프로바이더가 선언한다 (providers/base.py 참고). 선언이 없으면 폴백 없음.
+    fallback = getattr(prov, "image_fallback_model", "") or ""
+    if fallback == model:
+        fallback = ""                   # 방금 죽은 모델을 그대로 한 번 더 때리지 않는다
+    mode = image_mode or IMAGE_DESCRIBE
+    prompt = mode["prompt"]
+    max_output = mode.get("max_output") or DESCRIBE_MAX_OUTPUT
+
+    done = 0
+    pending = []
+    for e in img_jobs:
+        e["cache_key"] = image_cache_key(prompt, e["png"], max_output)
+        cached = get_cached_image_desc(e["cache_key"], prov_name, model)
+        if not cached and fallback:
+            # 지난 회차에 폴백이 만들어둔 결과도 받아준다. 캐시는 '실제로 만든 모델'
+            # 이름으로 남기므로(아래), 이 조회가 없으면 본 모델이 죽어 있는 동안
+            # 매 회차 실패 호출이 한 번씩 더 난다. 로컬 sqlite 조회가 훨씬 싸다.
+            cached = get_cached_image_desc(e["cache_key"], prov_name, fallback)
+        if cached:
+            e["desc"] = cached
+            done += 1
+            yield done
+        else:
+            pending.append(e)
+
+    if not pending:
+        return
+
+    with ThreadPoolExecutor(max_workers=config.IMAGE_WORKERS) as ex:
+        futs = {ex.submit(_describe_one, prov, e["png"], api_key, model, fallback,
+                          usage, prompt, max_output): e
+                for e in pending}
         for fut in as_completed(futs):
             entry = futs[fut]
             try:
-                entry["desc"] = fut.result()
+                entry["desc"], used_model = fut.result()
             except Exception:
                 entry["desc"] = "(이미지 처리 실패 — 게이트웨이 이미지 미지원일 수 있음)"
+            else:
+                # 성공한 것만 남긴다. 실패 폴백 문구를 캐시하면 일시적 오류가
+                # 영구히 굳어서, 다음 회차부터 그 페이지는 영영 설명 없이 돈다.
+                # (쓰기는 메인 스레드에서만 — 워커 4개가 동시에 쓰지 않게)
+                #
+                # 모델 이름은 **실제로 만든 쪽**으로 남긴다. 폴백 결과를 본 모델 이름으로
+                # 저장하면 캐시의 라벨이 거짓이 되고, 본 모델이 복구된 뒤에도 그 페이지는
+                # 영영 다시 물어보지 않는다 (더 나은 결과로 갱신될 길이 막힌다).
+                put_cached_image_desc(entry["cache_key"], prov_name, used_model,
+                                      entry["desc"])
             done += 1
             yield done
 
 
-def assemble_pdf_text(pages, img_job_count: int = 0, image_mode: dict = None) -> str:
+def assemble_pdf_text(pages, img_job_count: int = 0, image_mode: dict = None,
+                      max_images: int = None) -> str:
     """
     페이지 텍스트 + 이미지에서 뽑은 텍스트를 하나로 합친다.
     image_mode의 label이 마커에 들어간다 ([페이지 3 그림 속 글자] 등) — 생략하면 그림 설명.
+
+    max_images: 이 PDF에 실제로 적용한 상한. 생략하면 모드의 max_pages.
+                상한에 걸려 뒤쪽 그림을 못 봤다는 사실을 본문에 남겨야 하므로,
+                예산을 나눠 쓴 호출부는 그 몫을 넘긴다.
     """
     mode = image_mode or IMAGE_DESCRIBE
+    cap = mode["max_pages"] if max_images is None else max_images
     parts = []
     for e in pages:
         block = []
@@ -176,28 +440,35 @@ def assemble_pdf_text(pages, img_job_count: int = 0, image_mode: dict = None) ->
         if block:
             parts.append("\n".join(block))
 
-    if img_job_count >= mode["max_pages"]:
-        parts.append(f"...(이미지 페이지는 최대 {mode['max_pages']}개까지만 처리됨)")
+    # 상한에 걸려 못 읽은 쪽이 있으면 LLM에게도 알린다 — 자료가 온전하지 않다는 사실을
+    # 모르면 "여기 없는 내용"을 근거 삼아 단정하는 답이 나온다.
+    # 이제 후보를 끝까지 세므로 '몇 쪽 중 몇 쪽'까지 적을 수 있다.
+    skipped = sum(1 for e in pages if e.get("img_skipped"))
+    if skipped:
+        parts.append(f"...(그림·필기 {img_job_count + skipped}쪽 중 앞 {img_job_count}쪽만 "
+                     f"처리됨 — 나머지 {skipped}쪽은 반영되지 않음)")
+    elif cap > 0 and img_job_count >= cap:
+        parts.append(f"...(이미지 페이지는 최대 {cap}개까지만 처리됨)")
 
     return "\n\n".join(parts)
 
 
 def extract_text_from_pdf(pdf, api_key: str = None, model: str = None,
                           image_mode: dict = None, provider=None,
-                          usage=None) -> str:
+                          usage=None, max_images: int = None) -> str:
     """
     PDF에서 텍스트 레이어를 추출하고, image_mode를 주면 이미지/스캔 페이지도
     Vision LLM으로 텍스트화해 함께 남긴다.
-    - 텍스트가 거의 없는 페이지(스캔·사진) 또는 그림이 포함된 페이지를 대상으로 선정
-    - 비용 상한: 모드의 max_pages개 페이지까지만, 병렬 처리
+    - 텍스트가 거의 없는 페이지(스캔·사진) 또는 큰 그림·필기가 있는 페이지를 대상으로 선정
+    - 비용 상한: max_images(생략 시 모드의 max_pages)개까지만, 병렬 처리 + 캐시
 
     진행률이 필요한 곳(스트리밍)은 위 세 함수를 직접 조합한다. 결과는 동일하다.
     """
-    pages, img_jobs = read_pdf_pages(pdf, api_key, image_mode)
+    pages, img_jobs = read_pdf_pages(pdf, api_key, image_mode, max_images)
     for _ in describe_images_progressively(img_jobs, api_key, model, provider, usage,
                                            image_mode):
         pass
-    return assemble_pdf_text(pages, len(img_jobs), image_mode)
+    return assemble_pdf_text(pages, len(img_jobs), image_mode, max_images)
 
 
 def _truncate_split(max_chars: int):
@@ -206,15 +477,59 @@ def _truncate_split(max_chars: int):
     return head, max_chars - head
 
 
-def truncate(text: str, max_chars: int = MAX_TEXT_CHARS) -> str:
+# 줄머리 문제 번호 — "1.", "12)", "문제 3.", "38]".
+# 유형 집계(count_question_types)와 기출 자르기(_cut_points)가 같은 정의를 공유한다.
+# 갈라 두면 "집계에는 문항으로 잡히는데 자를 때는 경계가 아닌" 자리가 생긴다.
+_QUESTION_START = re.compile(r"(?m)^[ \t]*(?:문제\s*)?\d{1,3}\s*[.)\]]")
+
+
+def _cut_points(raw: str, limit: int, by_question: bool = False):
+    """
+    상한을 넘길 때 **실제로 버려지는 구간** (head_end, tail_start). 안 넘으면 None.
+
+    자르기(truncate)·경고(truncation_report)·반영 범위(build_source_info)가 이 하나를
+    공유한다. 갈라 두면 화면이 알려준 구간과 실제로 빠진 구간이 어긋난다.
+
+    by_question(기출): 경계를 문항 번호 자리로 당긴다. 글자수로만 자르면
+      앞쪽 끝에는 번호는 있고 지문은 반만 남은 문항이,
+      뒤쪽 시작에는 번호 없는 지문 꼬리가 남는다.
+      둘 다 "이 주제가 몇 번 문제로 나왔나"를 틀리게 만드는 재료다 — LLM이 반쪽 지문을
+      그 번호의 내용으로 읽거나, 꼬리를 바로 앞 번호에 갖다 붙인다. 틀린 출처는 없는
+      출처보다 나쁘므로(build_topic_analysis_prompt 규칙 ②) 문항 단위로만 버린다.
+      번호를 못 찾는 기출(번호가 그림 안에 있는 스캔본 등)은 글자수 방식으로 되돌아간다.
+    """
+    if len(raw) <= limit:
+        return None
+    head, tail = _truncate_split(limit)
+    head_end, tail_start = head, len(raw) - tail
+    if by_question:
+        starts = [m.start() for m in _QUESTION_START.finditer(raw)]
+        # 앞: 상한 안에 온전히 들어가는 마지막 문항까지 (걸친 문항은 통째로 버린다)
+        h = max((s for s in starts if s <= head_end), default=None)
+        # 뒤: 다시 살리는 첫 문항의 시작으로 민다 (앞 문항의 꼬리를 남기지 않는다)
+        t = min((s for s in starts if s >= tail_start), default=None)
+        if h is not None and t is not None and h < t:
+            head_end, tail_start = h, t
+    return head_end, tail_start
+
+
+def truncate(text: str, max_chars: int = MAX_TEXT_CHARS,
+             by_question: bool = False) -> str:
     """
     상한 초과 시 앞부분만 남기던 방식 → 앞(70%)+뒤(30%) 보존.
     기출 뒤쪽 문제·강의 마무리 내용이 통째로 사라지지 않도록 함.
+    by_question이면 문항 경계로 잘라 반쪽짜리 문항을 남기지 않는다 (_cut_points 참고).
     """
-    if len(text) <= max_chars:
+    cut = _cut_points(text, max_chars, by_question)
+    if not cut:
         return text
-    head, tail = _truncate_split(max_chars)
-    return text[:head] + "\n\n...(중략: 분량 초과로 일부 생략)...\n\n" + text[-tail:]
+    head_end, tail_start = cut
+    # 이어붙인 자리에 쪽 표시를 복원한다 — 뒤쪽 첫 문항·첫 문단이 몇 쪽인지 모르면
+    # 출처를 만들 수 없어 그 뒤가 통째로 버려진다(주제 분석 프롬프트 규칙 ②).
+    page = _page_at(text, tail_start)
+    marker = f"[페이지 {page}]\n" if page else ""
+    return (text[:head_end] + "\n\n...(중략: 분량 초과로 일부 생략)...\n\n"
+            + marker + text[tail_start:])
 
 
 # 추출 텍스트에 박아둔 쪽 표시 — assemble_pdf_text가 넣는다 ([페이지 3], [페이지 3 그림 속 글자])
@@ -267,26 +582,28 @@ def _words_near(raw: str, start: int, end: int, count: int, take_last: bool) -> 
     return " ".join(picked)
 
 
-def truncation_report(raw: str, limit: int) -> dict:
+def truncation_report(raw: str, limit: int, by_question: bool = False) -> dict:
     """
     limit을 넘는 문서에서 **어디부터 어디까지 버려지는지**를 쪽·어절로 알려준다.
     넘지 않으면 None.
 
     줄 번호 대신 쪽과 어절을 쓰는 이유: 추출 텍스트의 줄 번호는 원본 PDF에서 눈으로
     찾을 수가 없다. "12쪽 'superior orbital'부터"라야 사용자가 실제로 확인할 수 있다.
-    truncate()와 같은 분할(_truncate_split)을 쓰므로 실제로 잘리는 구간과 일치한다.
+    truncate()와 _cut_points를 공유하므로 실제로 잘리는 구간과 일치한다.
     """
-    if len(raw) <= limit:
+    cut = _cut_points(raw, limit, by_question)
+    if not cut:
         return None
-    head, tail = _truncate_split(limit)
+    head_end, tail_start = cut
     # 경계에 걸친 어절은 절반이 남으므로 온전히 버려지는 구간으로 좁힌다
-    start = _word_start_after(raw, head)            # 여기서부터 버려진다
-    end = _word_end_before(raw, len(raw) - tail)    # 여기부터 다시 남는다
+    start = _word_start_after(raw, head_end)        # 여기서부터 버려진다
+    end = _word_end_before(raw, tail_start)         # 여기부터 다시 남는다
 
     return {
         "chars": len(raw),
         "limit": limit,
-        "coverage": round(limit / len(raw) * 100),
+        # 문항 경계로 당기면 상한보다 조금 덜 들어가므로 실제 반영량으로 센다
+        "coverage": round((head_end + len(raw) - tail_start) / len(raw) * 100),
         # 버려지는 첫 어절 두 개 / 마지막 어절 두 개와 그 쪽 번호
         "from_page": _page_at(raw, start),
         "from_words": _words_near(raw, start, min(start + 400, end), 2, False),
@@ -295,39 +612,67 @@ def truncation_report(raw: str, limit: int) -> dict:
     }
 
 
-def build_source_info(raw_text: str, limit: int = MAX_TEXT_CHARS) -> dict:
+def build_source_info(raw_text: str, limit: int = MAX_TEXT_CHARS,
+                      by_question: bool = False) -> dict:
     """
     원문 추출 글자수 대비 LLM에 실제 반영된 범위 (truncate 여부·비율).
     limit: 이 문서에 적용한 글자수 상한. 생략하면 기본 상한(MAX_TEXT_CHARS).
            (기출 주제 분석처럼 여러 파일에 예산을 나눠 쓰는 경우 그 값을 넘긴다)
+    used는 상한이 아니라 **실제로 들어간 양**이다 — 문항 경계로 자르면(by_question)
+    상한보다 조금 덜 들어가는데, 상한을 그대로 쓰면 화면이 반영률을 부풀린다.
     """
     chars = len(raw_text or "")
-    truncated = chars > limit
-    used = limit if truncated else chars
+    cut = _cut_points(raw_text or "", limit, by_question)
+    used = chars if not cut else cut[0] + chars - cut[1]
     return {
         "chars": chars,
         "used": used,
         "limit": limit,
-        "truncated": truncated,
+        "truncated": cut is not None,
         "coverage": (round(used / chars * 100) if chars else 100),
     }
 
 
+def remaining_gen_budget(lecture_text: str) -> int:
+    """
+    문제 생성 — 강의자료가 쓰고 남긴 몫. 기출에 넘길 글자 예산이다.
+
+    lecture_text는 이미 상한이 적용된 결과(합쳐진 강의자료 텍스트)라, 여기서 세는 값이
+    실제로 프롬프트에 들어가는 양과 같다. 자르기 전 원문 길이를 세면 안 된다 —
+    잘려서 안 들어간 몫까지 쓴 것으로 쳐서 기출 예산을 도로 깎는다.
+
+    한쪽 몫(GEN_SIDE_CHAR_BUDGET)이 하한이라, 강의자료가 예산을 다 써도 기출은
+    예전(칸막이) 방식만큼은 받는다. 이 함수 때문에 기출이 더 적게 받는 일은 없다.
+    천장은 GEN_CALL_CHAR_CEILING — 기출은 한 번의 호출로 통째로 나가므로,
+    강의자료가 적게 썼다고 컨텍스트를 넘길 만큼 몰아주면 안 된다.
+
+    주제 분석의 remaining_char_budget()과 같은 방식이다. 다만 그쪽은 문서 리스트를
+    받고 여기는 합쳐진 문자열을 받는다 — _join_side가 합친 뒤에 부르기 때문.
+    """
+    used = len(lecture_text or "")
+    return min(GEN_CALL_CHAR_CEILING,
+               max(GEN_SIDE_CHAR_BUDGET, GEN_TOTAL_CHAR_BUDGET - used))
+
+
 def call_llm(prompt: str, api_key: str, model: str, provider=None,
-             max_tokens: int = None, usage=None) -> str:
+             max_tokens: int = None, usage=None, cache_prefix: str = None) -> str:
     # provider 계층으로 위임 — max_tokens를 주면 프로바이더 기본값 대신 그 값을 쓴다
     # (문제 생성처럼 응답이 길어 잘림을 막아야 할 때 호출부가 넉넉히 지정).
     # usage를 주면 프로바이더가 토큰 사용량을 거기에 기록한다.
+    # cache_prefix: prompt 앞에 붙는 '반복되는 고정 부분'. 프롬프트 캐싱을 지원하는
+    #   제공사는 여기에 캐시 경계를 잡고, 아닌 곳은 그냥 이어붙인다(동작 동일).
     return (provider or _default_provider).complete(
-        prompt, api_key, model, max_tokens=max_tokens, usage=usage
+        prompt, api_key, model, max_tokens=max_tokens, usage=usage,
+        cache_prefix=cache_prefix,
     )
 
 
 def call_llm_stream(prompt: str, api_key: str, model: str, provider=None,
-                    max_tokens: int = None, usage=None):
+                    max_tokens: int = None, usage=None, cache_prefix: str = None):
     """응답을 조각으로 흘려받는다 (호출부에서 StreamingQuestionParser와 함께 사용)."""
     return (provider or _default_provider).complete_stream(
-        prompt, api_key, model, max_tokens=max_tokens, usage=usage
+        prompt, api_key, model, max_tokens=max_tokens, usage=usage,
+        cache_prefix=cache_prefix,
     )
 
 
@@ -362,7 +707,7 @@ def count_question_types(exam_text: str) -> dict:
     """
     text = exam_text or ""
     objective = len(re.findall(r"(?m)^\s*①", text))
-    markers = re.findall(r"(?m)^\s*(?:문제\s*)?\d{1,3}\s*[.)\]]", text)
+    markers = _QUESTION_START.findall(text)      # 기출 자르기와 같은 '문항 시작' 정의
     total = max(len(markers), objective)
     non_obj = max(0, total - objective)
 
@@ -424,75 +769,116 @@ def compute_type_targets(type_stats: dict, count: int,
 
 
 # ──────────────────────────────────────────────
-# 기출문제 예시 추출 (Few-shot용)
+# 기출 분석 (출제 개념 + 유형 통계 + Few-shot 예시를 한 호출로)
 # ──────────────────────────────────────────────
 
-def _strip_sample_preamble(text: str) -> str:
+def build_exam_analysis_prompt(exam_text: str) -> str:
     """
-    추출 응답 맨 앞에 붙은 모델의 머리말을 잘라낸다.
+    기출 전문 한 번으로 ①출제 개념 ②유형 통계 ③대표 문제(Few-shot)를 모두 뽑는다.
 
-    "문제 외 다른 설명 텍스트는 추가하지 말 것"이라고 지시해도 모델이
-    "제공해주신 기출문제 텍스트에서 … 추출하였습니다." 같은 문장을 앞에 붙이는 일이 있다.
-    이 결과물은 sessions.sample_questions 에 그대로 저장되고, 생성 프롬프트의
-    "[1] 기출문제 예시"로 다시 들어가므로, 머리말이 기출 문투의 일부처럼 학습된다.
+    예전에는 개념 추출(extract_exam_concepts)과 예시 추출(extract_sample_questions)이
+    별개 호출이었는데, **둘 다 기출 전문을 통째로 받아야 해서 같은 텍스트를 두 번
+    결제**하고 있었다. 분석 단계 입력의 약 1/3이 이 중복이었다.
 
-    첫 "[유형:" 마커 앞을 버린다. 단 **마커가 없으면 원문을 그대로 둔다** —
-    형식을 이탈한 응답(마커 없이 산문으로 답한 경우)에서 자르면 내용이 통째로 사라진다.
+    합쳐도 되는 이유 — 예시 추출은 유형 통계를 '참고 힌트'로만 받았지 결과에
+    의존하지 않았다. 오히려 같은 호출 안에서 세고 고르므로 통계와 예시의 근거가
+    일치하게 된다.
     """
-    marker = "[유형:"
-    i = (text or "").find(marker)
-    return text[i:] if i > 0 else (text or "")
+    return f"""아래는 의대 기출문제 PDF에서 추출한 전문입니다.
+이 기출을 분석해 ①출제 개념 ②유형 통계 ③대표 문제 세 가지를 한 번에 반환하세요.
 
+## 표시의 뜻 (기출 텍스트를 읽는 법)
+- `[페이지 N]` 아래는 PDF에서 그대로 뽑은 **시험지 원문**입니다.
+- `[페이지 N 이미지 설명]` 아래는 그 쪽의 그림을 보고 **다른 모델이 쓴 설명**이며,
+  시험지에 인쇄된 문장이 아닙니다. 같은 문항이 원문과 설명 양쪽에 나오면 **원문 쪽**을
+  쓰세요. 설명 안의 번호 매긴 목록은 요약의 항목이지 시험 문항이 아닙니다.
+- `(필기: …)`는 학생이 손으로 덧쓴 것(정답 표시·메모)이지 시험지에 인쇄된 내용이
+  아닙니다. **정답의 근거로 쓰지 말고, 대표문제 원문에도 옮기지 마세요.**
+- `(판독불가)`는 읽을 수 없던 자리입니다. 내용을 지어내 채우지 마세요.
 
-def extract_sample_questions(exam_text: str, api_key: str, model: str,
-                             type_stats: dict = None, provider=None,
-                             usage=None) -> str:
-    """
-    기출 PDF에서 **대표성 있는** 문제를 최대 5개까지 원문 그대로 추출 (4분류).
-    선택 기준:
-    - 존재하는 각 유형(객관식/빈칸채우기/단답형/서술형)마다 최소 1개씩 포함
-    - 총 최대 5개
-    - 앞쪽 순서가 아니라, 그 시험에서 '가장 전형적·대표적'인 문제를 판단해 선택
-    """
-    stats_hint = ""
-    if type_stats and type_stats.get("총문항"):
-        present = ", ".join(
-            f"{t} 약 {type_stats.get(t, 0)}문항"
-            for t in QUESTION_TYPES if type_stats.get(t, 0)
-        )
-        if present:
-            stats_hint = f"\n참고 — 이 기출의 대략적 유형 구성: {present}.\n"
-
-    prompt = f"""아래는 의대 기출문제 PDF에서 추출한 텍스트입니다.
-이 텍스트에서 **그 시험을 가장 잘 대표하는** 완전한 문제를 골라 원문 그대로 추출해주세요.
-{stats_hint}
-## 문제 유형 4분류 (먼저 각 문제의 유형을 판별)
+## 문제 유형 4분류
 {TYPE_DEFINITIONS}
 
-## 선택 기준 (중요)
+## [1] 출제 개념
+이 기출에서 **실제로 출제된 핵심 개념·주제와 출제 경향**을 뽑으세요.
+형식(어떻게 물었나)이 아니라 내용(무엇을 물었나)에 집중하세요.
+
+## [2] 유형 통계
+기출 전체 문항을 위 4분류로 **빠짐없이** 세세요. (합 = 전체 문항 수)
+
+## [3] 대표 문제 — 선택 기준 (중요)
 - **총 최대 5개**까지 선택.
 - 텍스트에 존재하는 **각 유형마다 최소 1개씩** 반드시 포함하세요.
   (해당 유형이 하나도 없으면 생략, 있으면 최소 1개 보장.)
 - 5개 한도 안에서, 문항이 많은 유형은 1개보다 많이 넣어 실제 비중을 반영해도 좋습니다.
 - **앞에서부터 순서대로 고르지 말고**, 그 시험에서 **전형적(대표적)**인 문제를 우선 선택하세요.
   특이하거나 예외적인 형식의 문제는 피하세요.
+- 원문 그대로 옮기되, 해설·부연설명 등 답이 아닌 내용은 절대 포함하지 마세요.
+  · 객관식 → 문제 번호, 지문(증례), 선택지 ①②③④⑤, 정답까지
+  · 빈칸채우기/단답형/서술형 → 문제와 정답(모범답안)만 (선택지 없음)
+- **정답은 시험지에 인쇄된 정답 표기에서만** 가져오세요. 손으로 친 동그라미·체크나
+  `(필기: …)`로 표시된 내용으로 정답을 정하지 마세요 — 학생이 틀리게 적었을 수 있습니다.
+  인쇄된 정답이 없으면 그 문제는 **정답 줄을 아예 빼고** 문제까지만 옮기세요.
+- `[페이지 N 이미지 설명]`에만 있고 원문에 없는 문항은 시험지 문장을 그대로 옮길 수
+  없으므로 대표 문제로 고르지 마세요. (고를 문항이 없으면 그 유형은 생략)
 
-## 추출 규칙 (공통: 해설·부연설명 등 답이 아닌 내용은 절대 포함하지 말 것)
-- [객관식] 문제 번호, 지문(증례), 선택지 ①②③④⑤, 정답만 원문 그대로.
-- [빈칸채우기/단답형/서술형] 문제와 정답(모범답안)만. (선택지 없음)
-
-## 출력 형식 (각 문제마다 — 유형 라벨은 4분류 중 하나 정확히)
-[유형: 객관식] / [유형: 빈칸채우기] / [유형: 단답형] / [유형: 서술형]
-(문제 원문 — 위 규칙대로)
-
-기타 조건:
-- 추출한 문제 사이는 빈 줄 2개로 구분
-- 문제 외 다른 설명 텍스트(선택 이유 등)는 추가하지 말 것
+## 출력 형식 — 아래 JSON만 (코드블록·설명 문장 금지)
+{{
+  "기출출제개념": ["출제된 개념/주제1", "개념/주제2"],
+  "빈출포인트": ["반복 출제되거나 강조된 포인트1", "포인트2"],
+  "유형통계": {{"객관식": 0, "빈칸채우기": 0, "단답형": 0, "서술형": 0}},
+  "대표문제": [
+    {{"유형": "객관식", "원문": "문제 번호부터 정답까지 원문 그대로 (줄바꿈 포함)"}}
+  ]
+}}
+- "대표문제.유형"은 4분류 중 하나를 정확히 쓰세요.
 
 ## 기출문제 텍스트
 {exam_text}"""
 
-    return _strip_sample_preamble(call_llm(prompt, api_key, model, provider))
+
+def _rebuild_sample_questions(items) -> str:
+    """
+    대표문제 JSON 배열 → 기존 Few-shot 텍스트 형식으로 복원.
+
+    생성 프롬프트의 "[1] 기출문제 예시"와 sessions.sample_questions 가 예전부터
+    "[유형: X]\\n원문" 을 빈 줄 두 개로 구분한 형식을 쓰므로, 호출을 합치면서도
+    아래 단계에는 **똑같은 문자열**을 넘긴다. (연결 계약 유지)
+
+    덤으로 예전 _strip_sample_preamble() 이 필요 없어졌다 — 모델이 "…추출하였습니다"
+    같은 머리말을 붙여도 JSON 밖이라 여기까지 오지 못한다.
+    """
+    blocks = []
+    for it in (items or []):
+        if not isinstance(it, dict):
+            continue
+        raw = str(it.get("원문") or "").strip()
+        if not raw:
+            continue
+        # 라벨 표기가 흔들려도(예: '빈칸 채우기') 4분류로 정규화한다
+        qtype = normalize_question_type(str(it.get("유형") or ""), [], raw)
+        blocks.append(f"[유형: {qtype}]\n{raw}")
+    return "\n\n\n".join(blocks)
+
+
+def analyze_exam(exam_text: str, api_key: str, model: str, provider=None,
+                 usage=None) -> dict:
+    """
+    기출 전문 → {exam_concepts, sample_questions}. LLM 1회.
+    반환 형태는 예전 두 함수의 결과를 합친 것과 같아서 호출부가 바뀌지 않는다.
+    """
+    raw = call_llm(build_exam_analysis_prompt(exam_text), api_key, model, provider,
+                   usage=usage)
+    data = safe_parse_json(raw)
+    return {
+        "exam_concepts": {
+            "기출출제개념": data.get("기출출제개념") or [],
+            "빈출포인트":   data.get("빈출포인트") or [],
+            # 비어 있으면 resolve_type_stats()가 정규식 폴백으로 넘어간다
+            "유형통계":     data.get("유형통계") or {},
+        },
+        "sample_questions": _rebuild_sample_questions(data.get("대표문제")),
+    }
 
 
 def analyze_format(sample_questions: str, api_key: str, model: str, provider=None,
@@ -506,9 +892,9 @@ def analyze_format(sample_questions: str, api_key: str, model: str, provider=Non
 산문 설명 없이, 각 항목을 반드시 "라벨: 키워드1, 키워드2, ..." 한 줄 형태로만 작성하세요.
 
 항목 (해당 없으면 '해당없음'):
-문제유형: (객관식/빈칸채우기/단답형/서술형 비율 키워드)
-증례제시: (나이/성별/주소/검사 제시 순서 키워드)
-문체: (어투, 문장 길이, 전문용어 사용 키워드)
+문제유형: (객관식/빈칸채우기/단답형/서술형 키워드)
+증례제시: (나이/성별/상황/검사 등 키워드)
+문체: (어투, 문장 길이, 전문용어 사용 여부 등 키워드)
 선택지구성: (객관식 선택지 길이·구조 키워드 / 비객관식이면 '해당없음')
 질문형태: (진단/치료/다음단계 등 키워드)
 기타: (특이사항 키워드)
@@ -516,35 +902,8 @@ def analyze_format(sample_questions: str, api_key: str, model: str, provider=Non
 ## 기출문제 예시
 {sample_questions}"""
 
-    return call_llm(prompt, api_key, model, provider)
-
-
-def extract_exam_concepts(exam_text: str, api_key: str, model: str, provider=None,
-                          usage=None) -> str:
-    """
-    기출 전문에서 '무엇을 물었는가(출제 개념·경향)'를 추출.
-    형식(how)이 아니라 내용(what)에 집중 → 강의개념 가중치 계산에 사용.
-    + 유형통계(4분류)도 같은 호출에서 집계 (추가 토큰 최소).
-    """
-    prompt = f"""아래는 의대 기출문제 PDF에서 추출한 전문입니다.
-이 기출에서 **실제로 출제된 핵심 개념·주제와 출제 경향**을 추출하고,
-**각 문제의 유형을 아래 4분류로 세어** 함께 반환하세요.
-
-## 문제 유형 4분류
-{TYPE_DEFINITIONS}
-
-다음 JSON 형식으로만 반환하세요 (코드블록 없이 JSON만):
-{{
-  "기출출제개념": ["출제된 개념/주제1", "개념/주제2"],
-  "빈출포인트": ["반복 출제되거나 강조된 포인트1", "포인트2"],
-  "유형통계": {{"객관식": 0, "빈칸채우기": 0, "단답형": 0, "서술형": 0}}
-}}
-- 유형통계는 기출 전체 문항을 4분류로 **빠짐없이** 센 개수입니다(합 = 전체 문항 수).
-
-## 기출문제 텍스트
-{exam_text}"""
-
-    return call_llm(prompt, api_key, model, provider)
+    # usage를 넘기지 않으면 이 호출의 토큰이 화면 집계에서 통째로 빠진다
+    return call_llm(prompt, api_key, model, provider, usage=usage)
 
 
 def _norm_term(s: str) -> str:
@@ -581,7 +940,7 @@ def compute_priority_topics(concepts: dict, exam_concepts: dict) -> list:
     exam_terms = (exam_concepts.get("기출출제개념", []) or []) + \
                  (exam_concepts.get("빈출포인트", []) or [])
     lecture_items = []
-    for key in ["핵심질환", "핵심개념", "중요수치", "감별진단포인트", "치료원칙"]:
+    for key in ["핵심질환", "핵심개념", "중요수치", "진단포인트", "치료원칙"]:
         lecture_items.extend(concepts.get(key, []) or [])
 
     priority, seen = [], set()
@@ -611,7 +970,7 @@ def build_concept_extraction_prompt(lecture_text: str) -> str:
   "핵심질환": ["질환명1", "질환명2"],
   "핵심개념": ["개념1", "개념2"],
   "중요수치": ["수치1 (의미)", "수치2 (의미)"],
-  "감별진단포인트": ["포인트1", "포인트2"],
+  "진단포인트": ["포인트1", "포인트2"],
   "치료원칙": ["원칙1", "원칙2"]
 }}"""
 
@@ -632,7 +991,7 @@ def build_question_generation_prompt(
     weight: int = 5,
     type_targets: dict = None,
     avoid_questions: list = None,
-) -> str:
+) -> tuple:
     """
     핵심 변경: 기출 패턴 요약 대신
     ① 실제 기출 예시 (Few-shot)
@@ -643,6 +1002,17 @@ def build_question_generation_prompt(
     weight(1~10): 기출(개념·형식) 반영 강도. 사용자가 조절.
       - 높을수록 기출 출제개념·형식을 강하게 재현, 우선 주제 출제 비율↑
       - 낮을수록 강의자료 전반에서 자유롭게 출제, 형식은 느슨하게 참고
+
+    반환: (prefix, suffix) 두 조각
+      prefix — 한 회차 안에서 배치마다 **글자 하나까지 똑같은** 부분
+               (기출 예시·형식 키워드·개념 목록·공통 규칙·출력 형식)
+      suffix — 배치마다 달라지는 부분 (이번 배치 문제 수·유형 배분·회피 목록)
+
+    왜 나누나 — 프롬프트 캐싱은 **앞에서부터 정확히 일치하는 구간**에만 걸린다.
+    count가 크면 이 함수가 GEN_BATCH_SIZE 문제씩 여러 번 불리는데, 예전에는
+    문제 수·회피 목록 같은 가변 요소가 프롬프트 한가운데 있어서 그 뒤가 전부
+    캐시에서 빠졌다. 고정 부분을 앞에 몰아 두면 2번째 배치부터 접두부를 캐시에서
+    읽는다. (캐시 지시 필드가 없는 제공사에서는 그냥 이어붙이므로 동작은 같다)
     """
     exam_concepts = exam_concepts or {}
     priority_topics = priority_topics or []
@@ -703,14 +1073,14 @@ def build_question_generation_prompt(
     if recent:
         avoid_block = f"""
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## [5] 이미 출제된 문제 (이번 회차에서 앞서 만든 것 — 재출제 금지)
+## [6] 이미 출제된 문제 (이번 회차에서 앞서 만든 것 — 재출제 금지)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {chr(10).join('- ' + q[:AVOID_SNIPPET_LEN] for q in recent)}
 """
         # '개념 금지'로 읽히면 모델이 [3] 개념 목록 밖으로 나가 억지 문제를 만든다.
         # 금지 범위를 '같은 문제'로 좁히고, 같은 개념의 다른 축은 허용임을 명시한다.
         avoid_rule = (
-            "\n- **아래 [5]에 있는 문제와 같은 것을 묻는 문제는 만들지 마세요.**"
+            "\n- **아래 [6]에 있는 문제와 같은 것을 묻는 문제는 만들지 마세요.**"
             " 표현만 바꾼 재출제도 금지입니다."
             "\n  단 [3]의 개념 자체를 피하라는 뜻은 **아닙니다** — 같은 개념이라도"
             " 다른 축(정의 / 기능 / 신경지배 / 경계·내용물 / 수치·레벨)을 물으면 됩니다."
@@ -731,18 +1101,23 @@ def build_question_generation_prompt(
         if no_vignette else ""
     )
 
-    priority_block = ""
+    # 주제 목록 자체는 회차 내내 그대로라 접두부(캐시 대상)에 두고,
+    # 배치마다 달라지는 "최소 N문제" 지시만 접미부로 뺀다.
+    priority_block = priority_rule = ""
     if priority_topics:
         priority_block = f"""
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## [3-B] ⭐ 우선 출제 주제 (강의자료 ∩ 기출 경향 — 가중치 높음)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 아래 주제는 강의자료 핵심이면서 기출에서도 다뤄진 항목입니다.
-**전체 {count}문제 중 최소 {min_priority}문제 이상을 이 주제에서 출제**하세요. (기출 반영 강도 {weight}/10 기준)
 {chr(10).join('- ' + t for t in priority_topics)}
 """
+        priority_rule = (
+            f"\n- **이번 {count}문제 중 최소 {min_priority}문제 이상을 위 [3-B]"
+            f" 우선 출제 주제에서** 출제 (기출 반영 강도 {weight}/10 기준)"
+        )
 
-    return f"""당신은 한국 의과대학 중간/기말고사 출제위원입니다.
+    prefix = f"""당신은 한국 의과대학 중간/기말고사 출제위원입니다.
 아래 [기출문제 예시]의 형식과 **유형(4분류)**을 참고하여 새로운 예상 문제를 생성하세요.
 단, 아래 [0] 기출 반영 강도에 따라 기출을 얼마나 강하게 반영할지 조절하세요.
 
@@ -766,14 +1141,12 @@ def build_question_generation_prompt(
 - 핵심 질환: {', '.join(concepts.get('핵심질환', []))}
 - 핵심 개념: {', '.join(concepts.get('핵심개념', []))}
 - 중요 수치: {', '.join(concepts.get('중요수치', []))}
-- 감별 진단 포인트: {', '.join(concepts.get('감별진단포인트', []))}
+- 진단 포인트: {', '.join(concepts.get('진단포인트', []))}
 - 치료 원칙: {', '.join(concepts.get('치료원칙', []))}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## [4] 생성 규칙
+## [4] 공통 생성 규칙
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- 문제 수: {count}개
-- 유형 구성: {type_rule}
 - 유형별 형식:
   · 객관식 → 선택지 ①②③④⑤ 포함
   · 빈칸채우기 → 문제 문장에 빈칸 '____'를 두고, 선택지 없이 빈칸에 들어갈 답 제시
@@ -782,14 +1155,14 @@ def build_question_generation_prompt(
   · 단답형 → 선택지 없이 단어·구·수치로 답
   · 서술형 → 선택지 없이 여러 문장으로 서술하는 모범답안 제시
 - 문체·구조·선택지 형식은 위 [0] 기출 반영 강도({weight}/10)에 맞춰 반영
-- 기출문제와 내용이 동일한 문제는 출제 금지
+- 기출문제와 내용이 완전히 동일한 문제는 출제 금지
 - **수식·기호는 LaTeX 문법을 쓰지 말고 그대로 읽히는 문자로 쓸 것.**
   화면에 수식 렌더러가 없어 LaTeX를 쓰면 기호가 그대로 글자로 보인다.
   $ ... $ / \\text{{}} / \\Delta / \\approx / ^{{}} / _{{}} 모두 금지.
   이렇게 쓸 것 → ΔG°' < 0,  K'eq > 1,  1 cal ≈ 4.184 J,  ΔG₁ + ΔG₂,  25°C,  H₂O
 - 문항·선택지·해설은 모두 한국어로 쓸 것 (의학 용어의 영문 원어 병기는 허용)
-- 각 문제에 해설과 함정포인트 포함{vignette_rule}{avoid_rule}
-{avoid_block}
+- 각 문제에 해설과 함정포인트 포함{vignette_rule}
+
 ## 출력 형식 (마크다운 코드블록 사용 금지)
 
 [객관식 문제일 때]
@@ -827,6 +1200,18 @@ def build_question_generation_prompt(
 해설: [상세 해설]
 함정포인트: [핵심 함정]
 ---END---"""
+
+    # ── 여기부터가 배치마다 달라지는 부분 (캐시 경계 뒤) ──
+    suffix = f"""
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## [5] 이번에 만들 문제 (지금 지시)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- 문제 수: {count}개
+- 유형 구성: {type_rule}{priority_rule}{avoid_rule}
+{avoid_block}"""
+
+    return prefix, suffix
 
 
 # ──────────────────────────────────────────────
@@ -988,8 +1373,11 @@ def analyze_concepts_progressively(lecture_text: str, exam_text: str, api_key: s
                                    model: str, provider=None, usage=None):
     """
     분석 1단계 — 의존성 없는 두 LLM 호출을 병렬 실행 (결과·동작은 순차와 동일):
-      [동시] ① 강의 핵심개념  ┐
-      [동시] ② 기출 개념+유형통계 ┘
+      [동시] ① 강의 핵심개념                     ┐
+      [동시] ② 기출 개념 + 유형통계 + 대표문제   ┘
+
+    ②가 예전에는 '개념 추출'과 '예시 추출' 두 호출로 나뉘어 기출 전문을 두 번
+    보냈다. 지금은 analyze_exam() 하나로 합쳐서 한 번만 보낸다.
 
     하나가 끝날 때마다 완료 개수를 yield하고, 마지막에 결과 dict를 return한다.
     (호출부: `result = yield from analyze_concepts_progressively(...)`)
@@ -999,40 +1387,38 @@ def analyze_concepts_progressively(lecture_text: str, exam_text: str, api_key: s
             call_llm, build_concept_extraction_prompt(lecture_text), api_key, model,
             provider, None, usage
         )
-        f_exam = ex.submit(extract_exam_concepts, exam_text, api_key, model, provider,
-                           usage)
+        f_exam = ex.submit(analyze_exam, exam_text, api_key, model, provider, usage)
         done = 0
         for fut in as_completed([f_concepts, f_exam]):
             fut.result()          # 예외가 있으면 여기서 터뜨려 호출부가 잡게 한다
             done += 1
             yield done
         concepts = safe_parse_json(f_concepts.result())
-        exam_concepts = safe_parse_json(f_exam.result())
+        exam = f_exam.result()
 
+    exam_concepts = exam["exam_concepts"]
     return {
         "concepts": concepts,
         "exam_concepts": exam_concepts,
+        # 예시 추출이 이 단계로 올라왔다 (예전에는 2단계에서 기출을 다시 읽었다)
+        "sample_questions": exam["sample_questions"],
         # LLM 4분류 우선, 실패 시 정규식 폴백
         "type_stats": resolve_type_stats(exam_concepts, exam_text),
         "priority_topics": compute_priority_topics(concepts, exam_concepts),
     }
 
 
-def analyze_exam_format_progressively(exam_text: str, type_stats: dict, api_key: str,
-                                      model: str, provider=None, usage=None):
+def analyze_format_progressively(sample_questions: str, api_key: str,
+                                 model: str, provider=None, usage=None):
     """
-    분석 2단계 — ③ 예시추출 → ④ 형식분석.
-    ④는 ③의 결과를 입력으로 받으므로 병렬 불가. 각 단계가 끝날 때마다 yield.
+    분석 2단계 — 대표 문제로 형식 규칙 정리 (LLM 1회).
+
+    예전에는 여기서 기출 전문을 다시 보내 예시를 뽑고(③) 형식을 분석(④)해 2회였다.
+    ③이 1단계로 합쳐지면서 이 단계는 짧은 예시 텍스트만 받는 1회로 줄었다.
     """
-    sample_questions = extract_sample_questions(exam_text, api_key, model, type_stats,
-                                                provider, usage)
-    yield 1
     format_analysis = analyze_format(sample_questions, api_key, model, provider, usage)
-    yield 2
-    return {
-        "sample_questions": sample_questions,
-        "format_analysis": format_analysis,
-    }
+    yield 1
+    return {"format_analysis": format_analysis}
 
 
 def _drain(gen):
@@ -1050,10 +1436,10 @@ def analyze_concepts(lecture_text: str, exam_text: str, api_key: str, model: str
         lecture_text, exam_text, api_key, model, provider, usage))
 
 
-def analyze_exam_format(exam_text: str, type_stats: dict, api_key: str, model: str,
+def analyze_exam_format(sample_questions: str, api_key: str, model: str,
                         provider=None, usage=None) -> dict:
-    return _drain(analyze_exam_format_progressively(
-        exam_text, type_stats, api_key, model, provider, usage))
+    return _drain(analyze_format_progressively(
+        sample_questions, api_key, model, provider, usage))
 
 
 def run_analysis(lecture_text: str, exam_text: str, api_key: str, model: str,
@@ -1065,7 +1451,7 @@ def run_analysis(lecture_text: str, exam_text: str, api_key: str, model: str,
     analyze_exam_format 을 직접 호출한다. 어느 쪽이든 결과는 같다.
     """
     part1 = analyze_concepts(lecture_text, exam_text, api_key, model, provider, usage)
-    part2 = analyze_exam_format(exam_text, part1["type_stats"], api_key, model, provider,
+    part2 = analyze_exam_format(part1["sample_questions"], api_key, model, provider,
                                 usage)
     return {**part1, **part2}
 
@@ -1078,9 +1464,26 @@ def run_analysis(lecture_text: str, exam_text: str, api_key: str, model: str,
 # ══════════════════════════════════════════════
 
 # 한쪽(강의록 전체 / 기출 전체)에 배정하는 글자 예산.
-# 문제 생성은 문서 1개당 MAX_TEXT_CHARS(100000)를 쓰는데, 여기서도 그만큼 여유를 주되
-# 강의+기출을 한 프롬프트에 함께 넣는 점을 감안해 살짝 보수적으로 잡는다.
-TOPIC_SIDE_CHAR_BUDGET = 120000
+# 문제 생성(GEN_SIDE_CHAR_BUDGET)보다 훨씬 작게 잡는 이유는 프롬프트 구조가 다르기 때문 —
+# 거기는 강의자료와 기출이 서로 다른 호출로 나가지만, 주제 분석은 대조표를 만들어야 해서
+# **둘을 한 프롬프트에 함께** 넣는다(build_topic_analysis_prompt). 그래서 여기서는
+# 총예산이 곧 프롬프트 하나의 크기이고, 한쪽 몫을 올리면 그 두 배가 한 번에 나간다.
+#
+# 값의 근거 — 예전 값(12만)은 컨텍스트가 좁던 시절 기준이라 지금은 지나치게 보수적이다.
+#   총 60만 자 × 0.52토큰/자(실측 환산, GEN_CALL_CHAR_CEILING 주석 참고) ≈ 31만 토큰.
+#   출력 몫(TOPIC_MAX_TOKENS 16k)과 지시문을 더해도 1M 컨텍스트의 1/3이다.
+#   올린 직접적인 이유는 이미지 상한이다: 강의록 전사가 쪽당 ~800자라 상한 100쪽이면
+#   그것만으로 8만 자다. 12만 자 예산에 텍스트 레이어까지 얹으면 넘치고, truncate는
+#   가운데를 버리므로 **돈 주고 뽑은 전사가 그대로 버려진다**. 예산이 상한을 받아줘야
+#   이미지 상한 인상이 실제 효과를 낸다.
+TOPIC_SIDE_CHAR_BUDGET = 300000
+# 강의록 + 기출을 합친 총예산. 한쪽 몫의 2배라, 양쪽이 모두 상한을 채우는 최악의 경우엔
+# 프롬프트 크기가 예전과 같다. 칸막이를 12만씩 고정하지 않는 이유 —
+# 실측(topic_analyses id=9·10·13·14·18·19)에서 강의록은 상한의 21~46%만 쓰는데
+# 기출은 매번 넘겼다(152쪽 기출이 80% 반영, 2만 8천 자가 가운데에서 통째로 버려짐).
+# 한쪽에 6만 자 이상 남는데 반대쪽만 잘리고 있었다. 강의록을 먼저 추출하므로 그 시점에
+# 실사용량이 확정된다 → 남은 몫을 기출에 넘긴다. (remaining_char_budget)
+TOPIC_TOTAL_CHAR_BUDGET = TOPIC_SIDE_CHAR_BUDGET * 2
 # 파일을 여러 개 올려도 문서당 이만큼은 보장 (예산 ÷ 파일수가 너무 작아지는 것 방지).
 # 상한(MAX_FILES_PER_SIDE)까지 채웠을 때의 몫으로 잡아 둔다 — 이래야 '문서당 몫 × 파일수
 # ≤ 예산'이 허용 개수 전 구간에서 성립한다. 손으로 따로 잡으면 파일 상한을 올렸을 때 이
@@ -1091,8 +1494,24 @@ TOPIC_DOC_MIN_CHARS = TOPIC_SIDE_CHAR_BUDGET // MAX_FILES_PER_SIDE
 TOPIC_MAX_TOKENS = 16000
 
 
+def remaining_char_budget(docs: list) -> int:
+    """
+    먼저 추출한 쪽(강의록)이 쓰고 남긴 몫 — 반대쪽(기출)에 넘길 글자 예산.
+
+    docs의 text는 이미 상한이 적용된 결과라, 여기서 세는 값이 실제로 프롬프트에
+    들어가는 양과 같다. (원문 길이인 source["chars"]를 세면 안 된다 — 잘려서
+    안 들어간 몫까지 쓴 것으로 쳐서 반대쪽 예산을 도로 깎는다)
+
+    한쪽 몫(TOPIC_SIDE_CHAR_BUDGET)을 하한으로 둔다. 강의록은 그 상한 안에서 잘리므로
+    실제로 하한에 걸릴 일은 없지만, 나중에 상한을 손댔을 때 기출이 예전보다 적게 받는
+    일이 없도록 못을 박아둔다.
+    """
+    used = sum(len(d.get("text") or "") for d in docs)
+    return max(TOPIC_SIDE_CHAR_BUDGET, TOPIC_TOTAL_CHAR_BUDGET - used)
+
+
 def read_labeled_pdfs(files, label_prefix: str, api_key: str = None,
-                      image_mode: dict = None) -> list:
+                      image_mode: dict = None, img_budget: int = None) -> list:
     """
     PDF 를 페이지 단위로 읽어만 둔다 — 여기까지는 LLM 호출이 없다.
 
@@ -1103,29 +1522,43 @@ def read_labeled_pdfs(files, label_prefix: str, api_key: str = None,
 
     files: (파일명, FileStorage 또는 bytes) 쌍의 목록.
            스트리밍 경로는 요청 컨텍스트가 닫힌 뒤에 도니 bytes 를 넘긴다.
-    반환: [{label, name, pages, img_jobs}]  (img_jobs 는 pages 안 엔트리를 참조한다)
+    img_budget: 이미지 처리 상한 — **파일당이 아니라 이쪽 전체 기준**. 생략하면 모드의
+           max_pages를 이쪽 전체에 쓴다. '남은 예산 ÷ 남은 파일 수'로 배정하므로 앞
+           파일이 제 몫을 다 안 쓰면 남은 만큼이 뒤 파일로 넘어간다(next_image_quota).
+    반환: [{label, name, pages, img_jobs, quota}] (img_jobs 는 pages 안 엔트리를 참조한다)
+          quota를 남기는 이유: assemble_pdf_text가 '몇 개까지만 처리됨'을 적을 때
+          이 파일에 실제로 적용된 상한을 알아야 한다. 모드의 max_pages가 아니다.
     """
+    files = list(files or [])
+    remaining_imgs = side_image_budget(image_mode, img_budget)
     parts = []
-    for i, (name, pdf) in enumerate(list(files or []), start=1):
+    for i, (name, pdf) in enumerate(files, start=1):
         name = name or f"{label_prefix}{i}"
+        quota = next_image_quota(remaining_imgs, len(files) - i + 1)
         try:
-            pages, img_jobs = read_pdf_pages(pdf, api_key, image_mode)
+            # quota가 0이어도 image_mode는 그대로 넘긴다 (next_image_quota 주석 참고 —
+            # None으로 바꾸면 예산이 앞 파일에서 동났을 때 뒤 파일의 경고가 사라진다).
+            pages, img_jobs = read_pdf_pages(pdf, api_key, image_mode, max_images=quota)
         except Exception as e:
             # 손상·암호 걸린 PDF (fitz의 영문 예외를 어떤 파일이 문제인지 알려주는 문구로)
             raise ValueError(
                 f"'{name}' 파일을 읽을 수 없습니다. "
                 f"PDF가 손상되었거나 암호가 걸려 있는지 확인해주세요. (상세: {e})"
             ) from e
+        remaining_imgs -= len(img_jobs)
         parts.append({"label": f"{label_prefix}{i}", "name": name,
-                      "pages": pages, "img_jobs": img_jobs})
+                      "pages": pages, "img_jobs": img_jobs, "quota": quota})
     return parts
 
 
 def finish_labeled_docs(parts: list, side_budget: int = TOPIC_SIDE_CHAR_BUDGET,
-                        image_mode: dict = None) -> list:
+                        image_mode: dict = None, by_question: bool = False) -> list:
     """
     그림 텍스트화가 끝난 parts 를 '라벨 + 페이지 마커가 붙은 텍스트' 문서 목록으로 합친다.
     반환 형태는 아래 extract_labeled_docs 와 완전히 같다.
+
+    by_question: 기출 쪽이면 True — 상한을 넘길 때 문항 번호 경계로 자른다
+                 (반쪽짜리 문항을 남기지 않는다. _cut_points 참고)
     """
     if not parts:
         return []
@@ -1135,18 +1568,22 @@ def finish_labeled_docs(parts: list, side_budget: int = TOPIC_SIDE_CHAR_BUDGET,
 
     docs = []
     for p in parts:
-        raw = assemble_pdf_text(p["pages"], len(p["img_jobs"]), image_mode)
+        raw = assemble_pdf_text(p["pages"], len(p["img_jobs"]), image_mode,
+                                p.get("quota"))
         docs.append({
             # 상한을 넘겼다면 몇 번째 줄이 버려지는지 (안 넘으면 None).
             # 진행 전에 사용자에게 보여주고 확인받는 데 쓴다 — DB에는 저장하지 않는다.
-            "cut": truncation_report(raw, per_doc),
+            "cut": truncation_report(raw, per_doc, by_question),
+            # 그림·필기가 몇 쪽 중 몇 쪽 반영됐는지. 'cut'과 같은 용도(진행 전 확인)라
+            # 함께 싣는다. 이미지 처리를 안 하는 경우엔 후보가 0이라 경고도 안 뜬다.
+            "img": image_coverage(p["pages"], p["img_jobs"]),
             "label": p["label"],
             "name": p["name"],
-            "text": truncate(raw, per_doc),
+            "text": truncate(raw, per_doc, by_question),
             # 내용이 잡힌 페이지 수 (스캔 PDF 판별·안내용).
             # '[페이지 N]'과 '[페이지 N 이미지 설명]' 두 형태를 모두 센다 (set으로 중복 제거).
             "pages": len(set(re.findall(r"\[페이지 (\d+)[\] ]", raw))),
-            "source": build_source_info(raw, per_doc),
+            "source": build_source_info(raw, per_doc, by_question),
         })
     return docs
 
@@ -1154,6 +1591,8 @@ def finish_labeled_docs(parts: list, side_budget: int = TOPIC_SIDE_CHAR_BUDGET,
 def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
                          image_mode: dict = None, provider=None,
                          side_budget: int = TOPIC_SIDE_CHAR_BUDGET,
+                         img_budget: int = None,
+                         by_question: bool = False,
                          usage=None) -> list:
     """
     업로드된 PDF 여러 개를 '라벨 + 페이지 마커가 붙은 텍스트'로 추출한다.
@@ -1161,6 +1600,15 @@ def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
     label_prefix: '강의록' / '기출' → 라벨은 강의록1, 강의록2 … (LLM이 출처를 가리킬 때 사용.
                   긴 한글 파일명을 그대로 되풀이하게 하면 오타가 나므로 짧은 라벨을 쓰고
                   파일명 복원은 파싱 단계에서 우리가 한다)
+    side_budget:  이쪽 전체에 배정하는 글자 예산 (파일 수로 나눠 쓴다).
+                  기출은 강의록이 남긴 몫을 받으므로 호출부가 remaining_char_budget()으로
+                  계산해 넘긴다. 생략하면 한쪽 몫(TOPIC_SIDE_CHAR_BUDGET)이다.
+    img_budget:   이미지 처리 호출 수 상한 — **파일당이 아니라 이쪽 전체 기준**.
+                  생략하면 모드의 max_pages(IMAGE_CAP_EXAM / IMAGE_CAP_LECTURE)를
+                  이쪽 전체에 쓴다. 예전에는 이 상한이 PDF 1개당이라, 기출 7개를 올리면
+                  상한의 7배까지 Vision을 불렀다.
+    by_question:  기출 쪽이면 True — 상한을 넘길 때 문항 번호 경계로 자른다
+                  (반쪽짜리 문항을 남기지 않는다. _cut_points 참고)
     반환: [{label, name, text, pages, source}]  (text에는 [페이지 N] 마커가 들어 있다)
 
     진행률이 필요한 곳(스트리밍)은 위 두 함수와 describe_images_progressively 를
@@ -1171,7 +1619,7 @@ def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
         return []
 
     parts = read_labeled_pdfs([(f.filename, f) for f in files],
-                              label_prefix, api_key, image_mode)
+                              label_prefix, api_key, image_mode, img_budget)
     for p in parts:
         try:
             for _ in describe_images_progressively(p["img_jobs"], api_key, model,
@@ -1179,7 +1627,7 @@ def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
                 pass
         except ProviderError:
             raise                  # 키·한도 오류는 라우트가 상태코드로 구분하므로 그대로
-    return finish_labeled_docs(parts, side_budget, image_mode)
+    return finish_labeled_docs(parts, side_budget, image_mode, by_question)
 
 
 def build_topic_doc_block(docs: list) -> str:
@@ -1197,11 +1645,23 @@ def build_topic_analysis_prompt(lecture_block: str, exam_block: str) -> str:
     """
     강의록 주제 ↔ 기출 문항 대응표 프롬프트.
 
-    설계 의도 두 가지:
+    설계 의도 네 가지:
       ① 주제명은 **강의록에 실제로 있는 표현**만 쓰게 강제한다.
          (LLM이 교과서 용어로 바꿔 쓰면 학생이 강의록에서 그 주제를 못 찾는다)
       ② 페이지·문항 번호를 확인할 수 없는 항목은 아예 버리게 한다.
          (틀린 출처는 없는 출처보다 나쁘다 — 학생이 그 페이지를 찾아보게 되므로)
+      ③ 목차 페이지는 근거로 인정하지 않는다.
+         목차 줄에도 주제 이름은 적혀 있어서 ②를 글자 그대로는 만족한다. 그래서
+         회차마다 목차 쪽과 본문 쪽이 번갈아 뽑혔다(실측: 같은 주제가 2쪽 / 128쪽).
+         학생에게 목차 쪽은 쓸모가 없으므로 '설명이 있는 쪽'으로 좁힌다.
+      ④ 마커의 뜻을 프롬프트 안에서 밝힌다.
+         기출의 [페이지 N 이미지 설명]은 시험지 문장이 아니라 모델이 쓴 설명인데,
+         ⑦은 "원문 그대로" 옮기라고 한다. 뜻을 안 알려주면 그 설명이 '기출 원문'
+         으로 화면에 인용된다(스캔 기출은 텍스트 레이어가 비어 설명밖에 없다).
+         강의록의 [페이지 N 그림 속 글자]는 반대로 전사라서 원문으로 봐도 된다 —
+         한쪽만 맞다고 뭉뚱그리면 다른 쪽이 틀리므로 둘을 갈라서 적는다.
+         (필기: …)도 여기서 함께 밝힌다 — ②의 '근거' 자리에 학생 메모가 들어가면
+         틀린 출처가 되고, 그건 없는 출처보다 나쁘다.
     """
     return f"""당신은 한국 의과대학 시험 분석 전문가입니다.
 [강의록]에 적혀 있는 주제 중 [기출문제]에서 **실제로 출제된 것만** 골라
@@ -1218,7 +1678,20 @@ def build_topic_analysis_prompt(lecture_block: str, exam_block: str) -> str:
 {exam_block}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## [3] 규칙 (반드시 준수)
+## [3] 표시의 뜻 (위 텍스트를 읽는 법)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- `[페이지 N]` 아래는 PDF에서 그대로 뽑은 **원문**입니다.
+- `[페이지 N 그림 속 글자]`(강의록) 아래는 그림 안의 글자를 **그대로 옮긴 것**이므로
+  강의록 원문으로 봐도 됩니다.
+- `[페이지 N 이미지 설명]`(기출) 아래는 그 쪽의 그림을 보고 **다른 모델이 쓴 설명**이며,
+  시험지에 인쇄된 문장이 아닙니다. 문제 번호·페이지를 확인하는 데는 써도 되지만,
+  아래 ⑦의 "원문"으로 그대로 인용하면 안 됩니다.
+- `(필기: …)`는 사람이 손으로 덧쓴 것(정답 표시·메모)이지 자료에 인쇄된 내용이
+  아닙니다. **주제나 출제 내용의 근거로 쓰지 마세요.**
+- `(판독불가)`는 읽을 수 없던 자리입니다. 내용을 지어내 채우지 마세요.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## [4] 규칙 (반드시 준수)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ① **용어 규칙 — 가장 중요**
    - "주제"는 **강의록 본문에 그대로 등장하는 표현**만 쓰세요.
@@ -1230,6 +1703,10 @@ def build_topic_analysis_prompt(lecture_block: str, exam_block: str) -> str:
 ② **근거 규칙 — 추측 금지**
    아래 두 가지가 위 텍스트에서 **모두 확인되는** 주제만 출력하세요.
    - 강의록: 그 주제가 적힌 [페이지 N] 의 N
+     목차·색인처럼 **이름만 올라 있는** 페이지는 근거가 아닙니다. 그 주제를 실제로
+     설명하는 내용이 있는 페이지를 대세요.
+     (목차 줄에는 "제목 … 130." 처럼 **다른 쪽의 번호**가 따라붙습니다. 그 번호는
+      그 줄이 있는 페이지 번호가 아니며, [페이지 N] 마커만이 페이지 번호입니다)
    - 기출: 그 주제를 묻는 문제의 **문제 번호** (기출 텍스트에 적힌 번호 그대로)
    페이지나 문제 번호를 확인할 수 없으면 그 주제는 **아예 넣지 마세요.**
 ③ **범위 규칙** — 강의록에 없는 내용만 묻는 기출 문제는 무시하세요.
@@ -1239,13 +1716,19 @@ def build_topic_analysis_prompt(lecture_block: str, exam_block: str) -> str:
 ⑥ **강의록발췌** — 그 주제가 적힌 강의록 페이지의 내용을 강의록 문장·표현 그대로
    1~3문장으로 옮기거나 간추리세요. 강의록에 없는 설명을 새로 지어내지 마세요.
    페이지 내용을 확인할 수 없으면 빈 문자열로 두세요.
+   발췌가 제목 한 줄이거나 "제목 / 쪽번호" 나열뿐이라면 그 페이지는 목차입니다 —
+   근거로 쓰지 말고 그 주제를 설명하는 페이지를 다시 찾으세요.
 ⑦ **기출 문항 상세** — 각 문항마다 다음을 함께 적으세요.
    - "페이지": 그 문항이 적힌 기출 자료의 [페이지 N] 번호. 확인 안 되면 빈 문자열.
    - "원문": 기출 텍스트에 있는 그 문제의 지문·질문을 **요약·의역하지 말고 원문 그대로**
-     옮기세요(선택지는 생략 가능). 200자가 넘으면 핵심까지만 자르고 "…"으로 표시하세요.
+     옮기세요(선택지는 생략 가능). 어떤 문제인지 알아볼 수 있을 만큼만 옮기고,
+     120자가 넘으면 거기서 자르고 "…"으로 표시하세요.
+     그 문항이 `[페이지 N 이미지 설명]`에만 있어 인쇄된 문장을 옮길 수 없으면,
+     설명을 옮기되 **맨 앞에 "(이미지 설명) "을 붙이세요** — 시험지 문장이 아니라는
+     표시입니다. `(필기: …)` 부분은 어느 경우에도 "원문"에 넣지 마세요.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## [4] 출력 형식 — 아래 JSON만 (코드블록·설명 문장 금지)
+## [5] 출력 형식 — 아래 JSON만 (코드블록·설명 문장 금지)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {{
   "주제목록": [
@@ -1254,7 +1737,7 @@ def build_topic_analysis_prompt(lecture_block: str, exam_block: str) -> str:
       "강의록": [{{"자료": "강의록1", "페이지": [12, 13]}}],
       "강의록발췌": "12페이지 내용을 강의록 표현 그대로 1~3문장으로",
       "기출": [{{"자료": "기출1", "문항": [
-        {{"번호": "4", "페이지": "3", "원문": "문제 지문 원문 그대로(최대 200자)"}}
+        {{"번호": "4", "페이지": "3", "원문": "문제 지문 원문 그대로(최대 120자)"}}
       ]}}],
       "출제형태": "기출에서 이 주제를 무엇으로 물었는지 한 문장 (강의록 용어로만)"
     }}
@@ -1356,7 +1839,9 @@ def _normalize_exam_refs(raw_refs, exam_docs: list) -> list:
             if isinstance(it, dict):
                 num = str(it.get("번호") or it.get("문항") or "").strip()
                 page = str(it.get("페이지") or "").strip()
-                text = _clip_text(it.get("원문") or "", 200)
+                # 출력 토큰은 입력의 5배 단가라 인용 길이가 그대로 비용이다.
+                # 어떤 문제인지 알아보는 데는 이 정도면 충분하다.
+                text = _clip_text(it.get("원문") or "", 120)
             else:
                 num, page, text = str(it).strip(), "", ""
             num = re.sub(r"^(문제|문항)\s*", "", num, flags=re.I)

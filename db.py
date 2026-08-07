@@ -10,6 +10,7 @@
 import json
 import os
 import sqlite3
+from datetime import datetime
 
 import config
 
@@ -78,6 +79,60 @@ def owner_clause(owner, prefix: str = ""):
         return f"{prefix}guest_id = ?", [guest_id]
     # 소유자를 특정할 수 없으면 아무것도 매칭하지 않는다(데이터 노출 방지).
     return "0 = 1", []
+
+
+# ──────────────────────────────────────────────
+# 이미지 설명 캐시 (llm.py가 쓴다 — 특정 기능 전용이 아니라 공용 인프라)
+#
+# 같은 PDF를 다시 올리면 예전에는 Vision 호출을 처음부터 다시 냈다. 학생들이
+# 같은 기출을 여러 번 돌리는 게 흔해서, 재실행 비용의 대부분이 여기서 나왔다.
+#
+# 키(cache_key)는 llm.image_cache_key() 가 만든다 — '프롬프트 + 렌더된 PNG'의 해시다.
+# 파일명·페이지 번호로 잡으면 렌더 해상도를 바꿨을 때 옛 설명이 재사용되고,
+# PNG만 해싱하면 같은 페이지를 기출(그림 설명)과 강의록(글자 전사)으로 각각 올렸을 때
+# 먼저 넣은 쪽이 반대쪽 요청에 그대로 돌아온다. 둘 다 키에 넣어야 섞이지 않는다.
+#
+# 소유자(user_id/guest_id) 컬럼이 없는 이유 — 내용 주소 방식이라 같은 이미지를
+# 이미 갖고 있어야만 꺼낼 수 있다. 남의 자료가 새어나가는 경로가 아니다.
+# ──────────────────────────────────────────────
+
+def get_cached_image_desc(cache_key: str, provider: str, model: str):
+    """캐시된 이미지 처리 결과. 없으면 None. 조회 실패는 '없음'과 같게 다룬다."""
+    try:
+        conn = get_conn()
+        try:
+            row = conn.execute(
+                """SELECT description FROM image_desc_cache
+                   WHERE cache_key=? AND provider=? AND model=?""",
+                (cache_key, provider or "", model or ""),
+            ).fetchone()
+        finally:
+            conn.close()
+    except Exception:
+        return None                     # 캐시 문제로 생성이 멈추면 안 된다
+    return row["description"] if row else None
+
+
+def put_cached_image_desc(cache_key: str, provider: str, model: str,
+                          description: str):
+    """이미지 처리 결과를 캐시에 남긴다. 실패해도 조용히 넘어간다(캐시는 부가 기능)."""
+    if not description:
+        return
+    try:
+        conn = get_conn()
+        try:
+            conn.execute(
+                """INSERT OR REPLACE INTO image_desc_cache
+                   (cache_key, provider, model, description, created_at)
+                   VALUES (?,?,?,?,?)""",
+                (cache_key, provider or "", model or "", description,
+                 datetime.now().strftime("%Y-%m-%d %H:%M")),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
 
 
 def init_db():
@@ -218,6 +273,28 @@ def init_db():
         # NULL(모름)과 0(안 씀)은 화면에서 다르게 보여줘야 한다.
         _ensure_column(conn, "topic_analyses", "usage", "TEXT")     # JSON: usage.summary()
         _ensure_column(conn, "topic_analyses", "credits", "TEXT")   # JSON: 쓴 크레딧만
+
+        # ── 이미지 처리 결과 캐시 (llm.py 담당 — 위 헬퍼 함수 주석 참고) ──
+        # 모델까지 키에 넣는 이유: 모델이 다르면 결과 품질도 다르다. 싼 모델로 만든
+        # 설명을 비싼 모델을 고른 회차에 그대로 물려주면 안 된다.
+        #
+        # 키 컬럼이 image_sha256이던 초기 버전은 프롬프트를 키에 넣지 않아, 같은 페이지를
+        # 기출과 강의록으로 각각 올리면 서로의 결과를 돌려줬다. 이건 순수 캐시라 버려도
+        # 다시 만들어지므로, 옛 스키마가 보이면 그냥 지우고 새로 만든다.
+        cols = [r[1] for r in conn.execute(
+            "PRAGMA table_info(image_desc_cache)").fetchall()]
+        if cols and "cache_key" not in cols:
+            conn.execute("DROP TABLE image_desc_cache")
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS image_desc_cache (
+                cache_key TEXT NOT NULL,      -- llm.image_cache_key(프롬프트, PNG)
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                description TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (cache_key, provider, model)
+            )"""
+        )
         conn.commit()
     finally:
         conn.close()

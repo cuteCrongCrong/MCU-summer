@@ -55,17 +55,32 @@ class OpenAICompatibleProvider(Provider):
 
     # 문제 생성은 30문항 + 해설까지 나올 수 있어 넉넉히 잡는다.
     max_tokens       = 4096
-    image_max_tokens = 1024
+    # 이미지 호출 기본 한도. 호출부가 llm.py의 모드별 max_output을 넘기므로 보통은
+    # 그 값이 쓰이고, 이건 지정하지 않은 호출을 위한 하한이다.
+    # 1024였는데 올렸다 — 사고(thinking)를 하는 모델은 사고 토큰도 이 한도에 포함되어,
+    # 1024로는 사고가 예산을 다 먹고 전사가 단어 중간에서 잘리는 일이 있었다.
+    # (gemini_provider.py가 같은 이유로 max_tokens를 16000으로 올려뒀는데, 이미지 쪽은
+    #  빠져 있었다. 게이트웨이는 두 값을 다 상속하므로 모든 모델이 영향을 받았다)
+    image_max_tokens = 2048
 
     def _client(self, api_key: str) -> OpenAI:
         return OpenAI(api_key=api_key, base_url=self.base_url)
 
+    @staticmethod
+    def _messages(prompt: str, cache_prefix: str = None) -> list:
+        """
+        Chat Completions에는 캐시 경계를 지정하는 필드가 없다. 그냥 이어붙인다.
+        (자동 프롬프트 캐싱이 있는 서버라면 접두부가 앞에 몰려 있는 것만으로 이득이고,
+         없는 서버여도 예전과 완전히 같은 요청이 된다)
+        """
+        return [{"role": "user", "content": (cache_prefix or "") + prompt}]
+
     def complete(self, prompt: str, api_key: str, model: str,
-                 max_tokens: int = None, usage=None) -> str:
+                 max_tokens: int = None, usage=None, cache_prefix: str = None) -> str:
         with _translate_errors(self.label):
             response = self._client(api_key).chat.completions.create(
                 model=model,
-                messages=[{"role": "user", "content": prompt}],
+                messages=self._messages(prompt, cache_prefix),
                 max_tokens=max_tokens or self.max_tokens,
             )
         if usage is not None:
@@ -73,7 +88,7 @@ class OpenAICompatibleProvider(Provider):
         return response.choices[0].message.content
 
     def complete_stream(self, prompt: str, api_key: str, model: str,
-                        max_tokens: int = None, usage=None):
+                        max_tokens: int = None, usage=None, cache_prefix: str = None):
         """
         응답을 델타 조각으로 흘려보낸다.
 
@@ -83,7 +98,7 @@ class OpenAICompatibleProvider(Provider):
         """
         kwargs = dict(
             model=model,
-            messages=[{"role": "user", "content": prompt}],
+            messages=self._messages(prompt, cache_prefix),
             max_tokens=max_tokens or self.max_tokens,
             stream=True,
         )
@@ -119,7 +134,8 @@ class OpenAICompatibleProvider(Provider):
                     usage.add(model, None)
 
     def describe_image(self, png_bytes: bytes, api_key: str, model: str,
-                       usage=None, prompt: str = None) -> str:
+                       usage=None, prompt: str = None,
+                       max_tokens: int = None) -> str:
         """
         Vision LLM으로 이미지를 한국어 텍스트로 만든다.
         기본(IMAGE_DESC_PROMPT)은 전체 전사가 아니라 그림·그래프·표·해부도 등 핵심 요약.
@@ -130,7 +146,7 @@ class OpenAICompatibleProvider(Provider):
         with _translate_errors(self.label):
             resp = self._client(api_key).chat.completions.create(
                 model=model,
-                max_tokens=self.image_max_tokens,
+                max_tokens=max_tokens or self.image_max_tokens,
                 messages=[{
                     "role": "user",
                     "content": [

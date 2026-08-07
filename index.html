@@ -62,12 +62,12 @@
           <button class="home-card c-gen" onclick="openGenerator()">
             <span class="home-card-icon">📝</span>
             <span class="home-card-title">문제 생성</span>
-            <span class="home-card-desc" id="home-gen-desc">강의자료로<br>예상문제 만들기</span>
+            <span class="home-card-desc" id="home-gen-desc">강의자료와 기출문제로<br>예상문제 만들기</span>
           </button>
           <button class="home-card c-topic" onclick="switchTab('topics')">
             <span class="home-card-icon">🔍</span>
             <span class="home-card-title">기출 주제 분석</span>
-            <span class="home-card-desc">기출에 나온<br>주제 찾기</span>
+            <span class="home-card-desc">강의자료에서 기출에 나온<br>주제 찾기</span>
           </button>
         </div>
       </section>
@@ -101,7 +101,7 @@
             <!-- 다른 카드와 달리 한 줄이다. 전체 폭이라 데스크톱에서는 한 줄로 충분하고,
                  좁은 화면에서는 두 줄로 두면 카드가 142px 이 되어 '이어서 하기'가
                  첫 화면 밖으로 밀린다(실측). 한 줄이면 122px. -->
-            <span class="home-card-desc">그림 속 번호 부위 맞히기 · 자료 없이 바로 시작</span>
+            <span class="home-card-desc">그림 속 부위의 이름 맞히기</span>
           </button>
         </div>
       </section>
@@ -144,8 +144,8 @@
 
   <!-- ⓪ 저장된 세션 -->
   <div class="card" id="session-card">
-    <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
-      <span>💾 저장된 세션 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 분석 없이 바로 생성 (토큰 절약)</span></span>
+    <div class="card-title" style="justify-content:space-between;">
+      <span>💾 저장된 세션 <span class="card-note">분석 없이 바로 생성 (토큰 절약)</span></span>
       <button type="button" class="icon-btn" onclick="loadSessions()" title="새로고침" aria-label="저장된 세션 새로고침">↻</button>
     </div>
     <div id="session-list" style="margin-top:6px;font-size:0.88rem;color:#64748b;">불러오는 중…</div>
@@ -223,6 +223,10 @@
       </label>
       <select id="model-select" class="select-field"></select>
     </div>
+
+    <!-- 분석용 모델 칸은 없앴다. 그림 읽기·개념·형식 분석에 쓸 모델은 서버가 정한다
+         (features/question_gen.py) — 제공사가 analysis_model을 선언했으면 그 모델,
+         아니면 위에서 고른 모델을 그대로 쓴다. 주제 분석 탭도 같은 방식이다. -->
 
     <!-- 문제 수 -->
     <div style="margin-top:20px;">
@@ -480,8 +484,8 @@
 
     <!-- 폴더 목록 -->
     <div class="card" id="wrong-card">
-      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
-        <span>❌ 오답 노트 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 틀린/헷갈린 문제를 폴더로 모아두기</span></span>
+      <div class="card-title" style="justify-content:space-between;">
+        <span>❌ 오답 노트 <span class="card-note">틀린/헷갈린 문제를 폴더로 모아두기</span></span>
         <button type="button" class="icon-btn" onclick="loadWrongFolders()" title="새로고침" aria-label="오답 노트 폴더 새로고침">↻</button>
       </div>
       <div id="wrong-folder-list" style="margin-top:6px;font-size:0.88rem;color:#64748b;">불러오는 중…</div>
@@ -501,8 +505,8 @@
   <!-- ══════════ 탭: 골학 문제은행 ══════════ -->
   <div class="tab-panel hidden" id="tab-bones">
     <div class="card">
-      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span>🦴 골학 문제은행 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 그림 속 번호 부위의 이름 맞히기 (범위 선택 후 랜덤·중복 없이 출제)</span></span>
+      <div class="card-title" style="justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <span>🦴 골학 문제은행 <span class="card-note">랜덤으로 중복 없이 출제</span></span>
         <span id="bone-score" style="font-size:0.85rem;color:#475569;"></span>
       </div>
 
@@ -728,6 +732,10 @@
         <select id="topic-model-select" class="select-field"></select>
       </div>
 
+      <!-- 그림 설명용 모델 칸도 없앴다. 이미지 호출에 쓸 모델은 서버가 정한다
+           (features/topic_analysis.py) — 제공사가 image_model을 선언했으면 그 모델,
+           아니면 위에서 고른 모델을 그대로 쓴다. 주제↔문항 대조는 늘 위 모델이 한다. -->
+
       <!-- 이번에 분석할 내용 이름 (선택) -->
       <div style="margin-top:20px;">
         <label for="topic-title">📛 이 분석 세트 이름 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 선택</span></label>
@@ -745,9 +753,8 @@
     <div id="topic-status-box" class="card status-panel hidden">
       <div class="card-title">
         분석 진행 상태
-        <!-- 생성 탭은 오른쪽 끝에 '중지' 버튼이 있어 퍼센트가 제목 옆에 붙는다.
-             여기는 그 버튼이 없어 퍼센트를 오른쪽 끝으로 보낸다. -->
-        <span id="topic-overall-pct" class="overall-pct" style="margin-left:auto;">0%</span>
+        <span id="topic-overall-pct" class="overall-pct">0%</span>
+        <button type="button" id="topic-cancel-btn" class="cancel-btn" onclick="topicCancelAnalyze()">■ 중지</button>
       </div>
       <div class="progress-track"><div class="progress-bar" id="topic-overall-bar"></div></div>
       <ul class="step-list">

@@ -10,7 +10,9 @@ API 키 없이 돈다 — 프로바이더와 주제 분석 LLM 호출을 가짜�
 
 import io
 import os
+import pathlib
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -18,6 +20,17 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 import fitz
+
+import db
+
+# 이 테스트는 라우트를 통째로 흘려보내므로 분석 결과·이미지 캐시가 DB에 실제로 쓰인다.
+# 임시 파일로 돌리지 않으면 사용자의 sessions.db에 테스트 찌꺼기가 쌓이고, 이미지 캐시가
+# 남아 다음 실행에서 호출 수가 0이 되어 검사가 조용히 무의미해진다.
+# db.get_conn()이 호출 시점에 db.DB_PATH를 읽으므로 app 임포트 전에 바꿔치면 된다.
+_tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+_tmp.close()
+db.DB_PATH = _tmp.name
+db.init_db()
 
 import app as app_module
 import llm
@@ -41,7 +54,8 @@ class FakeProvider:
     def complete(self, prompt, api_key, model, max_tokens=None, usage=None):
         return "{}"
 
-    def describe_image(self, png_bytes, api_key, model, usage=None, prompt=None):
+    def describe_image(self, png_bytes, api_key, model, usage=None, prompt=None,
+                       max_tokens=None):
         return "그림 설명"
 
     def list_models(self, api_key):
@@ -144,8 +158,77 @@ def test_topic_confirm():
     check("같은 토큰은 다시 못 쓴다", r3.status_code == 400, r3.status_code)
 
 
+def test_image_model_pinned():
+    """
+    주제 분석에서 그림 읽는 모델은 **사용자가 고르지 않는다.**
+
+      - 제공사가 image_model을 선언했으면(게이트웨이) 그 모델로 고정
+      - 선언이 없으면 화면에서 고른 메인 모델을 그대로 (모델 나누기 전과 같은 동작)
+
+    화면에 칸이 없는 것과 **별개로** 서버가 폼을 무시해야 한다 — 열어둔 옛날 탭이나
+    직접 만든 요청은 없어진 칸을 그냥 통과해서, 비싼 모델이 이미지 수십 장에 붙는다.
+    """
+    print("[그림 읽기 모델 — 사용자가 고르지 않는다]")
+    extract_cache.clear()
+
+    class RecordingProvider(FakeProvider):
+        """describe_image가 어떤 모델로 불렸는지 받아 적는다."""
+
+        def __init__(self, image_model=""):
+            self.image_model = image_model
+            self.image_models_used = []
+
+        def describe_image(self, png_bytes, api_key, model, usage=None, prompt=None,
+                           max_tokens=None):
+            self.image_models_used.append(model)
+            return "그림 설명"
+
+    topic_analysis.run_topic_analysis = lambda *a, **k: dict(FAKE_RESULT)
+    client = app_module.app.test_client()
+
+    # 메인 모델과 폼의 analysis_model을 **다른 값**으로 둔다. 같게 두면 어느 쪽이
+    # 쓰였는지 구별되지 않아 검사가 통과해도 아무것도 증명하지 못한다.
+    # 글자가 몇 자 없는 쪽 = 스캔 페이지로 잡혀 이미지 호출 대상이 된다.
+    def post(prov, tag):
+        topic_analysis.get_provider = lambda *a, **k: prov
+        return client.post("/analyze-topics", data={
+            "api_key": "test-key", "model": "main-model", "provider": "fake",
+            "analysis_model": "user-picked",    # ← 옛날 탭이 남겨 보낸 값 (무시돼야 한다)
+            "title": f"고정 테스트 {tag}",
+            "lectures": (io.BytesIO(make_pdf([f"필기 {tag}"])), "강의록.pdf"),
+            "exams":    (io.BytesIO(make_pdf([f"1. 뼈 {tag}"])), "기출.pdf"),
+        }, content_type="multipart/form-data")
+
+    pinned = RecordingProvider(image_model="pinned-image-model")
+    r1 = post(pinned, "A")
+    check("고정 제공사 200 응답", r1.status_code == 200, r1.get_json())
+    check("이미지 호출이 실제로 났다", bool(pinned.image_models_used),
+          "0회 — 대상 페이지가 안 잡혔다면 이 검사는 의미가 없다")
+    check("선언한 제공사는 고정 모델을 쓴다",
+          set(pinned.image_models_used) == {"pinned-image-model"},
+          str(set(pinned.image_models_used)))
+
+    # 선언이 없는 제공사(OpenAI·Anthropic·Gemini)는 모델 id가 제공사 안에서만 유효해
+    # 고정할 값이 없다 → 모델을 나누기 전처럼 메인 모델 하나로 돈다.
+    free = RecordingProvider()
+    r2 = post(free, "B")
+    check("미선언 제공사 200 응답", r2.status_code == 200, r2.get_json())
+    check("미선언 제공사는 메인 모델을 그대로 쓴다",
+          set(free.image_models_used) == {"main-model"},
+          str(set(free.image_models_used)))
+    check("폼의 analysis_model은 어느 쪽에서도 안 쓰인다",
+          "user-picked" not in (set(pinned.image_models_used) | set(free.image_models_used)))
+
+
 if __name__ == "__main__":
-    test_topic_confirm()
+    try:
+        test_topic_confirm()
+        test_image_model_pinned()
+    finally:
+        try:
+            pathlib.Path(_tmp.name).unlink()
+        except OSError:
+            pass
     print()
     if _failures:
         print(f"실패 {len(_failures)}건: " + ", ".join(_failures))

@@ -136,6 +136,35 @@ main {
   border-radius: 2px;
 }
 
+/* ── 카드 제목 옆 부연 설명 ──
+   세션·오답 노트·골학 세 군데에 같은 인라인 스타일로 복붙돼 있던 것을 모았다.
+   색은 원래 하드코딩돼 있던 #64748b 그대로 = --text-muted.
+   앞의 '—' 는 글자가 아니라 CSS 로 둔다. 아래에서 설명을 아랫줄로 내리는데,
+   그때 줄머리에 대시가 남으면 목록 기호처럼 읽히기 때문이다. */
+.card-note { font-weight: 400; font-size: 0.8rem; color: var(--text-muted); }
+@media (min-width: 660px) { .card-note::before { content: '— '; } }
+
+/* 한국어는 어절 단위로만 끊는다. 기본값(normal)은 CJK 를 글자 아무 데서나 잘라
+   320px 에서 '그림 속 번호 부위 / 의 이름' 처럼 낱말 한가운데가 갈렸다(실측).
+   overflow-wrap 은 안전장치 — 제목 일부는 JS 가 사용자 입력으로 채우는데
+   (#archive-paper-title 등) 띄어쓰기 없는 긴 글이 오면 keep-all 만으로는
+   줄을 못 바꿔 카드 밖으로 삐져나간다. 그때만 글자 단위로 끊어 준다.
+   ⚠️ break-word 가 아니라 anywhere 여야 한다 — keep-all 과 같이 쓰면
+      break-word 는 무시된다(375px 실측: 286px 칸에 382px 이 그대로 넘쳐 가로
+      스크롤이 생겼다). anywhere 는 두 줄로 접힌다. */
+.card-title, .card-note { word-break: keep-all; overflow-wrap: anywhere; }
+
+/* 좁은 화면에서는 제목과 설명을 한 줄에 붙여 두면 넘칠 때 끊기는 자리가
+   문장 한가운데가 된다 (375px 에서 '분석 없이 바로 생성 / (토큰 절약)').
+   어디서 끊길지에 기대는 대신 아예 줄을 나눈다. */
+@media (max-width: 659px) {
+  .card-title { align-items: flex-start; }
+  /* flex-start 로 바꾸면 파란 막대(18px)가 첫 줄(20px) 맨 위에 붙는다.
+     1px = (20-18)/2 — 두 줄이 돼도 막대가 첫 줄에 정확히 가운데로 남는다. */
+  .card-title::before { margin-top: 1px; }
+  .card-note { display: block; margin-top: 3px; }
+}
+
 /* ── 폼 요소 ── */
 .form-grid {
   display: grid;

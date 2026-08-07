@@ -31,9 +31,11 @@ from providers.usage import (
 from llm import (
     QUESTION_TYPES, StreamingQuestionParser, IMAGE_DESCRIBE, IMAGE_TRANSCRIBE,
     MAX_FILES_PER_SIDE, GEN_SIDE_CHAR_BUDGET, GEN_DOC_MIN_CHARS,
-    read_pdf_pages, describe_images_progressively, assemble_pdf_text,
+    remaining_gen_budget,
+    read_labeled_pdfs, describe_images_progressively, assemble_pdf_text,
+    image_coverage,
     truncate, truncation_report, build_source_info,
-    analyze_concepts_progressively, analyze_exam_format_progressively,
+    analyze_concepts_progressively, analyze_format_progressively,
     compute_type_targets, build_question_generation_prompt, call_llm_stream,
 )
 
@@ -549,10 +551,26 @@ def read_generate_params() -> dict:
         exam_files    = [(f.filename or "기출문제", f.read()) for f in exams]
         lecture_name  = lecture_files[0][0]
 
+    model = request.form.get("model", "").strip() or provider.default_model
+    # 분석 단계 전용 모델 — 그림 읽기(extract)와 개념·형식 분석(concepts·format)을 맡는다.
+    # 문제를 실제로 만드는 것은 위 model이다.
+    #
+    # 이 화면에서도 사용자가 고르지 않는다(주제 분석 탭과 같은 방식). 제공사가
+    # analysis_model을 선언했으면 그 모델로 고정하고, 아니면 위 model을 그대로 쓴다.
+    #   - 고정: 입력 토큰의 90%가 이 단계에서 나가는데(실측 generation 92 — 전체 입력
+    #           119,521토큰 중 103,392), 같은 자료로 두 모델을 재보니 싼 쪽이 오히려
+    #           나았다. 근거 실측은 providers/jbnu_gateway.py의 ANALYSIS_MODEL 주석.
+    #   - 나머지 제공사: 모델 id가 제공사 안에서만 유효해 고정할 값이 없다.
+    #           고를 칸을 남기느니 나누기 전처럼 한 모델로 도는 편이 화면이 단순하다.
+    # 폼의 analysis_model은 **일부러 읽지 않는다** — 열어둔 옛날 탭이나 직접 만든 요청이
+    # 비싼 모델을 그 90%에 밀어넣는 길이 되어선 안 된다.
+    analysis_model = getattr(provider, "analysis_model", "") or model
+
     return {
         "api_key":        api_key,
         "provider":       provider,
-        "model":          request.form.get("model", "").strip() or provider.default_model,
+        "model":          model,
+        "analysis_model": analysis_model,
         "count":          count,
         "weight":         weight,
         "manual_targets": manual_targets,
@@ -591,35 +609,60 @@ def _session_base(p: dict) -> str:
     return f"{base} 외 {extra}개" if extra > 0 else base
 
 
-def _join_side(files, parts, image_mode):
+def _join_side(parts, image_mode, by_question=False,
+               side_budget=GEN_SIDE_CHAR_BUDGET):
     """
     한쪽(강의자료 전체 / 기출 전체)의 파일별 텍스트를 예산 안에서 잘라 하나로 합친다.
 
-    예산을 파일 수로 나눠 배정하므로, 파일이 1개면 예전과 똑같이 GEN_SIDE_CHAR_BUDGET
-    (=MAX_TEXT_CHARS) 전부를 쓴다. 파일이 여럿이면 어디부터 다른 자료인지 LLM이 알 수
-    있게 파일명 구분선을 넣는다.
+    parts: llm.read_labeled_pdfs가 돌려준 목록. 파일명·페이지·이미지 몫이 다 들어 있어
+           파일 목록을 따로 받아 zip하지 않는다 (예전에는 이름만 얻으려고 그랬다).
+    예산을 파일 수로 나눠 배정하므로, 파일이 1개면 그 쪽 예산 전부를 쓴다.
+    파일이 여럿이면 어디부터 다른 자료인지 LLM이 알 수 있게 파일명 구분선을 넣는다.
+    by_question: 기출 쪽이면 True — 상한을 넘길 때 문항 경계로 자른다. 반쪽짜리 문항이
+                 남으면 few-shot 예시로 그대로 실려 생성 문제의 본이 된다.
+    side_budget: 이 쪽에 배정된 글자 예산. 생략하면 한쪽 몫(GEN_SIDE_CHAR_BUDGET).
+                 기출은 강의자료가 남긴 몫을 받으므로 호출부가 remaining_gen_budget()으로
+                 계산해 넘긴다 — 칸막이를 고정하면 한쪽에 예산이 남는데 반대쪽만 잘린다.
     반환: (합친 텍스트, 반영 범위 dict, 잘린 파일 목록)
           범위는 파일들을 합산한 값이고, 잘린 목록은 진행 전 경고에 쓴다.
     """
-    per_doc = max(GEN_DOC_MIN_CHARS, GEN_SIDE_CHAR_BUDGET // len(files))
+    per_doc = max(GEN_DOC_MIN_CHARS, side_budget // len(parts))
     chunks, chars, used, cuts = [], 0, 0, []
-    for (name, _), (pages, jobs) in zip(files, parts):
-        raw = assemble_pdf_text(pages, len(jobs), image_mode)
-        info = build_source_info(raw, per_doc)
+    for p in parts:
+        raw = assemble_pdf_text(p["pages"], len(p["img_jobs"]), image_mode,
+                                p.get("quota"))
+        info = build_source_info(raw, per_doc, by_question)
         chars += info["chars"]
         used  += info["used"]
-        cut = truncation_report(raw, per_doc)   # 상한을 넘겼으면 어느 줄이 버려지는지
+        # 상한을 넘겼으면 어느 줄이 버려지는지
+        cut = truncation_report(raw, per_doc, by_question)
         if cut:
-            cuts.append({"name": name, **cut})
-        text = truncate(raw, per_doc)
-        chunks.append(f"===== {name} =====\n{text}" if len(files) > 1 else text)
+            cuts.append({"name": p["name"], **cut})
+        text = truncate(raw, per_doc, by_question)
+        chunks.append(f"===== {p['name']} =====\n{text}" if len(parts) > 1 else text)
     return "\n\n".join(chunks), {
         "chars": chars,
         "used": used,
-        "limit": per_doc * len(files),
+        "limit": per_doc * len(parts),
         "truncated": used < chars,
         "coverage": round(used / chars * 100) if chars else 100,
     }, cuts
+
+
+def _image_warnings(parts, side: str) -> list:
+    """
+    상한에 걸려 못 읽은 그림·필기 쪽이 있는 파일을 화면용 경고로.
+
+    상한 자체는 '한쪽 전체'에 걸리지만(llm.read_labeled_pdfs), 경고는 파일마다 따로
+    낸다 — 사용자가 확인할 것은 "어느 파일의 몇 쪽이 안 읽혔나"이지 합계가 아니다.
+    없으면 빈 리스트 — 그때는 확인 모달이 안 뜬다.
+    """
+    out = []
+    for p in parts:
+        cov = image_coverage(p["pages"], p["img_jobs"])
+        if cov["skipped"]:
+            out.append({"kind": "image", "side": side, "name": p["name"], **cov})
+    return out
 
 
 def _batch_targets(type_slots, offset, batch_count) -> dict:
@@ -646,6 +689,9 @@ def run_generation_events(p: dict):
     """
     api_key, provider = p["api_key"], p["provider"]
     model, count, weight = p["model"], p["count"], p["weight"]
+    # 분석·이미지 설명용 모델. 지정하지 않았으면 생성 모델과 같다.
+    # (.get 으로 읽는 이유 — 이 키가 없던 시절의 호출부/테스트도 그대로 돌게)
+    analysis_model = p.get("analysis_model") or model
     session_id, owner = p["session_id"], p["owner"]
 
     # 이번 생성에서 쓴 토큰을 단계별로 모은다. 오류·취소로 끝나도 그 시점까지의
@@ -694,27 +740,37 @@ def run_generation_events(p: dict):
                 #  (예: 신체 부위 그림 → 부위 이름 쓰기 문제 등)
                 # 여기까지는 LLM 호출이 없다 (페이지 선정만) — 진행률 총계를 먼저 알아야 하므로
                 # 양쪽 파일을 모두 읽어 대상 페이지를 센 뒤에 Vision 호출을 시작한다.
-                lec_parts  = [read_pdf_pages(data, api_key, image_mode=IMAGE_TRANSCRIBE)
-                              for _, data in p["lecture_files"]]
-                exam_parts = [read_pdf_pages(data, api_key, image_mode=IMAGE_DESCRIBE)
-                              for _, data in p["exam_files"]]
+                #
+                # 이미지 상한은 **한쪽 전체**에 걸린다 (파일당이 아니다).
+                # 읽기·예산 배분은 주제 분석과 같은 함수를 쓴다 — llm.read_labeled_pdfs.
+                lec_parts  = read_labeled_pdfs(p["lecture_files"], "강의자료",
+                                               api_key, IMAGE_TRANSCRIBE)
+                exam_parts = read_labeled_pdfs(p["exam_files"], "기출",
+                                               api_key, IMAGE_DESCRIBE)
 
-                total_imgs = sum(len(jobs) for _, jobs in lec_parts + exam_parts)
+                total_imgs = sum(len(x["img_jobs"]) for x in lec_parts + exam_parts)
                 yield {"type": "progress", "key": "extract", "done": 0, "total": total_imgs}
                 done_imgs = 0
                 for parts, mode in ((lec_parts, IMAGE_TRANSCRIBE),
                                     (exam_parts, IMAGE_DESCRIBE)):
-                    for _, jobs in parts:
-                        for d in describe_images_progressively(jobs, api_key, model,
+                    for x in parts:
+                        for d in describe_images_progressively(x["img_jobs"], api_key,
+                                                               analysis_model,
                                                                provider, usage, mode):
                             yield {"type": "progress", "key": "extract",
                                    "done": done_imgs + d, "total": total_imgs}
-                        done_imgs += len(jobs)
+                        done_imgs += len(x["img_jobs"])
 
                 lecture_text, lecture_src, lecture_cuts = _join_side(
-                    p["lecture_files"], lec_parts, IMAGE_TRANSCRIBE)
+                    lec_parts, IMAGE_TRANSCRIBE)
+                # 기출은 강의자료가 쓰고 남긴 몫까지 받는다 — 예산을 한쪽씩 고정하면
+                # 강의자료에 수만 자가 놀고 있는데 기출만 잘린다(실측: 기출 반영률 63%,
+                # 같은 시점 강의자료는 제 예산의 55%만 사용). 기출이 잘리면 유형통계·
+                # 대표문제·빈출포인트가 전부 잘린 텍스트 위에서 계산되므로 손해가 크다.
+                # 강의자료를 먼저 합친 지금은 실사용량이 확정돼 있어 여기서 계산할 수 있다.
                 exam_text, exam_src, exam_cuts = _join_side(
-                    p["exam_files"], exam_parts, IMAGE_DESCRIBE)
+                    exam_parts, IMAGE_DESCRIBE, by_question=True,
+                    side_budget=remaining_gen_budget(lecture_text))
                 source_info = {
                     "lecture": lecture_src,   # 원문 반영 범위 (파일 여러 개면 합산)
                     "exam":    exam_src,
@@ -723,8 +779,12 @@ def run_generation_events(p: dict):
 
                 # 상한을 넘겨 일부가 버려지는 파일이 있으면 진행 전에 물어본다.
                 # 추출 결과를 잠시 보관하고 토큰만 내려보낸다 — 확인 후 재추출하면 Vision 재과금.
-                warnings = ([{"side": "강의자료", **c} for c in lecture_cuts]
-                            + [{"side": "기출문제", **c} for c in exam_cuts])
+                # 글자수 초과와 그림 쪽수 초과를 한 목록에 담는다 (kind로 구분) —
+                # 사용자에게는 "이대로 진행할까"라는 같은 질문이라 모달을 두 번 띄우면 안 된다.
+                warnings = ([{"kind": "text", "side": "강의자료", **c} for c in lecture_cuts]
+                            + [{"kind": "text", "side": "기출문제", **c} for c in exam_cuts]
+                            + _image_warnings(lec_parts, "강의자료")
+                            + _image_warnings(exam_parts, "기출문제"))
                 if warnings:
                     token = extract_cache.put({
                         "lecture_text": lecture_text, "exam_text": exam_text,
@@ -748,16 +808,20 @@ def run_generation_events(p: dict):
             yield {"type": "stage", "key": "concepts", "status": "active"}
             yield {"type": "progress", "key": "concepts", "done": 0, "total": 2}
             gen1 = analyze_concepts_progressively(lecture_text, exam_text,
-                                                  api_key, model, provider, usage)
+                                                  api_key, analysis_model, provider,
+                                                  usage)
             part1 = yield from _forward_progress(gen1, "concepts", 2)
             yield {"type": "stage", "key": "concepts", "status": "done"}
 
             usage.set_stage("format")
             yield {"type": "stage", "key": "format", "status": "active"}
-            yield {"type": "progress", "key": "format", "done": 0, "total": 2}
-            gen2 = analyze_exam_format_progressively(exam_text, part1["type_stats"],
-                                                     api_key, model, provider, usage)
-            part2 = yield from _forward_progress(gen2, "format", 2)
+            # 예전에는 2회(예시 추출 → 형식 분석)였다. 예시 추출이 1단계로 합쳐지면서
+            # 여기는 형식 분석 1회만 남았다 — 기출 전문을 다시 보내지 않는다.
+            yield {"type": "progress", "key": "format", "done": 0, "total": 1}
+            gen2 = analyze_format_progressively(part1["sample_questions"],
+                                                api_key, analysis_model, provider,
+                                                usage)
+            part2 = yield from _forward_progress(gen2, "format", 1)
             yield {"type": "stage", "key": "format", "status": "done"}
 
             analysis = {**part1, **part2, "source_info": source_info}
@@ -808,7 +872,8 @@ def run_generation_events(p: dict):
         remaining, offset = count, 0
         while remaining > 0:
             batch_count = min(GEN_BATCH_SIZE, remaining)
-            batch_prompt = build_question_generation_prompt(
+            # (고정 접두부, 이번 배치 지시) — 접두부는 배치마다 동일해서 캐시가 걸린다
+            batch_head, batch_tail = build_question_generation_prompt(
                 analysis.get("concepts", {}),
                 analysis.get("sample_questions", ""),
                 analysis.get("format_analysis", ""),
@@ -823,9 +888,9 @@ def run_generation_events(p: dict):
             # 조각을 받는 즉시 파싱해, 완성된 문제부터 화면에 내보낸다
             parser = StreamingQuestionParser()
             batch_raw = []
-            for piece in call_llm_stream(batch_prompt, api_key, model,
+            for piece in call_llm_stream(batch_tail, api_key, model,
                                          provider=provider, max_tokens=GEN_MAX_TOKENS,
-                                         usage=usage):
+                                         usage=usage, cache_prefix=batch_head):
                 batch_raw.append(piece)
                 for q in parser.feed(piece):
                     questions.append(q)
@@ -892,6 +957,13 @@ def run_generation_events(p: dict):
                "credits": credits_result(credits_before,
                                           credits_snapshot(provider, api_key))}
     except ProviderError as e:
+        yield {"type": "error", "status": 400, "message": str(e),
+               "usage": usage.summary(),
+               "credits": credits_result(credits_before,
+                                          credits_snapshot(provider, api_key))}
+    except ValueError as e:
+        # 손상·암호 걸린 PDF 등 사용자가 고칠 수 있는 입력 문제 (llm.read_labeled_pdfs가
+        # 어느 파일인지까지 넣어 던진다). 500 '서버 오류'로 뭉개면 고칠 방법이 안 보인다.
         yield {"type": "error", "status": 400, "message": str(e),
                "usage": usage.summary(),
                "credits": credits_result(credits_before,

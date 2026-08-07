@@ -20,11 +20,23 @@ from abc import ABC, abstractmethod
 # ① 그림이 '무엇인지' 설명하게 한다. 기출용 —
 #    그림 문제(부위 이름 쓰기 등)를 살리려면 그림의 의미가 텍스트로 남아야 하므로
 #    모델의 해석이 필요하다.
+#
+#    손글씨를 '표시해서' 남기고 버리지는 않는 이유: 기출 스캔본에는 학생이 덧쓴 정답
+#    동그라미·여백 메모가 흔한데, 인쇄된 문제와 섞이면 그 표시가 시험지에 원래 있던
+#    내용으로 굳는다(특히 대표문제의 '정답' — build_exam_analysis_prompt 참고).
+#    그렇다고 통째로 버리면 손으로 정리한 기출 복원본이 통째로 사라진다.
+#    (필기: …)로 표시해 두면 뒷단계가 원문과 갈라서 다룰 수 있다.
+#    (판독불가) 규칙도 같은 이유다 — 흐린 손글씨를 그럴듯하게 지어내면 티가 안 난다.
 IMAGE_DESC_PROMPT = (
     "이 이미지는 의대 강의자료 또는 기출문제의 한 페이지/그림입니다. "
     "무엇을 나타내는 이미지인지 한국어로 간결히 설명하세요. "
     "의학적으로 중요한 내용(그래프·표·해부도·검사 소견·수치 등)이 있으면 핵심을 요약하고, "
     "이미지 안에 글자가 보이면 핵심 텍스트도 함께 옮겨 적으세요. "
+    "이때 인쇄된 글자와 사람이 손으로 덧쓴 것(필기 메모·동그라미·체크·밑줄·화살표)을 "
+    "반드시 구분하세요. 인쇄된 글자는 그대로 옮기고, 손으로 덧쓴 것은 "
+    "'(필기: 내용)' 형태로 표시해 옮기세요. 손으로 친 동그라미·체크·별표를 "
+    "인쇄된 정답 표기인 것처럼 옮겨 적지 마세요. "
+    "흐리거나 겹쳐서 읽을 수 없는 글자는 추측하지 말고 그 자리를 '(판독불가)'로 두세요. "
     "설명 외의 사족은 쓰지 마세요."
 )
 
@@ -72,18 +84,52 @@ class Provider(ABC):
     # 표준 API가 아니라 제공사가 따로 만든 기능이라 대부분 False다.
     supports_credits = False
 
+    # 이미지 호출에 강제로 쓸 모델. 빈 값이면 호출부가 정한 모델을 그대로 쓴다.
+    #   그림을 읽는 일은 '읽고 옮기기'라 본작업 모델과 체급을 맞출 이유가 없는데,
+    #   매번 고르게 두면 팀원이 비싼 모델을 그대로 이미지 수십 장에 붙인다.
+    #   여러 제공사 모델을 한 키로 부르는 게이트웨이에서만 의미가 있어 대부분 빈 값이다.
+    #   ⚠️ 이 값을 **쓸지 말지는 기능이 정한다.** 지금 참조하는 곳은 기출 주제 분석뿐이다 —
+    #      거기서는 이미지 호출만 이 모델로 가고 주제↔문항 대조는 사용자가 고른 모델이 한다.
+    #      문제 생성기는 이미지와 텍스트 분석을 한 덩어리로 묶어 아래 analysis_model을 본다.
+    image_model = ""
+
+    # 분석 단계 **전체**에 강제로 쓸 모델. 빈 값이면 생성 모델을 그대로 쓴다.
+    #   image_model과 값이 같아도 뜻이 다르다 — 이쪽은 그림 읽기뿐 아니라 개념·형식 분석
+    #   (analyze_concepts_progressively / analyze_format_progressively)까지 포함한다.
+    #   그래서 두 상수를 하나로 합치면 안 된다. 나중에 "그림은 싼 모델, 텍스트 분석은
+    #   중간 모델"로 가르고 싶어질 때 갈라둔 것이 필요하다.
+    #
+    #   여기를 고정하는 이유: 이 단계에서 입력 토큰의 90%가 나간다(실측 generation 92 —
+    #   전체 입력 119,521토큰 중 분석 단계가 103,392). 매번 고르게 두면 생성 모델로 고른
+    #   비싼 모델이 그대로 이 90%에 붙는다.
+    #   여러 제공사 모델을 한 키로 부르는 게이트웨이에서만 의미가 있어 대부분 빈 값이다.
+    analysis_model = ""
+
+    # 이미지 호출이 실패했을 때 한 번 더 시도할 모델. 빈 값이면 폴백 없이 실패한다.
+    #   여기(프로바이더)에 두는 이유: 모델 id는 프로바이더 안에서만 의미가 있다.
+    #   게이트웨이용 id를 llm.py에 상수로 박아두면, Anthropic 키를 쓰는 사용자는
+    #   본 모델도 폴백도 없는 id가 되어 그림이 통째로 사라진다.
+    #   여러 제공사의 모델을 한 키로 부르는 게이트웨이에서만 의미가 있어서 대부분 빈 값이다.
+    image_fallback_model = ""
+
     # usage 인자 — providers.usage.UsageCollector를 넘기면 구현체가 호출마다
     # 토큰 사용량을 기록한다. None이면 아무것도 하지 않으므로, 사용량이 필요 없는
     # 호출부는 기존처럼 그냥 부르면 된다.
 
+    # cache_prefix 인자 — prompt 앞에 붙는 '여러 요청에서 똑같이 반복되는 부분'.
+    #   프롬프트 캐싱을 지원하는 제공사(Anthropic)는 여기에 캐시 경계를 잡아
+    #   두 번째 요청부터 접두부를 훨씬 싸게 처리한다.
+    #   지원하지 않는 제공사는 그냥 앞에 이어붙이면 되므로 결과는 어디서나 같다.
+    #   → 호출부는 제공사를 몰라도 "이 부분이 고정이다"만 알려주면 된다.
+
     @abstractmethod
     def complete(self, prompt: str, api_key: str, model: str,
-                 max_tokens: int = None, usage=None) -> str:
+                 max_tokens: int = None, usage=None, cache_prefix: str = None) -> str:
         """프롬프트 하나를 보내고 텍스트 응답을 받는다.
         max_tokens=None 이면 프로바이더 기본값을 쓴다."""
 
     def complete_stream(self, prompt: str, api_key: str, model: str,
-                        max_tokens: int = None, usage=None):
+                        max_tokens: int = None, usage=None, cache_prefix: str = None):
         """
         complete()와 같지만 응답을 조각(문자열)으로 나눠 yield 한다.
         조각 경계는 의미 단위가 아니므로, 호출부가 이어붙여 해석해야 한다.
@@ -91,16 +137,23 @@ class Provider(ABC):
         기본 구현은 complete()를 그대로 한 조각으로 내보낸다 —
         스트리밍을 지원하지 않는 프로바이더도 같은 인터페이스로 쓸 수 있게.
         """
-        yield self.complete(prompt, api_key, model, max_tokens, usage=usage)
+        yield self.complete(prompt, api_key, model, max_tokens, usage=usage,
+                            cache_prefix=cache_prefix)
 
     @abstractmethod
     def describe_image(self, png_bytes: bytes, api_key: str, model: str,
-                       usage=None, prompt: str = None) -> str:
+                       usage=None, prompt: str = None,
+                       max_tokens: int = None) -> str:
         """
         이미지를 vision 모델에 보내 한국어 텍스트를 받는다.
 
         prompt: 생략하면 IMAGE_DESC_PROMPT(그림이 무엇인지 설명).
                 IMAGE_TEXT_PROMPT를 주면 그림 속 글자만 그대로 옮긴다.
+        max_tokens: 생략하면 프로바이더 기본값. 하는 일에 따라 필요량이 크게 달라서
+                호출부가 지정한다 — 그림 설명은 짧지만, 글자 전사는 빽빽한 슬라이드
+                한 장을 통째로 옮겨야 한다.
+                ⚠️ 사고(thinking)를 하는 모델은 그 토큰도 이 한도에 포함된다.
+                   빠듯하게 잡으면 사고가 예산을 먹고 본문이 단어 중간에서 잘린다.
         """
 
     @abstractmethod
