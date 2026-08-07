@@ -467,6 +467,59 @@ def test_image_budget():
     check("모드가 없으면 이미지 처리를 하지 않는다", prov0.image_calls == 0,
           str(prov0.image_calls))
 
+    # 예산이 앞 파일에서 동나도, 뒤 파일의 못 읽은 쪽은 경고에 남아야 한다.
+    # (예전에는 몫이 0이면 image_mode를 None으로 바꿔 후보 판정 자체를 건너뛰었다 →
+    #  화면에서 '그림이 없는 파일'과 구분이 안 되고 경고가 조용히 사라졌다)
+    docs = llm.extract_labeled_docs(files, "기출", "key", "budget-model",
+                                    image_mode=llm.IMAGE_DESCRIBE,
+                                    provider=CountingProvider(), img_budget=4)
+    last = docs[-1]["img"]
+    check("예산이 동난 뒤 파일도 후보를 센다", last["candidates"] == 2, str(last))
+    check("그 쪽들이 '못 읽음'으로 잡힌다", last["skipped"] == 2, str(last))
+    check("실제 처리 합계는 예산과 같다",
+          sum(d["img"]["processed"] for d in docs) == 4,
+          str([d["img"]["processed"] for d in docs]))
+
+
+def test_gen_image_budget():
+    """
+    문제 생성도 이미지 상한이 '한쪽 전체'에 걸리는지. (주제 분석과 같은 방식)
+
+    예전에는 파일당이라 파일을 7개 올리면 상한이 그대로 7배가 됐다. 비용도 비용이지만
+    더 급한 건 메모리다 — 렌더한 PNG를 설명이 끝날 때까지 전부 들고 있어서, RAM 1GB인
+    배포(deploy/gcp)에서는 요금보다 OOM이 먼저 온다.
+    """
+    print("[③-2 이미지 예산(문제 생성) — 파일당이 아니라 전체]")
+    from features.question_gen import _read_side
+
+    pdf = build_pdf()                                      # 파일당 설명 대상 2쪽
+    files = [(f"기출{i}.pdf", pdf) for i in range(1, 6)]    # 후보 총 10쪽
+    tight = dict(llm.IMAGE_DESCRIBE, max_pages=2)          # 후보보다 작게 걸어 갈라본다
+
+    parts = _read_side(files, "key", tight)
+    picked = sum(len(jobs) for _, jobs, _ in parts)
+    check("파일당이 아니라 전체 상한", picked == 2, str(picked))
+    check("예전 동작(파일당)이었다면 10쪽", picked < 10, str(picked))
+
+    check("기본값도 전체 상한 안",
+          sum(len(j) for _, j, _ in _read_side(files, "key", llm.IMAGE_DESCRIBE))
+          <= llm.IMAGE_DESCRIBE["max_pages"])
+
+    # 예산이 동나도 못 읽은 쪽은 계속 센다 (확인 모달의 경고가 조용히 사라지지 않게)
+    cov = llm.image_coverage(parts[-1][0], parts[-1][1])
+    check("예산이 동난 뒤 파일도 후보를 센다", cov["candidates"] == 2, str(cov))
+    check("그 쪽들이 '못 읽음'으로 잡힌다", cov["skipped"] == 2, str(cov))
+
+    # 앞 파일이 안 쓴 몫은 뒤로 넘어간다 — 그림이 한 파일에 몰려 있어도 낭비가 없다.
+    # 파일당 고정 상한이었다면 마지막 파일은 제 몫(2÷5→1)만 받고 1쪽을 버렸다.
+    mixed = [("텍스트.pdf", _text_pdf(200))] * 4 + [("스캔.pdf", pdf)]
+    parts_m = _read_side(mixed, "key", tight)
+    check("앞 파일이 안 쓴 몫이 뒤로 넘어간다", len(parts_m[-1][1]) == 2,
+          str([len(j) for _, j, _ in parts_m]))
+
+    check("모드가 없으면 후보도 0",
+          sum(len(j) for _, j, _ in _read_side(files, "key", None)) == 0)
+
 
 # ──────────────────────────────────────────────
 # ④ 기출 분석 1회 병합
@@ -582,10 +635,14 @@ def test_char_budget_handoff():
           llm.TOPIC_TOTAL_CHAR_BUDGET == llm.TOPIC_SIDE_CHAR_BUDGET * 2,
           f"{llm.TOPIC_TOTAL_CHAR_BUDGET} vs {llm.TOPIC_SIDE_CHAR_BUDGET}")
 
-    lecture_docs = [{"text": "가" * 50000}]        # 강의록이 상한의 42%만 쓴 상황
+    # 실측(topic_analyses id=9·10·13·14·18·19)에서 강의록은 상한의 21~46%만 썼다.
+    # 예산 상수를 바꿔도 그 상황이 유지되도록 비율로 잡는다 — 고정값으로 두면 상한을
+    # 올린 순간 '강의록이 예산을 남긴다'는 전제 자체가 깨져서 아래 갈래가 안 갈린다.
+    lecture_used = int(llm.TOPIC_SIDE_CHAR_BUDGET * 0.42)
+    lecture_docs = [{"text": "가" * lecture_used}]
     check("남은 몫 = 총예산 − 강의록 실사용",
           llm.remaining_char_budget(lecture_docs)
-          == llm.TOPIC_TOTAL_CHAR_BUDGET - 50000,
+          == llm.TOPIC_TOTAL_CHAR_BUDGET - lecture_used,
           str(llm.remaining_char_budget(lecture_docs)))
     check("강의록이 상한을 다 써도 한쪽 몫은 보장",
           llm.remaining_char_budget([{"text": "가" * llm.TOPIC_SIDE_CHAR_BUDGET}])
@@ -595,7 +652,8 @@ def test_char_budget_handoff():
 
     # 실제 추출에 걸어본다. 한쪽 몫으로는 넘치고 남은 몫으로는 들어가는 크기여야
     # 두 갈래가 갈린다 — 크기가 어긋나면 조용히 통과하지 않도록 여기서 먼저 확인한다.
-    exam = [FakeUpload("기출.pdf", _text_pdf(150000))]
+    # 이 크기도 예산에 비례해 잡는다 (한쪽 몫의 1.25배 → 남은 몫 1.58배 안에 들어온다).
+    exam = [FakeUpload("기출.pdf", _text_pdf(int(llm.TOPIC_SIDE_CHAR_BUDGET * 1.25)))]
     prov = CountingProvider()
 
     old = llm.extract_labeled_docs(exam, "기출", "key", "m", provider=prov)
@@ -761,6 +819,7 @@ if __name__ == "__main__":
         test_image_fallback()
         test_image_coverage()
         test_image_budget()
+        test_gen_image_budget()
         test_exam_merge()
         test_prompt_split()
         test_char_budget_handoff()

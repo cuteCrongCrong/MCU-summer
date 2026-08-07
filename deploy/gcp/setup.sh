@@ -62,6 +62,14 @@ SWAP_SIZE=2G
 # 페이지를 150DPI로 렌더하므로(A4 1장 ≈ 6.5MB), 기본값 100MB/16스레드로 두면 OOM이 난다.
 DEF_MAX_UPLOAD_MB=30
 DEF_SERVER_THREADS=4
+# 이미지 상한도 여기서 낮춘다. 렌더한 PNG는 설명이 끝날 때까지 전부 메모리에 남으므로
+# '상한 합계 × PNG 한 장'이 요청 하나의 상주 메모리다 (PNG는 슬라이드 0.3~0.6MB,
+# 스캔 2~3MB). 코드 기본값(100/60)은 RAM이 넉넉한 환경 기준이라 여기서는 절반으로 잡는다.
+DEF_IMAGE_CAP_LECTURE=50
+DEF_IMAGE_CAP_EXAM=30
+# 워커는 코드 기본값(8)보다 낮춰 둔다 — 동시에 뜨는 pixmap이 그만큼 늘고,
+# e2-micro는 vCPU도 공유(버스트)라 늘려도 이득이 적다.
+DEF_IMAGE_WORKERS=4
 
 # 문제 생성이 실제로 되는지는 이 게이트웨이에 닿느냐에 달려 있다. (llm.py의 GATEWAY_BASE_URL)
 GATEWAY_HOST=factchat-cloud.mindlogic.ai
@@ -173,11 +181,19 @@ PORT=$APP_PORT
 TRUSTED_PROXY=127.0.0.1
 
 # ── e2-micro(RAM 1GB) 대응 ──
-# llm.py는 업로드된 PDF 전체를 메모리에 올리고(read()), 페이지를 150DPI로
-# 최대 15장 렌더한다(A4 1장 raw ≈ 6.5MB). 기본값(100MB / 16스레드)이면 OOM이 난다.
-# e2-small(2GB) 이상으로 올렸다면 이 두 값을 키워도 된다.
+# llm.py는 업로드된 PDF 전체를 메모리에 올리고(read()), 이미지 페이지를 렌더해
+# 설명이 끝날 때까지 PNG를 들고 있다(A4 1장 raw ≈ 6.5MB, PNG는 0.3~3MB).
+# 기본값(100MB / 16스레드 / 이미지 100·60장)이면 OOM이 난다.
+# e2-small(2GB) 이상으로 올렸다면 아래 값들을 키워도 된다.
 MAX_UPLOAD_MB=$DEF_MAX_UPLOAD_MB
 SERVER_THREADS=$DEF_SERVER_THREADS
+
+# Vision으로 읽을 이미지 페이지 상한 — 한쪽(강의록 전체 / 기출 전체) 기준. 파일당이 아니다.
+# 여기가 메모리에 가장 직접적으로 걸린다. 그림이 많은 강의록·스캔 기출을 통째로 읽고
+# 싶으면 서버를 키운 뒤 이 값을 올릴 것 (올린 뒤 sudo systemctl restart mcu).
+IMAGE_CAP_LECTURE=$DEF_IMAGE_CAP_LECTURE
+IMAGE_CAP_EXAM=$DEF_IMAGE_CAP_EXAM
+IMAGE_WORKERS=$DEF_IMAGE_WORKERS
 
 # Google 로그인 — 값을 채우면 로그인 버튼이 나타난다. 비워두면 게스트 전용으로 동작.
 GOOGLE_CLIENT_ID=
@@ -252,6 +268,7 @@ cat <<EOF
   DB 파일  :  $DATA_DIR/sessions.db
   설정 파일:  $ENV_FILE
   업로드 상한/스레드: ${DEF_MAX_UPLOAD_MB}MB / ${DEF_SERVER_THREADS} (e2-micro 기준)
+  이미지 상한: 강의록 ${DEF_IMAGE_CAP_LECTURE}장 / 기출 ${DEF_IMAGE_CAP_EXAM}장 (한쪽 전체)
 ────────────────────────────────────────────────────────
 
 다음 할 일:

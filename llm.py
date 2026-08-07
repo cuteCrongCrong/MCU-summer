@@ -12,6 +12,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import fitz  # pymupdf
 
+import config
 from db import get_cached_image_desc, put_cached_image_desc
 from providers.base import (ProviderAuthError, ProviderError,
                             IMAGE_DESC_PROMPT, IMAGE_TEXT_PROMPT)
@@ -62,9 +63,21 @@ GEN_CALL_CHAR_CEILING = 1500000
 # '문서당 몫 × 파일수 ≤ 예산'이 허용 개수 전 구간에서 성립하게 한다. (주제 분석과 같은 방식)
 GEN_DOC_MIN_CHARS = GEN_SIDE_CHAR_BUDGET // MAX_FILES_PER_SIDE
 
-# 이미지/스캔 페이지 → Vision LLM으로 텍스트를 남긴다 (토큰 비용 상한용)
-IMAGE_DESC_MAX = 15          # 기출: 설명할 이미지 페이지 최대 개수
-LECTURE_IMAGE_MAX = 40       # 강의록: 손글씨·판서 페이지가 많아 기출보다 넉넉히 잡는다
+# 이미지/스캔 페이지 → Vision LLM으로 텍스트를 남긴다.
+# 상한은 **한쪽(강의록 전체 / 기출 전체) 기준**이다 — 파일당이 아니다. 양쪽 탭 공통.
+#
+# 값을 정하는 건 컨텍스트가 아니다. 쓰는 모델이 모두 1M 이상이라 여기서 컨텍스트는
+# 제약이 아니고, 실제로 걸리는 건 세 가지다:
+#   ① 메모리 — 렌더한 PNG를 설명이 끝날 때까지 들고 있어서 '상한 × PNG'가 상주 메모리가
+#      된다. 그래서 값을 config에서 읽는다 (RAM 1GB인 e2-micro 배포는 .env로 낮춘다).
+#   ② 글자 예산 — 전사는 쪽당 ~800자(아래 실측)라 100쪽이면 8만 자다. 한쪽 몫
+#      (TOPIC_SIDE_CHAR_BUDGET / GEN_SIDE_CHAR_BUDGET)이 이걸 받아줄 수 있어야 한다.
+#      아니면 돈 주고 뽑은 설명을 truncate가 도로 버린다 — 그것도 가운데부터.
+#   ③ 시간 — 호출 1건이 수 초. 워커 수(IMAGE_WORKERS)와 함께 봐야 체감이 유지된다.
+# 예전 값(기출 15 / 강의록 40)은 컨텍스트가 좁던 시절 기준이라, 페이지 전체가 래스터인
+# 스캔 기출(150쪽을 넘는 경우가 흔하다)에서 앞 15쪽만 읽고 나머지를 빈 페이지로 넘겼다.
+IMAGE_DESC_MAX = config.IMAGE_CAP_EXAM        # 기출: 설명할 이미지 페이지 최대 개수
+LECTURE_IMAGE_MAX = config.IMAGE_CAP_LECTURE  # 강의록: 손글씨·판서가 많아 기출보다 넉넉히
 SPARSE_TEXT_THRESHOLD = 20   # 페이지 텍스트가 이보다 짧으면 이미지 페이지로 간주
 
 # 페이지 렌더 해상도 — 모드마다 다르다.
@@ -284,6 +297,33 @@ def image_coverage(pages, img_jobs) -> dict:
     }
 
 
+def side_image_budget(image_mode: dict, img_budget: int = None) -> int:
+    """
+    한쪽(강의록 전체 / 기출 전체)에 배정할 이미지 처리 예산.
+    생략하면 모드의 max_pages를 **이쪽 전체**에 쓴다 — 파일당이 아니다.
+    """
+    if not image_mode:
+        return 0
+    return image_mode.get("max_pages", 0) if img_budget is None else img_budget
+
+
+def next_image_quota(remaining: int, files_left: int) -> int:
+    """
+    남은 이미지 예산에서 이번 파일에 줄 몫. '남은 예산 ÷ 남은 파일 수'.
+
+    앞 파일이 제 몫을 다 안 쓰면 남은 만큼이 뒤 파일로 넘어가므로, 그림이 한 파일에
+    몰려 있어도 낭비가 없다 — 파일당 고정 상한이 손해였던 게 정확히 이 지점이다
+    (기출 6개가 텍스트 PDF이고 1개가 스캔 200쪽인 경우가 흔하다).
+    예산이 남아 있는 한 최소 1은 준다.
+
+    0은 예산을 다 쓴 뒤에만 나온다. **그때도 read_pdf_pages에는 image_mode를 그대로
+    넘겨야 한다.** mode를 None으로 바꾸면 후보 판정 자체를 건너뛰어서, 못 읽은 쪽이
+    img_skipped로 남지 않는다 → 사용자 화면에서 '그림이 없는 파일'과 구분이 안 되고
+    경고가 조용히 사라진다. (read_pdf_pages의 상한 검사 주석과 같은 이유)
+    """
+    return max(1, remaining // files_left) if remaining > 0 else 0
+
+
 def _describe_one(prov, png_bytes: bytes, api_key: str, model: str, fallback: str,
                   usage, prompt: str, max_output: int):
     """
@@ -294,7 +334,7 @@ def _describe_one(prov, png_bytes: bytes, api_key: str, model: str, fallback: st
     — 한 번 더 물어보는 값이 헛호출 비용보다 크다.
 
     단 **키 오류는 폴백하지 않는다.** 키가 틀렸으면 어느 모델로 보내도 똑같이 401이고,
-    워커 4개가 병렬로 도는 탓에 상한(기출 15·강의록 40장)만큼의 헛호출이 두 배가 된다.
+    워커가 병렬로 도는 탓에 상한(IMAGE_CAP_*)만큼의 헛호출이 그대로 두 배가 된다.
     나머지(모델 없음·한도 초과·5xx·연결 실패)는 다른 모델이면 살 수 있는 것들이다.
     """
     try:
@@ -354,7 +394,7 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
     if not pending:
         return
 
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    with ThreadPoolExecutor(max_workers=config.IMAGE_WORKERS) as ex:
         futs = {ex.submit(_describe_one, prov, e["png"], api_key, model, fallback,
                           usage, prompt, max_output): e
                 for e in pending}
@@ -1428,7 +1468,15 @@ def run_analysis(lecture_text: str, exam_text: str, api_key: str, model: str,
 # 거기는 강의자료와 기출이 서로 다른 호출로 나가지만, 주제 분석은 대조표를 만들어야 해서
 # **둘을 한 프롬프트에 함께** 넣는다(build_topic_analysis_prompt). 그래서 여기서는
 # 총예산이 곧 프롬프트 하나의 크기이고, 한쪽 몫을 올리면 그 두 배가 한 번에 나간다.
-TOPIC_SIDE_CHAR_BUDGET = 120000
+#
+# 값의 근거 — 예전 값(12만)은 컨텍스트가 좁던 시절 기준이라 지금은 지나치게 보수적이다.
+#   총 60만 자 × 0.52토큰/자(실측 환산, GEN_CALL_CHAR_CEILING 주석 참고) ≈ 31만 토큰.
+#   출력 몫(TOPIC_MAX_TOKENS 16k)과 지시문을 더해도 1M 컨텍스트의 1/3이다.
+#   올린 직접적인 이유는 이미지 상한이다: 강의록 전사가 쪽당 ~800자라 상한 100쪽이면
+#   그것만으로 8만 자다. 12만 자 예산에 텍스트 레이어까지 얹으면 넘치고, truncate는
+#   가운데를 버리므로 **돈 주고 뽑은 전사가 그대로 버려진다**. 예산이 상한을 받아줘야
+#   이미지 상한 인상이 실제 효과를 낸다.
+TOPIC_SIDE_CHAR_BUDGET = 300000
 # 강의록 + 기출을 합친 총예산. 한쪽 몫의 2배라, 양쪽이 모두 상한을 채우는 최악의 경우엔
 # 프롬프트 크기가 예전과 같다. 칸막이를 12만씩 고정하지 않는 이유 —
 # 실측(topic_analyses id=9·10·13·14·18·19)에서 강의록은 상한의 21~46%만 쓰는데
@@ -1478,9 +1526,9 @@ def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
                   기출은 강의록이 남긴 몫을 받으므로 호출부가 remaining_char_budget()으로
                   계산해 넘긴다. 생략하면 한쪽 몫(TOPIC_SIDE_CHAR_BUDGET)이다.
     img_budget:   이미지 처리 호출 수 상한 — **파일당이 아니라 이쪽 전체 기준**.
-                  생략하면 모드의 max_pages(기출 15 / 강의록 40)를 이쪽 전체에 쓴다.
-                  예전에는 이 상한이 PDF 1개당이라, 기출 7개를 올리면 15×7=105번까지
-                  Vision을 불렀다.
+                  생략하면 모드의 max_pages(IMAGE_CAP_EXAM / IMAGE_CAP_LECTURE)를
+                  이쪽 전체에 쓴다. 예전에는 이 상한이 PDF 1개당이라, 기출 7개를 올리면
+                  상한의 7배까지 Vision을 불렀다.
     by_question:  기출 쪽이면 True — 상한을 넘길 때 문항 번호 경계로 자른다
                   (반쪽짜리 문항을 남기지 않는다. _cut_points 참고)
     반환: [{label, name, text, pages, source}]  (text에는 [페이지 N] 마커가 들어 있다)
@@ -1494,28 +1542,23 @@ def extract_labeled_docs(files, label_prefix: str, api_key: str, model: str,
 
     # 이미지 예산은 '남은 예산 ÷ 남은 파일 수'로 배정한다. 앞 파일이 몫을 다 안 쓰면
     # 남은 만큼이 뒤 파일로 넘어가므로, 그림이 한 파일에 몰려 있어도 낭비가 없다.
-    if not image_mode:
-        remaining_imgs = 0
-    elif img_budget is None:
-        remaining_imgs = image_mode.get("max_pages", 0)
-    else:
-        remaining_imgs = img_budget
+    remaining_imgs = side_image_budget(image_mode, img_budget)
 
     docs = []
     for i, f in enumerate(files, start=1):
         name = f.filename or f"{label_prefix}{i}"
-        files_left = len(files) - i + 1
-        quota = max(1, remaining_imgs // files_left) if remaining_imgs > 0 else 0
+        quota = next_image_quota(remaining_imgs, len(files) - i + 1)
         img_jobs = []
         try:
             # extract_text_from_pdf를 쓰지 않고 풀어 쓴 이유 — 이 파일이 이미지 처리를
             # 실제로 몇 개 썼는지 알아야 남은 예산을 다음 파일로 넘길 수 있다.
-            mode = image_mode if quota > 0 else None
-            pages, img_jobs = read_pdf_pages(f, api_key, mode, max_images=quota)
+            # quota가 0이어도 image_mode는 그대로 넘긴다 (next_image_quota 주석 참고 —
+            # None으로 바꾸면 예산이 앞 파일에서 동났을 때 뒤 파일의 경고가 사라진다).
+            pages, img_jobs = read_pdf_pages(f, api_key, image_mode, max_images=quota)
             for _ in describe_images_progressively(img_jobs, api_key, model,
-                                                   provider, usage, mode):
+                                                   provider, usage, image_mode):
                 pass
-            raw = assemble_pdf_text(pages, len(img_jobs), mode, quota)
+            raw = assemble_pdf_text(pages, len(img_jobs), image_mode, quota)
         except ProviderError:
             raise                      # 키·한도 오류는 라우트가 상태코드로 구분하므로 그대로
         except Exception as e:

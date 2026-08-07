@@ -33,7 +33,7 @@ from llm import (
     MAX_FILES_PER_SIDE, GEN_SIDE_CHAR_BUDGET, GEN_DOC_MIN_CHARS,
     remaining_gen_budget,
     read_pdf_pages, describe_images_progressively, assemble_pdf_text,
-    image_coverage,
+    image_coverage, side_image_budget, next_image_quota,
     truncate, truncation_report, build_source_info,
     analyze_concepts_progressively, analyze_format_progressively,
     compute_type_targets, build_question_generation_prompt, call_llm_stream,
@@ -590,6 +590,34 @@ def _session_base(p: dict) -> str:
     return f"{base} 외 {extra}개" if extra > 0 else base
 
 
+def _read_side(files, api_key, image_mode):
+    """
+    한쪽(강의자료 전체 / 기출 전체)의 PDF를 읽고 이미지 예산을 파일들에 나눠 배정한다.
+    (LLM 호출 없음 — 대상 선정과 렌더까지. 설명은 호출부가 진행률을 내면서 돌린다)
+
+    상한은 **한쪽 전체** 기준이다. 예전에는 파일당이라 두 가지가 나빴다:
+      ① 총량이 파일 수만큼 곱해졌다 (7개 올리면 강의자료 280장·기출 105장).
+         렌더한 PNG는 설명이 끝날 때까지 전부 메모리에 남으므로 RAM 1GB 배포에서
+         이건 비용 문제가 아니라 OOM 사거리였다.
+      ② 분배가 나빴다. 기출 6개가 텍스트 PDF이고 1개가 스캔 200쪽이면, 파일당 상한은
+         그 한 파일에 제 몫만 주고 나머지 6개 몫은 그냥 버렸다.
+    지금은 앞 파일이 안 쓴 몫이 뒤 파일로 넘어간다(next_image_quota) — 흔한 경우에
+    더 많이 읽고, 최악의 경우는 상한 하나로 예측된다. 주제 분석과 같은 방식이다.
+
+    반환: [(pages, img_jobs, quota)] — files와 같은 순서·길이.
+          quota는 assemble_pdf_text가 '몇 개까지만 처리됨'을 적을 때 쓴다.
+    """
+    files = list(files)
+    remaining = side_image_budget(image_mode)
+    out = []
+    for i, (_, data) in enumerate(files, start=1):
+        quota = next_image_quota(remaining, len(files) - i + 1)
+        pages, jobs = read_pdf_pages(data, api_key, image_mode, max_images=quota)
+        remaining -= len(jobs)
+        out.append((pages, jobs, quota))
+    return out
+
+
 def _join_side(files, parts, image_mode, by_question=False,
                side_budget=GEN_SIDE_CHAR_BUDGET):
     """
@@ -607,8 +635,8 @@ def _join_side(files, parts, image_mode, by_question=False,
     """
     per_doc = max(GEN_DOC_MIN_CHARS, side_budget // len(files))
     chunks, chars, used, cuts = [], 0, 0, []
-    for (name, _), (pages, jobs) in zip(files, parts):
-        raw = assemble_pdf_text(pages, len(jobs), image_mode)
+    for (name, _), (pages, jobs, quota) in zip(files, parts):
+        raw = assemble_pdf_text(pages, len(jobs), image_mode, quota)
         info = build_source_info(raw, per_doc, by_question)
         chars += info["chars"]
         used  += info["used"]
@@ -631,11 +659,12 @@ def _image_warnings(files, parts, side: str) -> list:
     """
     상한에 걸려 못 읽은 그림·필기 쪽이 있는 파일을 화면용 경고로.
 
-    문제 생성은 주제 분석과 달리 상한이 '파일 1개당' 걸리므로(question_gen 쪽 주석 참고)
-    파일마다 따로 센다. 없으면 빈 리스트 — 그때는 확인 모달이 안 뜬다.
+    상한 자체는 '한쪽 전체'에 걸리지만(_read_side), 경고는 파일마다 따로 낸다 —
+    사용자가 확인할 것은 "어느 파일의 몇 쪽이 안 읽혔나"이지 합계가 아니다.
+    없으면 빈 리스트 — 그때는 확인 모달이 안 뜬다.
     """
     out = []
-    for (name, _), (pages, jobs) in zip(files, parts):
+    for (name, _), (pages, jobs, _quota) in zip(files, parts):
         cov = image_coverage(pages, jobs)
         if cov["skipped"]:
             out.append({"kind": "image", "side": side, "name": name, **cov})
@@ -718,24 +747,17 @@ def run_generation_events(p: dict):
                 # 여기까지는 LLM 호출이 없다 (페이지 선정만) — 진행률 총계를 먼저 알아야 하므로
                 # 양쪽 파일을 모두 읽어 대상 페이지를 센 뒤에 Vision 호출을 시작한다.
                 #
-                # 이미지 상한은 여기서 **파일 1개당** 걸린다 (max_images를 주지 않으므로
-                # 모드의 max_pages가 그대로 파일마다 적용된다 — 강의자료 40 / 기출 15).
-                # 파일을 상한(7개)까지 올리면 강의자료 280장·기출 105장까지 나갈 수 있다.
-                # 주제 분석(extract_labeled_docs)은 이 상한을 '한쪽 전체'로 나눠 쓰는데,
-                # 여기는 문제 품질이 자료를 얼마나 온전히 읽었는지에 직접 걸려 있어
-                # 일부러 파일마다 제 몫을 준다. 비용을 조이려면 read_pdf_pages에
-                # max_images를 넘겨 주제 분석과 같은 방식으로 바꾸면 된다.
-                lec_parts  = [read_pdf_pages(data, api_key, image_mode=IMAGE_TRANSCRIBE)
-                              for _, data in p["lecture_files"]]
-                exam_parts = [read_pdf_pages(data, api_key, image_mode=IMAGE_DESCRIBE)
-                              for _, data in p["exam_files"]]
+                # 이미지 상한은 **한쪽 전체**에 걸린다 (파일당이 아니다 — _read_side 참고).
+                # 주제 분석(extract_labeled_docs)과 같은 방식이다.
+                lec_parts  = _read_side(p["lecture_files"], api_key, IMAGE_TRANSCRIBE)
+                exam_parts = _read_side(p["exam_files"], api_key, IMAGE_DESCRIBE)
 
-                total_imgs = sum(len(jobs) for _, jobs in lec_parts + exam_parts)
+                total_imgs = sum(len(jobs) for _, jobs, _ in lec_parts + exam_parts)
                 yield {"type": "progress", "key": "extract", "done": 0, "total": total_imgs}
                 done_imgs = 0
                 for parts, mode in ((lec_parts, IMAGE_TRANSCRIBE),
                                     (exam_parts, IMAGE_DESCRIBE)):
-                    for _, jobs in parts:
+                    for _, jobs, _q in parts:
                         for d in describe_images_progressively(jobs, api_key,
                                                                analysis_model,
                                                                provider, usage, mode):
