@@ -31,7 +31,7 @@ from providers.usage import (
 from llm import (
     IMAGE_DESCRIBE, IMAGE_TRANSCRIBE, MAX_FILES_PER_SIDE,
     describe_images_progressively, finish_labeled_docs, read_labeled_pdfs,
-    remaining_char_budget, run_topic_analysis,
+    remaining_char_budget, run_topic_analysis, shrink_pdf_bytes,
 )
 from features import extract_cache
 
@@ -357,8 +357,10 @@ def read_topic_params() -> dict:
         "extract_token": token,
         "owner":    current_owner(),
         # 지금 bytes로 읽어둔다 (read_pdf_pages는 업로드 객체와 bytes를 모두 받는다)
-        "lecture_files": [(f.filename, f.read()) for f in lectures],
-        "exam_files":    [(f.filename, f.read()) for f in exams],
+        # 하나씩 읽고 곧바로 축소 — question_gen.read_generate_params와 같은 이유
+        # (RAM 1GB 배포에서 큰 원본들이 한꺼번에 메모리에 쌓이지 않게).
+        "lecture_files": [(f.filename, shrink_pdf_bytes(f.read())) for f in lectures],
+        "exam_files":    [(f.filename, shrink_pdf_bytes(f.read())) for f in exams],
     }
 
 
