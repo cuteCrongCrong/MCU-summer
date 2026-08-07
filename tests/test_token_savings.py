@@ -488,37 +488,47 @@ def test_gen_image_budget():
     예전에는 파일당이라 파일을 7개 올리면 상한이 그대로 7배가 됐다. 비용도 비용이지만
     더 급한 건 메모리다 — 렌더한 PNG를 설명이 끝날 때까지 전부 들고 있어서, RAM 1GB인
     배포(deploy/gcp)에서는 요금보다 OOM이 먼저 온다.
+
+    read_labeled_pdfs는 두 탭이 함께 쓴다(주제 분석·문제 생성). ③이 조립까지 끝난
+    결과로 확인한다면 여기는 읽기 단계 자체를 본다 — 예산 배분·이월·못 읽은 쪽 집계가
+    여기서 정해지고, 뒤 단계는 그 결과를 옮겨 담기만 한다.
     """
-    print("[③-2 이미지 예산(문제 생성) — 파일당이 아니라 전체]")
-    from features.question_gen import _read_side
+    print("[③-2 이미지 예산(읽기 단계) — 파일당이 아니라 전체]")
 
     pdf = build_pdf()                                      # 파일당 설명 대상 2쪽
     files = [(f"기출{i}.pdf", pdf) for i in range(1, 6)]    # 후보 총 10쪽
     tight = dict(llm.IMAGE_DESCRIBE, max_pages=2)          # 후보보다 작게 걸어 갈라본다
 
-    parts = _read_side(files, "key", tight)
-    picked = sum(len(jobs) for _, jobs, _ in parts)
+    parts = llm.read_labeled_pdfs(files, "기출", "key", tight)
+    picked = sum(len(x["img_jobs"]) for x in parts)
     check("파일당이 아니라 전체 상한", picked == 2, str(picked))
     check("예전 동작(파일당)이었다면 10쪽", picked < 10, str(picked))
 
     check("기본값도 전체 상한 안",
-          sum(len(j) for _, j, _ in _read_side(files, "key", llm.IMAGE_DESCRIBE))
+          sum(len(x["img_jobs"])
+              for x in llm.read_labeled_pdfs(files, "기출", "key", llm.IMAGE_DESCRIBE))
           <= llm.IMAGE_DESCRIBE["max_pages"])
 
+    # 파일별 몫을 남겨야 assemble_pdf_text가 '몇 개까지만 처리됨'을 제대로 적는다
+    # (모드의 max_pages를 쓰면 예산을 나눠 쓴 파일에서 숫자가 거짓이 된다)
+    check("파일별 몫이 parts에 남는다", all("quota" in x for x in parts),
+          str([sorted(x) for x in parts[:1]]))
+
     # 예산이 동나도 못 읽은 쪽은 계속 센다 (확인 모달의 경고가 조용히 사라지지 않게)
-    cov = llm.image_coverage(parts[-1][0], parts[-1][1])
+    cov = llm.image_coverage(parts[-1]["pages"], parts[-1]["img_jobs"])
     check("예산이 동난 뒤 파일도 후보를 센다", cov["candidates"] == 2, str(cov))
     check("그 쪽들이 '못 읽음'으로 잡힌다", cov["skipped"] == 2, str(cov))
 
     # 앞 파일이 안 쓴 몫은 뒤로 넘어간다 — 그림이 한 파일에 몰려 있어도 낭비가 없다.
     # 파일당 고정 상한이었다면 마지막 파일은 제 몫(2÷5→1)만 받고 1쪽을 버렸다.
     mixed = [("텍스트.pdf", _text_pdf(200))] * 4 + [("스캔.pdf", pdf)]
-    parts_m = _read_side(mixed, "key", tight)
-    check("앞 파일이 안 쓴 몫이 뒤로 넘어간다", len(parts_m[-1][1]) == 2,
-          str([len(j) for _, j, _ in parts_m]))
+    parts_m = llm.read_labeled_pdfs(mixed, "기출", "key", tight)
+    check("앞 파일이 안 쓴 몫이 뒤로 넘어간다", len(parts_m[-1]["img_jobs"]) == 2,
+          str([len(x["img_jobs"]) for x in parts_m]))
 
     check("모드가 없으면 후보도 0",
-          sum(len(j) for _, j, _ in _read_side(files, "key", None)) == 0)
+          sum(len(x["img_jobs"])
+              for x in llm.read_labeled_pdfs(files, "기출", "key", None)) == 0)
 
 
 # ──────────────────────────────────────────────

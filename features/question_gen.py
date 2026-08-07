@@ -32,8 +32,8 @@ from llm import (
     QUESTION_TYPES, StreamingQuestionParser, IMAGE_DESCRIBE, IMAGE_TRANSCRIBE,
     MAX_FILES_PER_SIDE, GEN_SIDE_CHAR_BUDGET, GEN_DOC_MIN_CHARS,
     remaining_gen_budget,
-    read_pdf_pages, describe_images_progressively, assemble_pdf_text,
-    image_coverage, side_image_budget, next_image_quota,
+    read_labeled_pdfs, describe_images_progressively, assemble_pdf_text,
+    image_coverage,
     truncate, truncation_report, build_source_info,
     analyze_concepts_progressively, analyze_format_progressively,
     compute_type_targets, build_question_generation_prompt, call_llm_stream,
@@ -609,39 +609,13 @@ def _session_base(p: dict) -> str:
     return f"{base} 외 {extra}개" if extra > 0 else base
 
 
-def _read_side(files, api_key, image_mode):
-    """
-    한쪽(강의자료 전체 / 기출 전체)의 PDF를 읽고 이미지 예산을 파일들에 나눠 배정한다.
-    (LLM 호출 없음 — 대상 선정과 렌더까지. 설명은 호출부가 진행률을 내면서 돌린다)
-
-    상한은 **한쪽 전체** 기준이다. 예전에는 파일당이라 두 가지가 나빴다:
-      ① 총량이 파일 수만큼 곱해졌다 (7개 올리면 강의자료 280장·기출 105장).
-         렌더한 PNG는 설명이 끝날 때까지 전부 메모리에 남으므로 RAM 1GB 배포에서
-         이건 비용 문제가 아니라 OOM 사거리였다.
-      ② 분배가 나빴다. 기출 6개가 텍스트 PDF이고 1개가 스캔 200쪽이면, 파일당 상한은
-         그 한 파일에 제 몫만 주고 나머지 6개 몫은 그냥 버렸다.
-    지금은 앞 파일이 안 쓴 몫이 뒤 파일로 넘어간다(next_image_quota) — 흔한 경우에
-    더 많이 읽고, 최악의 경우는 상한 하나로 예측된다. 주제 분석과 같은 방식이다.
-
-    반환: [(pages, img_jobs, quota)] — files와 같은 순서·길이.
-          quota는 assemble_pdf_text가 '몇 개까지만 처리됨'을 적을 때 쓴다.
-    """
-    files = list(files)
-    remaining = side_image_budget(image_mode)
-    out = []
-    for i, (_, data) in enumerate(files, start=1):
-        quota = next_image_quota(remaining, len(files) - i + 1)
-        pages, jobs = read_pdf_pages(data, api_key, image_mode, max_images=quota)
-        remaining -= len(jobs)
-        out.append((pages, jobs, quota))
-    return out
-
-
-def _join_side(files, parts, image_mode, by_question=False,
+def _join_side(parts, image_mode, by_question=False,
                side_budget=GEN_SIDE_CHAR_BUDGET):
     """
     한쪽(강의자료 전체 / 기출 전체)의 파일별 텍스트를 예산 안에서 잘라 하나로 합친다.
 
+    parts: llm.read_labeled_pdfs가 돌려준 목록. 파일명·페이지·이미지 몫이 다 들어 있어
+           파일 목록을 따로 받아 zip하지 않는다 (예전에는 이름만 얻으려고 그랬다).
     예산을 파일 수로 나눠 배정하므로, 파일이 1개면 그 쪽 예산 전부를 쓴다.
     파일이 여럿이면 어디부터 다른 자료인지 LLM이 알 수 있게 파일명 구분선을 넣는다.
     by_question: 기출 쪽이면 True — 상한을 넘길 때 문항 경계로 자른다. 반쪽짜리 문항이
@@ -652,41 +626,42 @@ def _join_side(files, parts, image_mode, by_question=False,
     반환: (합친 텍스트, 반영 범위 dict, 잘린 파일 목록)
           범위는 파일들을 합산한 값이고, 잘린 목록은 진행 전 경고에 쓴다.
     """
-    per_doc = max(GEN_DOC_MIN_CHARS, side_budget // len(files))
+    per_doc = max(GEN_DOC_MIN_CHARS, side_budget // len(parts))
     chunks, chars, used, cuts = [], 0, 0, []
-    for (name, _), (pages, jobs, quota) in zip(files, parts):
-        raw = assemble_pdf_text(pages, len(jobs), image_mode, quota)
+    for p in parts:
+        raw = assemble_pdf_text(p["pages"], len(p["img_jobs"]), image_mode,
+                                p.get("quota"))
         info = build_source_info(raw, per_doc, by_question)
         chars += info["chars"]
         used  += info["used"]
         # 상한을 넘겼으면 어느 줄이 버려지는지
         cut = truncation_report(raw, per_doc, by_question)
         if cut:
-            cuts.append({"name": name, **cut})
+            cuts.append({"name": p["name"], **cut})
         text = truncate(raw, per_doc, by_question)
-        chunks.append(f"===== {name} =====\n{text}" if len(files) > 1 else text)
+        chunks.append(f"===== {p['name']} =====\n{text}" if len(parts) > 1 else text)
     return "\n\n".join(chunks), {
         "chars": chars,
         "used": used,
-        "limit": per_doc * len(files),
+        "limit": per_doc * len(parts),
         "truncated": used < chars,
         "coverage": round(used / chars * 100) if chars else 100,
     }, cuts
 
 
-def _image_warnings(files, parts, side: str) -> list:
+def _image_warnings(parts, side: str) -> list:
     """
     상한에 걸려 못 읽은 그림·필기 쪽이 있는 파일을 화면용 경고로.
 
-    상한 자체는 '한쪽 전체'에 걸리지만(_read_side), 경고는 파일마다 따로 낸다 —
-    사용자가 확인할 것은 "어느 파일의 몇 쪽이 안 읽혔나"이지 합계가 아니다.
+    상한 자체는 '한쪽 전체'에 걸리지만(llm.read_labeled_pdfs), 경고는 파일마다 따로
+    낸다 — 사용자가 확인할 것은 "어느 파일의 몇 쪽이 안 읽혔나"이지 합계가 아니다.
     없으면 빈 리스트 — 그때는 확인 모달이 안 뜬다.
     """
     out = []
-    for (name, _), (pages, jobs, _quota) in zip(files, parts):
-        cov = image_coverage(pages, jobs)
+    for p in parts:
+        cov = image_coverage(p["pages"], p["img_jobs"])
         if cov["skipped"]:
-            out.append({"kind": "image", "side": side, "name": name, **cov})
+            out.append({"kind": "image", "side": side, "name": p["name"], **cov})
     return out
 
 
@@ -766,33 +741,35 @@ def run_generation_events(p: dict):
                 # 여기까지는 LLM 호출이 없다 (페이지 선정만) — 진행률 총계를 먼저 알아야 하므로
                 # 양쪽 파일을 모두 읽어 대상 페이지를 센 뒤에 Vision 호출을 시작한다.
                 #
-                # 이미지 상한은 **한쪽 전체**에 걸린다 (파일당이 아니다 — _read_side 참고).
-                # 주제 분석(extract_labeled_docs)과 같은 방식이다.
-                lec_parts  = _read_side(p["lecture_files"], api_key, IMAGE_TRANSCRIBE)
-                exam_parts = _read_side(p["exam_files"], api_key, IMAGE_DESCRIBE)
+                # 이미지 상한은 **한쪽 전체**에 걸린다 (파일당이 아니다).
+                # 읽기·예산 배분은 주제 분석과 같은 함수를 쓴다 — llm.read_labeled_pdfs.
+                lec_parts  = read_labeled_pdfs(p["lecture_files"], "강의자료",
+                                               api_key, IMAGE_TRANSCRIBE)
+                exam_parts = read_labeled_pdfs(p["exam_files"], "기출",
+                                               api_key, IMAGE_DESCRIBE)
 
-                total_imgs = sum(len(jobs) for _, jobs, _ in lec_parts + exam_parts)
+                total_imgs = sum(len(x["img_jobs"]) for x in lec_parts + exam_parts)
                 yield {"type": "progress", "key": "extract", "done": 0, "total": total_imgs}
                 done_imgs = 0
                 for parts, mode in ((lec_parts, IMAGE_TRANSCRIBE),
                                     (exam_parts, IMAGE_DESCRIBE)):
-                    for _, jobs, _q in parts:
-                        for d in describe_images_progressively(jobs, api_key,
+                    for x in parts:
+                        for d in describe_images_progressively(x["img_jobs"], api_key,
                                                                analysis_model,
                                                                provider, usage, mode):
                             yield {"type": "progress", "key": "extract",
                                    "done": done_imgs + d, "total": total_imgs}
-                        done_imgs += len(jobs)
+                        done_imgs += len(x["img_jobs"])
 
                 lecture_text, lecture_src, lecture_cuts = _join_side(
-                    p["lecture_files"], lec_parts, IMAGE_TRANSCRIBE)
+                    lec_parts, IMAGE_TRANSCRIBE)
                 # 기출은 강의자료가 쓰고 남긴 몫까지 받는다 — 예산을 한쪽씩 고정하면
                 # 강의자료에 수만 자가 놀고 있는데 기출만 잘린다(실측: 기출 반영률 63%,
                 # 같은 시점 강의자료는 제 예산의 55%만 사용). 기출이 잘리면 유형통계·
                 # 대표문제·빈출포인트가 전부 잘린 텍스트 위에서 계산되므로 손해가 크다.
                 # 강의자료를 먼저 합친 지금은 실사용량이 확정돼 있어 여기서 계산할 수 있다.
                 exam_text, exam_src, exam_cuts = _join_side(
-                    p["exam_files"], exam_parts, IMAGE_DESCRIBE, by_question=True,
+                    exam_parts, IMAGE_DESCRIBE, by_question=True,
                     side_budget=remaining_gen_budget(lecture_text))
                 source_info = {
                     "lecture": lecture_src,   # 원문 반영 범위 (파일 여러 개면 합산)
@@ -806,8 +783,8 @@ def run_generation_events(p: dict):
                 # 사용자에게는 "이대로 진행할까"라는 같은 질문이라 모달을 두 번 띄우면 안 된다.
                 warnings = ([{"kind": "text", "side": "강의자료", **c} for c in lecture_cuts]
                             + [{"kind": "text", "side": "기출문제", **c} for c in exam_cuts]
-                            + _image_warnings(p["lecture_files"], lec_parts, "강의자료")
-                            + _image_warnings(p["exam_files"], exam_parts, "기출문제"))
+                            + _image_warnings(lec_parts, "강의자료")
+                            + _image_warnings(exam_parts, "기출문제"))
                 if warnings:
                     token = extract_cache.put({
                         "lecture_text": lecture_text, "exam_text": exam_text,
@@ -980,6 +957,13 @@ def run_generation_events(p: dict):
                "credits": credits_result(credits_before,
                                           credits_snapshot(provider, api_key))}
     except ProviderError as e:
+        yield {"type": "error", "status": 400, "message": str(e),
+               "usage": usage.summary(),
+               "credits": credits_result(credits_before,
+                                          credits_snapshot(provider, api_key))}
+    except ValueError as e:
+        # 손상·암호 걸린 PDF 등 사용자가 고칠 수 있는 입력 문제 (llm.read_labeled_pdfs가
+        # 어느 파일인지까지 넣어 던진다). 500 '서버 오류'로 뭉개면 고칠 방법이 안 보인다.
         yield {"type": "error", "status": 400, "message": str(e),
                "usage": usage.summary(),
                "credits": credits_result(credits_before,
