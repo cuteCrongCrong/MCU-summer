@@ -17,6 +17,22 @@ from providers.openai_compatible import OpenAICompatibleProvider
 GATEWAY_BASE_URL = "https://factchat-cloud.mindlogic.ai/v1/gateway"
 DEFAULT_MODEL    = "claude-sonnet-4-5"
 
+# 이미지(그림 설명·글자 전사) 전용 모델 — 게이트웨이에서는 사용자가 고르지 않는다.
+#
+# 저가 모델로 내려도 되는 근거는 실측이다. image_desc_cache에서 cache_key가 같은 행
+# (= 같은 PNG·같은 프롬프트·같은 출력 한도)끼리 짝지어 비교한 강의록 전사 결과:
+#     gemini-3.6-flash 783자 · gpt-5.6-luna 776자   (53쪽, 동일 조건)
+#     같은 문서에서 claude-sonnet-4-6 806자 · gpt-5.6-luna 790자 (54쪽)
+# 체급 차이가 거의 없다. 출력 한도를 풀고 나서 갈린 것은 모델이 아니라 한도였다
+# (llm.py의 DESCRIBE_MAX_OUTPUT 주석 참고). 그러면 가장 싼 것을 쓰는 게 맞다.
+IMAGE_MODEL = "gpt-5.6-luna"
+
+# 이미지 호출이 실패했을 때 한 번 더 물어볼 모델.
+# 게이트웨이는 여러 제공사의 모델을 한 키로 부를 수 있어서, 한쪽이 죽어도 다른 쪽이 산다.
+# 제공사를 일부러 다르게 골랐다 — 같은 제공사의 다른 모델은 장애가 같이 나기 쉽다.
+# 위 실측에서 전사량이 luna와 동률이라, 폴백으로 넘어가도 결과가 얇아지지 않는다.
+IMAGE_FALLBACK_MODEL = "gemini-3.6-flash"
+
 CREDITS_URL     = GATEWAY_BASE_URL + "/credits/"
 CREDITS_TIMEOUT = 10        # 초 — 잔액 조회가 생성 전체를 붙잡지 않게
 
@@ -41,6 +57,9 @@ class JbnuGatewayProvider(OpenAICompatibleProvider):
     base_url        = GATEWAY_BASE_URL
     default_model   = DEFAULT_MODEL
     key_placeholder = "전북대 LLM 플랫폼에서 발급받은 API 키"
+
+    image_model          = IMAGE_MODEL
+    image_fallback_model = IMAGE_FALLBACK_MODEL
 
     # ── 여기 채워주세요 ──────────────────────────────────────────────
     # 다른 프로바이더는 스스로 키를 발급받지만, 게이트웨이는 학교에서 배부하는

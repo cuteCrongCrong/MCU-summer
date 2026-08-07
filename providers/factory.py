@@ -49,6 +49,8 @@ def list_providers() -> list:
             "key_help_steps":  cls.key_help_steps,
             "key_help_note":   cls.key_help_note,
             "supports_credits": cls.supports_credits,
+            # image_model·image_fallback_model은 일부러 안 내려보낸다 — 화면이 고를 수
+            # 있는 값이 아니라 서버가 알아서 쓰는 값이라, 보내봐야 쓰는 곳이 없다.
         }
         for cls in _REGISTRY.values()
     ]

@@ -8,6 +8,7 @@
   ① 이미지 처리 대상 선별 — 로고 한 점 때문에 본문 페이지를 Vision에 보내지 않는다
   ② 이미지 결과 캐시     — 같은 PDF를 다시 올리면 Vision 호출이 0이 된다
   ②-c 모드 분리         — 같은 페이지라도 '그림 설명'과 '글자 전사'는 캐시를 공유하면 안 된다
+  ②-d 이미지 호출 폴백   — 한 모델이 죽어도 그림이 사라지지 않는다 (단 키 오류는 재시도 금지)
   ③ 이미지 예산          — 기출 여러 개를 올려도 '파일당'이 아니라 '전체' 상한이 걸린다
   ④ 기출 분석 1회 병합   — 기출 전문을 두 번 보내지 않는다
   ⑤ 생성 프롬프트 분리   — 배치가 달라도 캐시 접두부는 글자 하나까지 같다
@@ -38,6 +39,7 @@ if hasattr(sys.stdout, "reconfigure"):
 import fitz
 
 import db
+from providers.base import ProviderAuthError
 
 # 캐시가 실제 sessions.db 를 건드리지 않도록 임시 파일로 돌린다.
 # db.get_conn() 이 호출 시점에 db.DB_PATH 를 읽으므로 이렇게 바꿔치면 된다.
@@ -296,6 +298,19 @@ def test_output_cap():
           k_high == llm.image_cache_key(llm.IMAGE_TEXT_PROMPT, b"png", 4096))
 
 
+def _sparse_pdf(tag: str) -> bytes:
+    """
+    이미지 처리 대상 페이지 1장짜리 PDF (텍스트가 거의 없어 '스캔 페이지'로 잡힌다).
+    tag가 다르면 렌더된 PNG가 달라져 캐시 키도 갈린다 — 테스트끼리 캐시를 안 나눠 쓰게.
+    """
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((50, 60), tag, fontsize=9)
+    pdf = doc.tobytes()
+    doc.close()
+    return pdf
+
+
 def test_failure_not_cached():
     print("[②-b 실패는 캐시하지 않는다]")
 
@@ -306,11 +321,7 @@ def test_failure_not_cached():
             raise RuntimeError("이미지 미지원")
 
     # 캐시가 비어 있도록 이 테스트 전용 PDF를 따로 만든다
-    doc = fitz.open()
-    page = doc.new_page()
-    page.insert_text((50, 60), "9", fontsize=9)
-    pdf = doc.tobytes()
-    doc.close()
+    pdf = _sparse_pdf("9")
 
     fail = FailingProvider()
     _, jobs = llm.read_pdf_pages(pdf, "key", llm.IMAGE_DESCRIBE)
@@ -322,6 +333,60 @@ def test_failure_not_cached():
     describe_all(jobs2, retry)
     check("다음 회차에 다시 시도한다", retry.image_calls == len(jobs2),
           f"{retry.image_calls} != {len(jobs2)} (폴백 문구가 캐시에 굳었다)")
+
+
+def test_image_fallback():
+    """
+    본 모델이 실패하면 폴백 모델로 한 번 더 물어본다.
+
+    폴백이 없으면 그 페이지는 설명 없이 문구만 남는데, 기출의 그림 문제는
+    설명이 곧 문항이라 한 문항이 통째로 날아간다. 화면에는 아무 오류도 안 뜬다.
+    """
+    print("[②-d 이미지 호출 폴백]")
+
+    class FallbackProvider(CountingProvider):
+        """본 모델에는 실패하고 폴백 모델에만 답한다."""
+        image_fallback_model = "backup"
+
+        def __init__(self, error=RuntimeError):
+            super().__init__()
+            self._error = error
+            self.models_called = []
+
+        def describe_image(self, png_bytes, api_key, model, usage=None, prompt=None,
+                           max_tokens=None):
+            self.image_calls += 1
+            self.models_called.append(model)
+            if model != self.image_fallback_model:
+                raise self._error("본 모델 실패")
+            return "폴백이 만든 설명"
+
+    pdf = _sparse_pdf("10")
+
+    prov = FallbackProvider()
+    _, jobs = llm.read_pdf_pages(pdf, "key", llm.IMAGE_DESCRIBE)
+    describe_all(jobs, prov, model="main")
+    check("본 모델이 죽으면 폴백이 결과를 만든다",
+          jobs[0].get("desc") == "폴백이 만든 설명", str(jobs[0].get("desc")))
+    check("폴백은 한 번만 — 장당 2회", prov.image_calls == 2 * len(jobs),
+          f"{prov.image_calls} != {2 * len(jobs)} ({prov.models_called})")
+
+    # 폴백이 만든 결과도 캐시에서 나와야 한다. 안 그러면 본 모델이 죽어 있는 동안
+    # 회차마다 실패 호출이 한 번씩 더 난다.
+    again = FallbackProvider()
+    _, jobs2 = llm.read_pdf_pages(pdf, "key", llm.IMAGE_DESCRIBE)
+    describe_all(jobs2, again, model="main")
+    check("폴백이 만든 결과도 캐시에서 재사용", again.image_calls == 0,
+          f"{again.image_calls}회 재호출 ({again.models_called})")
+
+    # 키 오류는 어느 모델로 보내도 똑같이 401이다. 워커 4개 × 상한(15·40장)만큼의
+    # 헛호출이 두 배로 나지 않게 여기서만 폴백을 건너뛴다.
+    auth = FallbackProvider(error=ProviderAuthError)
+    _, jobs3 = llm.read_pdf_pages(_sparse_pdf("11"), "key", llm.IMAGE_DESCRIBE)
+    describe_all(jobs3, auth, model="main")
+    check("키 오류는 폴백하지 않는다", auth.image_calls == len(jobs3),
+          f"{auth.image_calls} != {len(jobs3)} ({auth.models_called})")
+    check("키 오류면 실패 문구가 남는다", "실패" in (jobs3[0].get("desc") or ""))
 
 
 # ──────────────────────────────────────────────
@@ -645,6 +710,7 @@ if __name__ == "__main__":
         test_cache_modes_do_not_collide()
         test_output_cap()
         test_failure_not_cached()
+        test_image_fallback()
         test_image_coverage()
         test_image_budget()
         test_exam_merge()

@@ -719,7 +719,6 @@
       <div style="margin-top:20px;">
         <label id="topic-api-key-label">🔑 API Key</label>
         <input type="password" id="topic-api-key" placeholder="API 키 입력" autocomplete="off" onchange="topicLoadModels()" />
-        <div style="font-size:0.75rem;color:#64748b;margin-top:4px;">키를 입력하면 사용 가능한 모델 목록을 자동으로 불러옵니다.</div>
         <div style="font-size:0.75rem;color:#16a34a;margin-top:4px;">🔒 입력한 키는 <b>서버·브라우저에 저장되지 않고</b>, 분석 요청 시에만 사용된 뒤 폐기됩니다.</div>
 
         <!-- 발급 방법 — 내용은 common.js의 renderKeyHelp()가 채운다 -->
@@ -735,17 +734,10 @@
         <select id="topic-model-select" class="select-field"></select>
       </div>
 
-      <!-- 분석 전용 모델 (선택) -->
-      <div style="margin-top:14px;">
-        <label for="topic-analysis-model-select">
-          🔎 그림 설명용 모델 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 선택</span>
-        </label>
-        <select id="topic-analysis-model-select" class="select-field"></select>
-        <div style="font-size:0.75rem;color:#64748b;margin-top:4px;">
-          기출 그림 페이지를 설명할 때만 쓰입니다. 주제↔문항 대조는 위 모델이 그대로 합니다.
-          비워두면 위 모델을 그대로 씁니다.
-        </div>
-      </div>
+      <!-- 그림 읽기용 모델 칸은 없다 — 이 화면은 모델을 하나만 고른다.
+           그림(기출 설명·강의록 전사)을 읽는 모델은 서버가 정한다:
+           게이트웨이는 고정 모델, 나머지 제공사는 위에서 고른 모델 그대로.
+           (features/topic_analysis.py 참고) -->
 
       <!-- 이번에 분석할 내용 이름 (선택) -->
       <div style="margin-top:20px;">

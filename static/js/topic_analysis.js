@@ -139,13 +139,6 @@ function topicPopulateModels(models) {
   }).join('');
   if (models.includes(prev))              sel.value = prev;
   else if (models.includes(defaultModel)) sel.value = defaultModel;
-
-  // 그림 설명 전용 모델 — 빈 값이 '위 모델과 동일'(= 예전 동작)이라 맨 위에 둔다
-  const aSel = document.getElementById('topic-analysis-model-select');
-  const aPrev = aSel.value;
-  aSel.innerHTML = '<option value="">(위 모델과 동일)</option>'
-    + models.map(m => `<option value="${escHtml(m)}">${escHtml(m)}</option>`).join('');
-  if (models.includes(aPrev)) aSel.value = aPrev;
 }
 
 // ── 메인 분석 함수 ──
@@ -176,9 +169,8 @@ async function topicAnalyze() {
   const form = new FormData();
   form.append('api_key', apiKey);
   form.append('model', model);
-  // 비어 있으면 서버가 위 모델을 그대로 쓴다
-  const analysisModel = document.getElementById('topic-analysis-model-select').value;
-  if (analysisModel) form.append('analysis_model', analysisModel);
+  // 그림 읽기용 모델은 보내지 않는다 — 이 화면은 모델을 하나만 고르고,
+  // 그림을 읽을 모델은 서버가 정한다 (features/topic_analysis.py).
   form.append('provider', topicCurrentProvider || '');
   form.append('title', document.getElementById('topic-title').value.trim());
   lectureFiles.forEach(f => form.append('lectures', f));

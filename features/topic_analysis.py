@@ -309,10 +309,21 @@ def analyze_topics():
         except UnknownProviderError as e:
             return jsonify({"error": str(e)}), 400
         model = request.form.get("model", "").strip() or provider.default_model
-        # 이미지 설명 전용 모델(선택). 주제 대조 자체는 아래 model이 하고,
-        # 여기서는 기출 그림 페이지 설명만 담당하므로 저렴한 모델로 내려도 된다.
-        # 비워두면 위 모델을 그대로 써서 예전과 동작이 같다.
-        analysis_model = request.form.get("analysis_model", "").strip() or model
+        # 이미지 전용 모델. 주제 대조 자체는 위 model이 하고, 이 값은 이미지 호출에만
+        # 쓰인다 — 기출 그림 설명(IMAGE_DESCRIBE)과 **강의록 글자 전사(IMAGE_TRANSCRIBE)
+        # 양쪽 다**다.
+        #
+        # 이 화면에서는 사용자가 고르지 않는다. 제공사가 image_model을 선언했으면
+        # (게이트웨이) 그 모델로 고정하고, 아니면 위 model을 그대로 쓴다.
+        #   - 고정: 하는 일이 '읽고 옮기기'라 본작업과 체급을 맞출 이유가 없다.
+        #           근거 실측은 providers/jbnu_gateway.py 참고.
+        #   - 나머지 제공사: 모델 id가 제공사 안에서만 유효해 고정할 값이 없다.
+        #           고를 칸을 남기느니 나누기 전처럼 한 모델로 도는 편이 화면이 단순하다.
+        # 폼의 analysis_model은 **일부러 읽지 않는다** — 열어둔 옛날 탭이나 직접 만든
+        # 요청이 비싼 모델을 이미지 수십 장에 밀어넣는 길이 되어선 안 된다.
+        # (문제 생성기 /generate는 그대로 사용자 선택을 받는다. 거기는 이 값이 이미지뿐
+        #  아니라 개념·형식 분석까지 맡아서 고르는 값이 훨씬 크다)
+        analysis_model = getattr(provider, "image_model", "") or model
 
         # 이번에 분석할 내용 이름(선택). 비우면 화면에서 '제N회'로 표시된다.
         title = request.form.get("title", "").strip()

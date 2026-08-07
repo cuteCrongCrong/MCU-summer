@@ -13,7 +13,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import fitz  # pymupdf
 
 from db import get_cached_image_desc, put_cached_image_desc
-from providers.base import ProviderError, IMAGE_DESC_PROMPT, IMAGE_TEXT_PROMPT
+from providers.base import (ProviderAuthError, ProviderError,
+                            IMAGE_DESC_PROMPT, IMAGE_TEXT_PROMPT)
 from providers.factory import get_provider
 
 # ──────────────────────────────────────────────
@@ -59,12 +60,19 @@ TRANSCRIBE_MIN_AREA_RATIO = 0.03
 
 # 이미지 호출 한 번의 출력 한도.
 #   ⚠️ 사고(thinking)를 하는 모델은 **사고 토큰도 이 한도에 포함**된다. 빠듯하게 잡으면
-#      사고가 예산을 다 먹고 본문이 단어 중간에서 잘린다. 실측(전북대 게이트웨이):
-#      한도 1024일 때 gemini-3.6-flash는 쪽당 175자만 남기고 24%가 단어 중간에서 끊겼다
-#      (같은 쪽을 claude-sonnet-4-6은 806자로 옮겼다). 게이트웨이가 보고하는 출력 토큰에는
-#      사고분이 안 잡혀서, 사용량 표만 보면 한도에 안 걸린 것처럼 보이는 점도 주의.
+#      사고가 예산을 다 먹고 본문이 단어 중간에서 잘린다. 게이트웨이가 보고하는 출력
+#      토큰에는 사고분이 안 잡혀서, 사용량 표만 보면 한도에 안 걸린 것처럼 보인다.
 #   설명은 '무엇인지' 한 문단이면 되지만, 전사는 빽빽한 슬라이드 한 장을 통째로 옮긴다.
 #   한도는 천장일 뿐이라 올려도 실제 생성한 만큼만 과금된다.
+#
+#   실측 — 강의록 전사, 쪽당 글자수. image_desc_cache에서 cache_key가 같은 행
+#   (= 같은 PNG·같은 프롬프트·같은 한도)끼리 짝지어 비교했다:
+#      한도 1024:  claude-sonnet-4-6  806  vs  gemini-3.6-flash  175   ← 24%가 단어 중간에서 끊김
+#      한도 4096:  gemini-3.6-flash   783  vs  gpt-5.6-luna      776
+#   같은 gemini-3.6-flash가 175 → 783으로 뛰었다. 즉 **모델 체급이 아니라 한도가 갈랐다.**
+#   한도를 풀고 나면 저가 모델도 상위 모델과 거의 같은 양을 옮긴다 — 이게 게이트웨이의
+#   이미지 모델을 gpt-5.6-luna로 고정한 근거다 (providers/jbnu_gateway.py).
+#   ※ 이 수치를 '모델 실력'으로 인용하지 말 것. 한도에 눌린 값과 안 눌린 값이 섞여 있다.
 DESCRIBE_MAX_OUTPUT   = 2048
 TRANSCRIBE_MAX_OUTPUT = 4096
 
@@ -82,7 +90,13 @@ INK_CURVE_MIN = 150
 # 라벨이 다른 이유: 프롬프트에 [페이지 N 이미지 설명]으로 들어가면 LLM이 '모델이 쓴 문장'
 # 으로 읽는다. 전사한 글자는 강의록 원문이므로 그렇게 보이면 안 된다.
 # detect_ink: 벡터 필기가 있는 페이지도 대상에 넣을지. 강의록만 켠다 —
-#   기출은 손글씨를 찾을 일이 없고, 켜면 페이지 선정이 늘어 비용만 는다.
+#   강의록의 필기는 교수 판서라 살릴 값어치가 있지만, 기출의 필기는 학생이 덧쓴
+#   정답 표시·메모라 일부러 찾아낼 이유가 없다. 켜면 비용만 는다.
+#   ⚠️ 이건 '필기만 있는 페이지를 후보로 삼지 않는다'는 뜻일 뿐, 기출에서 손글씨를
+#      못 본다는 뜻이 아니다. 스캔 기출은 페이지 전체가 래스터라 늘 후보이고,
+#      get_pixmap은 주석·벡터 획까지 함께 렌더하므로 다른 이유로 후보가 된 페이지의
+#      필기도 그대로 찍힌다. 인쇄 문제와 섞이는 것은 IMAGE_DESC_PROMPT가
+#      (필기: …)로 갈라내서 막는다.
 # dpi·min_area_ratio: 위 상수 참고. 두 모드가 목적이 반대라 값도 반대 방향이다
 #   (설명은 싸게, 전사는 놓치지 않게).
 IMAGE_DESCRIBE = {
@@ -245,13 +259,39 @@ def image_coverage(pages, img_jobs) -> dict:
     }
 
 
+def _describe_one(prov, png_bytes: bytes, api_key: str, model: str, fallback: str,
+                  usage, prompt: str, max_output: int):
+    """
+    이미지 한 장을 텍스트화한다. 반환: (텍스트, 실제로 쓴 모델).
+
+    본 모델이 실패하면 fallback 모델로 **한 번만** 더 시도한다. 실패한 페이지는
+    설명 없이 문구만 남는데, 기출의 그림 문제는 설명이 없으면 문항 자체가 못 살아난다
+    — 한 번 더 물어보는 값이 헛호출 비용보다 크다.
+
+    단 **키 오류는 폴백하지 않는다.** 키가 틀렸으면 어느 모델로 보내도 똑같이 401이고,
+    워커 4개가 병렬로 도는 탓에 상한(기출 15·강의록 40장)만큼의 헛호출이 두 배가 된다.
+    나머지(모델 없음·한도 초과·5xx·연결 실패)는 다른 모델이면 살 수 있는 것들이다.
+    """
+    try:
+        return prov.describe_image(png_bytes, api_key, model, usage=usage,
+                                   prompt=prompt, max_tokens=max_output), model
+    except ProviderAuthError:
+        raise
+    except Exception:
+        if not fallback:
+            raise
+    return prov.describe_image(png_bytes, api_key, fallback, usage=usage,
+                               prompt=prompt, max_tokens=max_output), fallback
+
+
 def describe_images_progressively(img_jobs, api_key: str, model: str, provider=None,
                                   usage=None, image_mode: dict = None):
     """
     이미지 페이지를 병렬로 텍스트화하되, 하나 끝날 때마다 완료 개수를 yield한다.
     (진행률 표시용 — 호출부가 제너레이터를 돌리면서 이벤트를 낼 수 있게)
     image_mode를 생략하면 IMAGE_DESCRIBE(그림 설명)로 동작한다.
-    게이트웨이가 이미지를 지원하지 않으면 폴백 문구를 채운다.
+    한 장이 실패하면 프로바이더가 선언한 폴백 모델로 한 번 더 시도하고,
+    그것마저 실패하면 폴백 문구를 채운다.
 
     캐시(image_desc_cache)를 먼저 뒤진다 — 같은 PDF를 다시 올리는 경우가 흔한데,
     예전에는 그때마다 Vision 호출을 처음부터 다시 냈다. 캐시에서 나온 항목도
@@ -261,6 +301,10 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
         return
     prov = provider or _default_provider
     prov_name = getattr(prov, "name", "") or ""
+    # 폴백 모델은 프로바이더가 선언한다 (providers/base.py 참고). 선언이 없으면 폴백 없음.
+    fallback = getattr(prov, "image_fallback_model", "") or ""
+    if fallback == model:
+        fallback = ""                   # 방금 죽은 모델을 그대로 한 번 더 때리지 않는다
     mode = image_mode or IMAGE_DESCRIBE
     prompt = mode["prompt"]
     max_output = mode.get("max_output") or DESCRIBE_MAX_OUTPUT
@@ -270,6 +314,11 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
     for e in img_jobs:
         e["cache_key"] = image_cache_key(prompt, e["png"], max_output)
         cached = get_cached_image_desc(e["cache_key"], prov_name, model)
+        if not cached and fallback:
+            # 지난 회차에 폴백이 만들어둔 결과도 받아준다. 캐시는 '실제로 만든 모델'
+            # 이름으로 남기므로(아래), 이 조회가 없으면 본 모델이 죽어 있는 동안
+            # 매 회차 실패 호출이 한 번씩 더 난다. 로컬 sqlite 조회가 훨씬 싸다.
+            cached = get_cached_image_desc(e["cache_key"], prov_name, fallback)
         if cached:
             e["desc"] = cached
             done += 1
@@ -281,20 +330,24 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
         return
 
     with ThreadPoolExecutor(max_workers=4) as ex:
-        futs = {ex.submit(prov.describe_image, e["png"], api_key, model,
-                          usage=usage, prompt=prompt, max_tokens=max_output): e
+        futs = {ex.submit(_describe_one, prov, e["png"], api_key, model, fallback,
+                          usage, prompt, max_output): e
                 for e in pending}
         for fut in as_completed(futs):
             entry = futs[fut]
             try:
-                entry["desc"] = fut.result()
+                entry["desc"], used_model = fut.result()
             except Exception:
                 entry["desc"] = "(이미지 처리 실패 — 게이트웨이 이미지 미지원일 수 있음)"
             else:
                 # 성공한 것만 남긴다. 실패 폴백 문구를 캐시하면 일시적 오류가
                 # 영구히 굳어서, 다음 회차부터 그 페이지는 영영 설명 없이 돈다.
                 # (쓰기는 메인 스레드에서만 — 워커 4개가 동시에 쓰지 않게)
-                put_cached_image_desc(entry["cache_key"], prov_name, model,
+                #
+                # 모델 이름은 **실제로 만든 쪽**으로 남긴다. 폴백 결과를 본 모델 이름으로
+                # 저장하면 캐시의 라벨이 거짓이 되고, 본 모델이 복구된 뒤에도 그 페이지는
+                # 영영 다시 물어보지 않는다 (더 나은 결과로 갱신될 길이 막힌다).
+                put_cached_image_desc(entry["cache_key"], prov_name, used_model,
                                       entry["desc"])
             done += 1
             yield done
@@ -648,6 +701,15 @@ def build_exam_analysis_prompt(exam_text: str) -> str:
     return f"""아래는 의대 기출문제 PDF에서 추출한 전문입니다.
 이 기출을 분석해 ①출제 개념 ②유형 통계 ③대표 문제 세 가지를 한 번에 반환하세요.
 
+## 표시의 뜻 (기출 텍스트를 읽는 법)
+- `[페이지 N]` 아래는 PDF에서 그대로 뽑은 **시험지 원문**입니다.
+- `[페이지 N 이미지 설명]` 아래는 그 쪽의 그림을 보고 **다른 모델이 쓴 설명**이며,
+  시험지에 인쇄된 문장이 아닙니다. 같은 문항이 원문과 설명 양쪽에 나오면 **원문 쪽**을
+  쓰세요. 설명 안의 번호 매긴 목록은 요약의 항목이지 시험 문항이 아닙니다.
+- `(필기: …)`는 학생이 손으로 덧쓴 것(정답 표시·메모)이지 시험지에 인쇄된 내용이
+  아닙니다. **정답의 근거로 쓰지 말고, 대표문제 원문에도 옮기지 마세요.**
+- `(판독불가)`는 읽을 수 없던 자리입니다. 내용을 지어내 채우지 마세요.
+
 ## 문제 유형 4분류
 {TYPE_DEFINITIONS}
 
@@ -668,6 +730,11 @@ def build_exam_analysis_prompt(exam_text: str) -> str:
 - 원문 그대로 옮기되, 해설·부연설명 등 답이 아닌 내용은 절대 포함하지 마세요.
   · 객관식 → 문제 번호, 지문(증례), 선택지 ①②③④⑤, 정답까지
   · 빈칸채우기/단답형/서술형 → 문제와 정답(모범답안)만 (선택지 없음)
+- **정답은 시험지에 인쇄된 정답 표기에서만** 가져오세요. 손으로 친 동그라미·체크나
+  `(필기: …)`로 표시된 내용으로 정답을 정하지 마세요 — 학생이 틀리게 적었을 수 있습니다.
+  인쇄된 정답이 없으면 그 문제는 **정답 줄을 아예 빼고** 문제까지만 옮기세요.
+- `[페이지 N 이미지 설명]`에만 있고 원문에 없는 문항은 시험지 문장을 그대로 옮길 수
+  없으므로 대표 문제로 고르지 마세요. (고를 문항이 없으면 그 유형은 생략)
 
 ## 출력 형식 — 아래 JSON만 (코드블록·설명 문장 금지)
 {{
@@ -1444,7 +1511,7 @@ def build_topic_analysis_prompt(lecture_block: str, exam_block: str) -> str:
     """
     강의록 주제 ↔ 기출 문항 대응표 프롬프트.
 
-    설계 의도 세 가지:
+    설계 의도 네 가지:
       ① 주제명은 **강의록에 실제로 있는 표현**만 쓰게 강제한다.
          (LLM이 교과서 용어로 바꿔 쓰면 학생이 강의록에서 그 주제를 못 찾는다)
       ② 페이지·문항 번호를 확인할 수 없는 항목은 아예 버리게 한다.
@@ -1453,6 +1520,14 @@ def build_topic_analysis_prompt(lecture_block: str, exam_block: str) -> str:
          목차 줄에도 주제 이름은 적혀 있어서 ②를 글자 그대로는 만족한다. 그래서
          회차마다 목차 쪽과 본문 쪽이 번갈아 뽑혔다(실측: 같은 주제가 2쪽 / 128쪽).
          학생에게 목차 쪽은 쓸모가 없으므로 '설명이 있는 쪽'으로 좁힌다.
+      ④ 마커의 뜻을 프롬프트 안에서 밝힌다.
+         기출의 [페이지 N 이미지 설명]은 시험지 문장이 아니라 모델이 쓴 설명인데,
+         ⑦은 "원문 그대로" 옮기라고 한다. 뜻을 안 알려주면 그 설명이 '기출 원문'
+         으로 화면에 인용된다(스캔 기출은 텍스트 레이어가 비어 설명밖에 없다).
+         강의록의 [페이지 N 그림 속 글자]는 반대로 전사라서 원문으로 봐도 된다 —
+         한쪽만 맞다고 뭉뚱그리면 다른 쪽이 틀리므로 둘을 갈라서 적는다.
+         (필기: …)도 여기서 함께 밝힌다 — ②의 '근거' 자리에 학생 메모가 들어가면
+         틀린 출처가 되고, 그건 없는 출처보다 나쁘다.
     """
     return f"""당신은 한국 의과대학 시험 분석 전문가입니다.
 [강의록]에 적혀 있는 주제 중 [기출문제]에서 **실제로 출제된 것만** 골라
@@ -1469,7 +1544,20 @@ def build_topic_analysis_prompt(lecture_block: str, exam_block: str) -> str:
 {exam_block}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## [3] 규칙 (반드시 준수)
+## [3] 표시의 뜻 (위 텍스트를 읽는 법)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- `[페이지 N]` 아래는 PDF에서 그대로 뽑은 **원문**입니다.
+- `[페이지 N 그림 속 글자]`(강의록) 아래는 그림 안의 글자를 **그대로 옮긴 것**이므로
+  강의록 원문으로 봐도 됩니다.
+- `[페이지 N 이미지 설명]`(기출) 아래는 그 쪽의 그림을 보고 **다른 모델이 쓴 설명**이며,
+  시험지에 인쇄된 문장이 아닙니다. 문제 번호·페이지를 확인하는 데는 써도 되지만,
+  아래 ⑦의 "원문"으로 그대로 인용하면 안 됩니다.
+- `(필기: …)`는 사람이 손으로 덧쓴 것(정답 표시·메모)이지 자료에 인쇄된 내용이
+  아닙니다. **주제나 출제 내용의 근거로 쓰지 마세요.**
+- `(판독불가)`는 읽을 수 없던 자리입니다. 내용을 지어내 채우지 마세요.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## [4] 규칙 (반드시 준수)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ① **용어 규칙 — 가장 중요**
    - "주제"는 **강의록 본문에 그대로 등장하는 표현**만 쓰세요.
@@ -1501,9 +1589,12 @@ def build_topic_analysis_prompt(lecture_block: str, exam_block: str) -> str:
    - "원문": 기출 텍스트에 있는 그 문제의 지문·질문을 **요약·의역하지 말고 원문 그대로**
      옮기세요(선택지는 생략 가능). 어떤 문제인지 알아볼 수 있을 만큼만 옮기고,
      120자가 넘으면 거기서 자르고 "…"으로 표시하세요.
+     그 문항이 `[페이지 N 이미지 설명]`에만 있어 인쇄된 문장을 옮길 수 없으면,
+     설명을 옮기되 **맨 앞에 "(이미지 설명) "을 붙이세요** — 시험지 문장이 아니라는
+     표시입니다. `(필기: …)` 부분은 어느 경우에도 "원문"에 넣지 마세요.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## [4] 출력 형식 — 아래 JSON만 (코드블록·설명 문장 금지)
+## [5] 출력 형식 — 아래 JSON만 (코드블록·설명 문장 금지)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {{
   "주제목록": [
