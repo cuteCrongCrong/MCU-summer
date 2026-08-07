@@ -23,7 +23,10 @@ from providers.factory import get_provider
 # provider 인자가 생략됐을 때 쓰는 기본 프로바이더 (전북대 게이트웨이)
 _default_provider = get_provider()
 
-# 강의/기출 텍스트를 LLM에 넣기 전 문서당 최대 글자 수.
+# truncate()·build_source_info()의 기본 상한. 실제 호출부는 아래 예산을 명시로 넘기므로
+# 이 값이 쓰이는 곳은 인자를 생략한 호출뿐이다 (예산 상수와 얽히지 않게 떼어 뒀다 —
+# 예전에는 GEN_SIDE_CHAR_BUDGET이 이 값을 그대로 받아서, 여길 건드리면 문제 생성 예산이
+# 같이 움직이고 주제 분석은 안 움직였다. 커밋 3490084의 실수가 그래서 났다).
 MAX_TEXT_CHARS = 100000
 
 # 한쪽(강의록/기출)당 업로드 파일 개수 상한 — 주제 분석·문제 생성 공통.
@@ -31,8 +34,30 @@ MAX_TEXT_CHARS = 100000
 MAX_FILES_PER_SIDE = 7
 
 # 문제 생성: 한쪽(강의자료 전체 / 기출 전체)에 배정하는 글자 예산.
-# 파일이 1개면 예전 동작(문서 하나에 MAX_TEXT_CHARS)과 정확히 같아지도록 그 값을 그대로 쓴다.
-GEN_SIDE_CHAR_BUDGET = MAX_TEXT_CHARS
+#   예전 값은 10만이었는데 근거가 없었고, 실제로는 기출만 계속 잘렸다.
+#   실측(session 63·64): 기출 151,407자 중 94,771자만 반영(coverage 63%)됐는데,
+#   같은 시점 강의록은 제 예산의 55%(54,632/100,000)만 썼다 — 한쪽에 45,000자가
+#   남는데 반대쪽만 잘린 것이다. 기출이 잘리면 유형통계·대표문제·빈출포인트가 전부
+#   잘린 텍스트 위에서 계산되고, type_stats는 생성할 문제의 유형별 개수까지 정한다.
+GEN_SIDE_CHAR_BUDGET = 500000
+# 강의자료 + 기출을 합친 총예산. 한쪽 몫의 2배라, 양쪽이 모두 상한을 채우는 최악의
+# 경우에만 예전의 칸막이 방식과 총량이 같아진다. 칸막이를 고정하지 않는 이유는 위 실측 —
+# 강의자료를 먼저 합치므로 그 시점에 실사용량이 확정된다 → 남은 몫을 기출에 넘긴다.
+# (remaining_gen_budget — 주제 분석의 remaining_char_budget과 같은 방식)
+GEN_TOTAL_CHAR_BUDGET = GEN_SIDE_CHAR_BUDGET * 2
+# 한 번의 LLM 호출에 실을 수 있는 최대 글자수 — 컨텍스트 보호용.
+#   문제 생성은 강의자료와 기출이 **서로 다른 호출**로 간다(analyze_concepts_progressively).
+#   그래서 프롬프트 크기를 정하는 건 총예산이 아니라 이 값이다. 핸드오프를 그대로 두면
+#   기출 한쪽이 총예산(=한쪽 몫의 2배)까지 받을 수 있으므로 여기서 천장을 둔다.
+#   컨텍스트를 넘기면 프로바이더가 거절해 분석이 통째로 실패한다 — 잘리더라도 경고를
+#   띄우고 진행되는 편이 낫다(그 경고는 이미 needs_confirm 모달로 나간다).
+#
+#   값의 근거: 쓰는 모델의 컨텍스트가 1M 토큰이고, 실측 환산이 1자 ≈ 0.52토큰이다
+#   (generation 92·93: 149,403자 → 78,121토큰). 150만 자면 약 78만 토큰이라
+#   프롬프트 지시문과 출력 몫을 빼도 1M 안에 들어온다.
+#   지금 예산(총 100만 자)에서는 이 천장에 닿지 않는다 — 예산을 더 올릴 때를 위한 안전장치다.
+#   ※ 모델을 바꿔 컨텍스트가 줄면 예산과 무관하게 이 값만 내리면 된다.
+GEN_CALL_CHAR_CEILING = 1500000
 # 파일을 여러 개 올려도 문서당 이만큼은 보장. 상한까지 채웠을 때의 몫으로 잡아
 # '문서당 몫 × 파일수 ≤ 예산'이 허용 개수 전 구간에서 성립하게 한다. (주제 분석과 같은 방식)
 GEN_DOC_MIN_CHARS = GEN_SIDE_CHAR_BUDGET // MAX_FILES_PER_SIDE
@@ -566,6 +591,27 @@ def build_source_info(raw_text: str, limit: int = MAX_TEXT_CHARS,
         "truncated": cut is not None,
         "coverage": (round(used / chars * 100) if chars else 100),
     }
+
+
+def remaining_gen_budget(lecture_text: str) -> int:
+    """
+    문제 생성 — 강의자료가 쓰고 남긴 몫. 기출에 넘길 글자 예산이다.
+
+    lecture_text는 이미 상한이 적용된 결과(합쳐진 강의자료 텍스트)라, 여기서 세는 값이
+    실제로 프롬프트에 들어가는 양과 같다. 자르기 전 원문 길이를 세면 안 된다 —
+    잘려서 안 들어간 몫까지 쓴 것으로 쳐서 기출 예산을 도로 깎는다.
+
+    한쪽 몫(GEN_SIDE_CHAR_BUDGET)이 하한이라, 강의자료가 예산을 다 써도 기출은
+    예전(칸막이) 방식만큼은 받는다. 이 함수 때문에 기출이 더 적게 받는 일은 없다.
+    천장은 GEN_CALL_CHAR_CEILING — 기출은 한 번의 호출로 통째로 나가므로,
+    강의자료가 적게 썼다고 컨텍스트를 넘길 만큼 몰아주면 안 된다.
+
+    주제 분석의 remaining_char_budget()과 같은 방식이다. 다만 그쪽은 문서 리스트를
+    받고 여기는 합쳐진 문자열을 받는다 — _join_side가 합친 뒤에 부르기 때문.
+    """
+    used = len(lecture_text or "")
+    return min(GEN_CALL_CHAR_CEILING,
+               max(GEN_SIDE_CHAR_BUDGET, GEN_TOTAL_CHAR_BUDGET - used))
 
 
 def call_llm(prompt: str, api_key: str, model: str, provider=None,
@@ -1378,8 +1424,10 @@ def run_analysis(lecture_text: str, exam_text: str, api_key: str, model: str,
 # ══════════════════════════════════════════════
 
 # 한쪽(강의록 전체 / 기출 전체)에 배정하는 글자 예산.
-# 문제 생성은 문서 1개당 MAX_TEXT_CHARS(100000)를 쓰는데, 여기서도 그만큼 여유를 주되
-# 강의+기출을 한 프롬프트에 함께 넣는 점을 감안해 살짝 보수적으로 잡는다.
+# 문제 생성(GEN_SIDE_CHAR_BUDGET)보다 훨씬 작게 잡는 이유는 프롬프트 구조가 다르기 때문 —
+# 거기는 강의자료와 기출이 서로 다른 호출로 나가지만, 주제 분석은 대조표를 만들어야 해서
+# **둘을 한 프롬프트에 함께** 넣는다(build_topic_analysis_prompt). 그래서 여기서는
+# 총예산이 곧 프롬프트 하나의 크기이고, 한쪽 몫을 올리면 그 두 배가 한 번에 나간다.
 TOPIC_SIDE_CHAR_BUDGET = 120000
 # 강의록 + 기출을 합친 총예산. 한쪽 몫의 2배라, 양쪽이 모두 상한을 채우는 최악의 경우엔
 # 프롬프트 크기가 예전과 같다. 칸막이를 12만씩 고정하지 않는 이유 —

@@ -224,18 +224,9 @@
       <select id="model-select" class="select-field"></select>
     </div>
 
-    <!-- 분석 전용 모델 (선택) — 입력 토큰의 대부분이 이 단계에서 나간다 -->
-    <div style="margin-top:14px;">
-      <label for="analysis-model-select">
-        🔎 분석용 모델 <span style="font-weight:400;font-size:0.8rem;color:#64748b;">— 선택</span>
-      </label>
-      <select id="analysis-model-select" class="select-field"></select>
-      <div style="font-size:0.75rem;color:#64748b;margin-top:4px;">
-        PDF 그림 설명과 개념·형식 분석에만 쓰입니다. 넣는 글자의 대부분이 이 단계에서 나가지만
-        하는 일은 <b>읽고 추리기</b>라, 저렴한 모델을 골라도 문제 품질은 거의 그대로입니다.
-        비워두면 위 모델을 그대로 씁니다.
-      </div>
-    </div>
+    <!-- 분석용 모델 칸은 없앴다. 그림 읽기·개념·형식 분석에 쓸 모델은 서버가 정한다
+         (features/question_gen.py) — 제공사가 analysis_model을 선언했으면 그 모델,
+         아니면 위에서 고른 모델을 그대로 쓴다. 주제 분석 탭도 같은 방식이다. -->
 
     <!-- 문제 수 -->
     <div style="margin-top:20px;">
@@ -719,6 +710,7 @@
       <div style="margin-top:20px;">
         <label id="topic-api-key-label">🔑 API Key</label>
         <input type="password" id="topic-api-key" placeholder="API 키 입력" autocomplete="off" onchange="topicLoadModels()" />
+        <div style="font-size:0.75rem;color:#64748b;margin-top:4px;">키를 입력하면 사용 가능한 모델 목록을 자동으로 불러옵니다.</div>
         <div style="font-size:0.75rem;color:#16a34a;margin-top:4px;">🔒 입력한 키는 <b>서버·브라우저에 저장되지 않고</b>, 분석 요청 시에만 사용된 뒤 폐기됩니다.</div>
 
         <!-- 발급 방법 — 내용은 common.js의 renderKeyHelp()가 채운다 -->
@@ -734,10 +726,9 @@
         <select id="topic-model-select" class="select-field"></select>
       </div>
 
-      <!-- 그림 읽기용 모델 칸은 없다 — 이 화면은 모델을 하나만 고른다.
-           그림(기출 설명·강의록 전사)을 읽는 모델은 서버가 정한다:
-           게이트웨이는 고정 모델, 나머지 제공사는 위에서 고른 모델 그대로.
-           (features/topic_analysis.py 참고) -->
+      <!-- 그림 설명용 모델 칸도 없앴다. 이미지 호출에 쓸 모델은 서버가 정한다
+           (features/topic_analysis.py) — 제공사가 image_model을 선언했으면 그 모델,
+           아니면 위에서 고른 모델을 그대로 쓴다. 주제↔문항 대조는 늘 위 모델이 한다. -->
 
       <!-- 이번에 분석할 내용 이름 (선택) -->
       <div style="margin-top:20px;">

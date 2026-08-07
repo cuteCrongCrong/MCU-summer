@@ -111,7 +111,6 @@ async function generate() {
   const apiKey      = document.getElementById('api-key').value.trim();
   const weight      = document.getElementById('weight').value;
   const model       = document.getElementById('model-select').value;
-  const analysisModel = document.getElementById('analysis-model-select').value;
 
   const manualMode = document.getElementById('manual-count-toggle').checked;
   let count, manualTargets = null;
@@ -159,8 +158,8 @@ async function generate() {
   if (document.getElementById('preserve-types').checked) form.append('preserve_types', '1');
   form.append('weight', weight);
   form.append('model', model);
-  // 비어 있으면 서버가 생성 모델을 그대로 쓴다
-  if (analysisModel) form.append('analysis_model', analysisModel);
+  // 분석용 모델은 보내지 않는다 — 서버가 제공사별로 정한다(question_gen.py).
+  // 보내봐야 무시되므로, 화면과 요청이 어긋나 보이지 않게 아예 넣지 않는다.
   form.append('provider', currentProvider || '');
   form.append('title', document.getElementById('gen-title').value.trim());
   if (useSession) {
@@ -338,41 +337,14 @@ function setResultTitle(title) {
     (title || '').trim() ? `📋 ${title.trim()}` : '📋 생성된 예상문제';
 }
 
-// 생성 직후 결과를 화면에 반영 (제목 + 이름 변경 버튼 상태)
-// 키 입력란 아래 한 줄 — 생성 전에 잔액을 확인하는 용도
-async function loadCredits() {
-  const info = currentProviderInfo();
-  const bar  = document.getElementById('credits-bar');
-  if (!info || !info.supports_credits) {      // 지원하지 않는 제공사면 아예 숨긴다
-    bar.hidden = true;
-    return;
-  }
-  bar.hidden = false;
-
-  const text   = document.getElementById('credits-bar-text');
-  const apiKey = document.getElementById('api-key').value.trim();
-  if (!apiKey) {
-    text.textContent = 'API 키를 입력하면 잔액을 조회합니다.';
-    return;
-  }
-  text.textContent = '조회 중…';
-  try {
-    const resp = await fetch('/credits?provider=' + encodeURIComponent(currentProvider || ''),
-                             { headers: { 'X-Api-Key': apiKey } });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok || data.error) {
-      text.textContent = '잔액 조회 실패 — ' + (data.error || resp.status);
-      return;
-    }
-    const t = data.total || {};
-    text.textContent = `남은 크레딧 ${fmtCredit(t.remaining)}`
-      + (t.quota != null ? ` / 할당 ${fmtCredit(t.quota)}` : '')
-      + (t.used  != null ? ` (누적 사용 ${fmtCredit(t.used)})` : '');
-  } catch (err) {
-    text.textContent = '잔액을 조회하지 못했습니다.';
-  }
+// 키 입력란 아래 한 줄 — 생성 전에 잔액을 확인하는 용도.
+// 그리는 일은 common.js의 공용 함수가 하고, 여기서는 이 탭의 제공사·키만 넘긴다.
+function loadCredits() {
+  return refreshCreditsBar(currentProviderInfo(), currentProvider,
+                           document.getElementById('api-key').value.trim());
 }
 
+// 생성 직후 결과를 화면에 반영 (제목 + 이름 변경 버튼 상태)
 function applyGenerationResult(payload) {
   renderSpend(payload);
   lastGeneration = { id: payload.generation_id, title: (payload.title || '').trim() };
@@ -697,13 +669,6 @@ function populateModels(models) {
   // 선택값 복원: 이전 선택 > 기본모델 > 첫 항목
   if (models.includes(prev))                sel.value = prev;
   else if (models.includes(defaultModel))   sel.value = defaultModel;
-
-  // 분석 전용 모델 — 빈 값이 '생성 모델과 동일'(= 예전 동작)이라 항상 맨 위에 둔다
-  const aSel = document.getElementById('analysis-model-select');
-  const aPrev = aSel.value;
-  aSel.innerHTML = '<option value="">(생성 모델과 동일)</option>'
-    + models.map(m => `<option value="${escHtml(m)}">${escHtml(m)}</option>`).join('');
-  if (models.includes(aPrev)) aSel.value = aPrev;   // 없으면 빈 값(동일)으로 남는다
 }
 
 function showError(msg) {

@@ -563,6 +563,44 @@ function usageSuffix(usage) {
   return `\n여기까지 쓴 토큰: ${num(usage.total)}개 (호출 ${num(usage.calls)}회)`;
 }
 
+// ── 크레딧 잔액 한 줄 (키 입력란 아래) — 문제 생성기·기출 주제 분석 공용 ──
+// 작업을 시작하기 전에 남은 크레딧을 확인하는 용도라, 끝난 뒤에 그리는 usage-box와는 별개다.
+// 조회를 지원하는 제공사(전북대 게이트웨이)에서만 상자를 띄우고 나머지는 숨긴다.
+// 탭마다 제공사·키를 따로 들고 있으므로(topic_analysis.js 머리말) 값은 인자로 받는다.
+// opts: { barId: 상자 element id, textId: 문구 element id }
+async function refreshCreditsBar(info, providerName, apiKey, opts) {
+  const o = Object.assign({ barId: 'credits-bar', textId: 'credits-bar-text' }, opts || {});
+  const bar = document.getElementById(o.barId);
+  if (!bar) return;
+  if (!info || !info.supports_credits) {      // 지원하지 않는 제공사면 아예 숨긴다
+    bar.hidden = true;
+    return;
+  }
+  bar.hidden = false;
+
+  const text = document.getElementById(o.textId);
+  if (!apiKey) {
+    text.textContent = 'API 키를 입력하면 잔액을 조회합니다.';
+    return;
+  }
+  text.textContent = '조회 중…';
+  try {
+    const resp = await fetch('/credits?provider=' + encodeURIComponent(providerName || ''),
+                             { headers: { 'X-Api-Key': apiKey } });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data.error) {
+      text.textContent = '잔액 조회 실패 — ' + (data.error || resp.status);
+      return;
+    }
+    // 누적 사용량은 총·남은 크레딧으로 계산되는 값이라 여기서는 뺀다 (결과 화면의 usage-box에 있다).
+    const t = data.total || {};
+    text.textContent = (t.quota != null ? `총 크레딧: ${fmtCredit(t.quota)} / ` : '')
+      + `남은 크레딧: ${fmtCredit(t.remaining)}`;
+  } catch (err) {
+    text.textContent = '잔액을 조회하지 못했습니다.';
+  }
+}
+
 // ── API 키 발급 도움말 (키 입력란 아래 접힌 안내) — 문제 생성기·기출 주제 분석 공용 ──
 // 내용은 제공사가 /providers로 알려준다 (providers/base.py의 key_help_* 필드).
 // 발급 절차를 아직 모르는 제공사(전북대 게이트웨이)는 steps가 비어 있다 → 도움말째로 숨긴다.
@@ -601,7 +639,8 @@ function renderKeyHelp(info, boxId) {
 
 let _cutResolve = null;
 
-// 모달의 두 버튼과 배경 클릭이 부른다 (index.html)
+// 모달의 두 버튼만 부른다 (index.html). 배경 클릭으로는 닫히지 않는다 —
+// 취소는 이미 돈을 낸 추출 결과를 버리는 일이라 명시적으로 눌러야 한다.
 function resolveCutModal(ok) {
   document.getElementById('cut-modal').classList.remove('open');
   const done = _cutResolve;

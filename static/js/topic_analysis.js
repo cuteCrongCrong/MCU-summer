@@ -80,6 +80,18 @@ async function topicLoadProviders() {
   }
 }
 
+function topicCurrentProviderInfo() {
+  return topicProviders.find(p => p.name === topicCurrentProvider) || null;
+}
+
+// 키 입력란 아래 한 줄 — 분석 전에 잔액을 확인하는 용도.
+// 그리는 일은 common.js의 공용 함수가 하고, 여기서는 이 탭의 제공사·키만 넘긴다.
+function topicLoadCredits() {
+  return refreshCreditsBar(topicCurrentProviderInfo(), topicCurrentProvider,
+                           document.getElementById('topic-api-key').value.trim(),
+                           { barId: 'topic-credits-bar', textId: 'topic-credits-bar-text' });
+}
+
 function topicSelectProvider(name) {
   const info = topicProviders.find(p => p.name === name);
   if (!info) return;
@@ -93,6 +105,7 @@ function topicSelectProvider(name) {
   keyInput.placeholder = info.key_placeholder || 'API 키 입력';
   keyInput.value = topicApiKeyByProvider[name] || '';
   renderKeyHelp(info, 'topic-key-help');
+  topicLoadCredits();
 
   topicPopulateModels([info.default_model]);
   topicLoadModels();
@@ -109,6 +122,7 @@ async function topicLoadModels() {
   }
   msg.textContent = '불러오는 중…';
   msg.style.color = '#4f8a76';
+  topicLoadCredits();     // 키가 들어온 시점 — 잔액도 같이 갱신
   try {
     const url = '/models?provider=' + encodeURIComponent(topicCurrentProvider || '');
     const resp = await fetch(url, { headers: { 'X-Api-Key': apiKey } });
@@ -157,6 +171,7 @@ async function topicAnalyze() {
 
   document.getElementById('topic-analyze-btn').disabled = true;
   document.getElementById('topic-status-box').classList.remove('hidden');
+  document.getElementById('topic-cancel-btn').style.display = 'inline-block';
   document.getElementById('topic-error-box').style.display = 'none';
   topicRenderSpend(null, 'main');   // 지난 회차의 사용량 표가 남아 보이지 않게
   ['topic-step1','topic-step2','topic-step3','topic-step4'].forEach(s => setStep(s, 'wait'));
@@ -176,8 +191,10 @@ async function topicAnalyze() {
   lectureFiles.forEach(f => form.append('lectures', f));
   examFiles.forEach(f => form.append('exams', f));
 
+  topicAbort = new AbortController();
   try {
-    let resp = await fetch('/analyze-topics', { method: 'POST', body: form });
+    let resp = await fetch('/analyze-topics',
+                           { method: 'POST', body: form, signal: topicAbort.signal });
 
     setStep('topic-step2', 'done'); setStep('topic-step3', 'active');
     await delay(300);
@@ -198,7 +215,8 @@ async function topicAnalyze() {
       again.append('api_key', apiKey);
       again.append('title', document.getElementById('topic-title').value.trim());
       again.append('extract_token', data.extract_token);
-      resp = await fetch('/analyze-topics', { method: 'POST', body: again });
+      resp = await fetch('/analyze-topics',
+                         { method: 'POST', body: again, signal: topicAbort.signal });
       data = await resp.json();
     }
     setStep('topic-step4', 'done');
@@ -215,10 +233,30 @@ async function topicAnalyze() {
     // (안 버리면 보관함에 들어가도 직전에 받아둔 옛 목록이 그대로 보인다)
     if (data.analysis_id) invalidateSavedTopics();
   } catch (err) {
-    topicShowError('서버 연결에 실패했습니다. Flask 서버가 실행 중인지 확인하세요.\n' + err.message);
+    if (err.name === 'AbortError') {
+      ['topic-step1','topic-step2','topic-step3','topic-step4'].forEach(s => setStep(s, 'wait'));
+      topicShowError('분석을 중지했습니다.\n'
+        + '서버에서 이미 시작된 분석은 끝까지 진행될 수 있습니다 — 그만큼 크레딧·토큰이 더 나가고, '
+        + '주제를 찾았다면 그 결과는 보관함에 저장됩니다.\n'
+        + '잠시 뒤 키 입력란 아래 ↻ 조회로 남은 크레딧을 확인하세요.');
+    } else {
+      topicShowError('서버 연결에 실패했습니다. Flask 서버가 실행 중인지 확인하세요.\n' + err.message);
+    }
   } finally {
+    topicAbort = null;
     document.getElementById('topic-analyze-btn').disabled = false;
+    document.getElementById('topic-cancel-btn').style.display = 'none';
   }
+}
+
+// ── 중지 ──
+// 문제 생성 탭은 SSE라 연결을 끊으면 서버 쪽 생성도 다음 이벤트에서 멈추지만,
+// 여기는 한 번의 POST라 중지는 '기다리기를 그만두는 것'이다. 서버는 이미 시작한
+// 분석을 끝까지 돌린다 — 그래서 위 문구가 크레딧이 더 나갈 수 있다고 알려준다.
+let topicAbort = null;
+
+function topicCancelAnalyze() {
+  if (topicAbort) topicAbort.abort();
 }
 
 // ── 결과 렌더링 ──

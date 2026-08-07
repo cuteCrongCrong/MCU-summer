@@ -615,6 +615,54 @@ def test_char_budget_handoff():
           f'{len(new[0]["text"])} vs {chars}')
 
 
+def test_gen_char_budget_handoff():
+    """
+    문제 생성 쪽 넘겨주기. 주제 분석(⑧)과 같은 고장을 같은 방식으로 막는다 —
+    예산을 한쪽씩 고정하면 강의자료에 수만 자가 놀고 있는데 기출만 잘린다.
+    여기가 더 조용한 이유: 기출이 잘려도 화면에는 문제가 멀쩡히 생성돼 나오는데,
+    그 문제의 유형별 개수를 정하는 type_stats가 잘린 기출에서 세어진 값이다.
+    """
+    print("[⑧-2 글자 예산(문제 생성) — 강의자료가 남긴 몫이 기출로 넘어간다]")
+
+    check("총예산은 한쪽 몫의 2배",
+          llm.GEN_TOTAL_CHAR_BUDGET == llm.GEN_SIDE_CHAR_BUDGET * 2,
+          f"{llm.GEN_TOTAL_CHAR_BUDGET} vs {llm.GEN_SIDE_CHAR_BUDGET}")
+
+    lecture = "가" * 54632          # 실측(session 63)의 강의자료 사용량
+    check("남은 몫 = 총예산 − 강의자료 실사용",
+          llm.remaining_gen_budget(lecture)
+          == llm.GEN_TOTAL_CHAR_BUDGET - 54632,
+          str(llm.remaining_gen_budget(lecture)))
+    check("강의자료가 상한을 다 써도 한쪽 몫은 보장",
+          llm.remaining_gen_budget("가" * llm.GEN_SIDE_CHAR_BUDGET)
+          >= llm.GEN_SIDE_CHAR_BUDGET)
+    check("강의자료가 없으면 총예산 그대로",
+          llm.remaining_gen_budget("") == llm.GEN_TOTAL_CHAR_BUDGET)
+
+    # 한 번의 호출로 나가는 쪽이라 컨텍스트 천장을 넘기면 안 된다.
+    # 천장이 예산보다 낮게 잘못 잡히면 넘겨주기가 조용히 무력해지므로 함께 고정한다.
+    check("어떤 경우에도 호출당 천장을 넘지 않는다",
+          llm.remaining_gen_budget("") <= llm.GEN_CALL_CHAR_CEILING,
+          f"{llm.remaining_gen_budget('')} vs {llm.GEN_CALL_CHAR_CEILING}")
+    check("천장이 한쪽 몫보다는 커서 넘겨주기가 살아 있다",
+          llm.GEN_CALL_CHAR_CEILING > llm.GEN_SIDE_CHAR_BUDGET,
+          f"{llm.GEN_CALL_CHAR_CEILING} vs {llm.GEN_SIDE_CHAR_BUDGET}")
+
+    # 실측 자료 크기(session 63: 강의 54,632 / 기출 151,407)를 그대로 걸어본다.
+    # 예전 예산(10만)에서는 63%만 반영됐다 — 그 회귀를 여기서 잡는다.
+    exam = "나" * 151407
+    old = llm.build_source_info(exam, 100000, by_question=True)
+    check("예전 예산(10만)으로는 잘렸다", old["truncated"] is True, str(old))
+
+    new = llm.build_source_info(exam, llm.remaining_gen_budget(lecture),
+                                by_question=True)
+    check("지금 예산에서는 기출이 통째로 들어간다", new["truncated"] is False, str(new))
+    check("반영률 100%", new["coverage"] == 100, str(new))
+    check("확인 모달을 띄울 경고도 없다",
+          llm.truncation_report(exam, llm.remaining_gen_budget(lecture),
+                                by_question=True) is None)
+
+
 # ──────────────────────────────────────────────
 # ⑨ 기출 자르기 경계 — 반쪽짜리 문항 금지
 # ──────────────────────────────────────────────
@@ -716,6 +764,7 @@ if __name__ == "__main__":
         test_exam_merge()
         test_prompt_split()
         test_char_budget_handoff()
+        test_gen_char_budget_handoff()
         test_question_boundary_cut()
     finally:
         try:

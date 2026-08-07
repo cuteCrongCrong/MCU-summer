@@ -31,6 +31,7 @@ from providers.usage import (
 from llm import (
     QUESTION_TYPES, StreamingQuestionParser, IMAGE_DESCRIBE, IMAGE_TRANSCRIBE,
     MAX_FILES_PER_SIDE, GEN_SIDE_CHAR_BUDGET, GEN_DOC_MIN_CHARS,
+    remaining_gen_budget,
     read_pdf_pages, describe_images_progressively, assemble_pdf_text,
     image_coverage,
     truncate, truncation_report, build_source_info,
@@ -532,10 +533,19 @@ def read_generate_params() -> dict:
         lecture_name  = lecture_files[0][0]
 
     model = request.form.get("model", "").strip() or provider.default_model
-    # 분석·이미지 설명 전용 모델(선택). 입력 토큰의 대부분이 이 단계에서 나가는데
-    # 하는 일은 '읽고 추리기'라, 저렴한 모델로 내려도 문제 품질은 거의 그대로다.
-    # 비워두면 생성 모델을 그대로 써서 예전과 동작이 같다.
-    analysis_model = request.form.get("analysis_model", "").strip() or model
+    # 분석 단계 전용 모델 — 그림 읽기(extract)와 개념·형식 분석(concepts·format)을 맡는다.
+    # 문제를 실제로 만드는 것은 위 model이다.
+    #
+    # 이 화면에서도 사용자가 고르지 않는다(주제 분석 탭과 같은 방식). 제공사가
+    # analysis_model을 선언했으면 그 모델로 고정하고, 아니면 위 model을 그대로 쓴다.
+    #   - 고정: 입력 토큰의 90%가 이 단계에서 나가는데(실측 generation 92 — 전체 입력
+    #           119,521토큰 중 103,392), 같은 자료로 두 모델을 재보니 싼 쪽이 오히려
+    #           나았다. 근거 실측은 providers/jbnu_gateway.py의 ANALYSIS_MODEL 주석.
+    #   - 나머지 제공사: 모델 id가 제공사 안에서만 유효해 고정할 값이 없다.
+    #           고를 칸을 남기느니 나누기 전처럼 한 모델로 도는 편이 화면이 단순하다.
+    # 폼의 analysis_model은 **일부러 읽지 않는다** — 열어둔 옛날 탭이나 직접 만든 요청이
+    # 비싼 모델을 그 90%에 밀어넣는 길이 되어선 안 된다.
+    analysis_model = getattr(provider, "analysis_model", "") or model
 
     return {
         "api_key":        api_key,
@@ -580,19 +590,22 @@ def _session_base(p: dict) -> str:
     return f"{base} 외 {extra}개" if extra > 0 else base
 
 
-def _join_side(files, parts, image_mode, by_question=False):
+def _join_side(files, parts, image_mode, by_question=False,
+               side_budget=GEN_SIDE_CHAR_BUDGET):
     """
     한쪽(강의자료 전체 / 기출 전체)의 파일별 텍스트를 예산 안에서 잘라 하나로 합친다.
 
-    예산을 파일 수로 나눠 배정하므로, 파일이 1개면 예전과 똑같이 GEN_SIDE_CHAR_BUDGET
-    (=MAX_TEXT_CHARS) 전부를 쓴다. 파일이 여럿이면 어디부터 다른 자료인지 LLM이 알 수
-    있게 파일명 구분선을 넣는다.
+    예산을 파일 수로 나눠 배정하므로, 파일이 1개면 그 쪽 예산 전부를 쓴다.
+    파일이 여럿이면 어디부터 다른 자료인지 LLM이 알 수 있게 파일명 구분선을 넣는다.
     by_question: 기출 쪽이면 True — 상한을 넘길 때 문항 경계로 자른다. 반쪽짜리 문항이
                  남으면 few-shot 예시로 그대로 실려 생성 문제의 본이 된다.
+    side_budget: 이 쪽에 배정된 글자 예산. 생략하면 한쪽 몫(GEN_SIDE_CHAR_BUDGET).
+                 기출은 강의자료가 남긴 몫을 받으므로 호출부가 remaining_gen_budget()으로
+                 계산해 넘긴다 — 칸막이를 고정하면 한쪽에 예산이 남는데 반대쪽만 잘린다.
     반환: (합친 텍스트, 반영 범위 dict, 잘린 파일 목록)
           범위는 파일들을 합산한 값이고, 잘린 목록은 진행 전 경고에 쓴다.
     """
-    per_doc = max(GEN_DOC_MIN_CHARS, GEN_SIDE_CHAR_BUDGET // len(files))
+    per_doc = max(GEN_DOC_MIN_CHARS, side_budget // len(files))
     chunks, chars, used, cuts = [], 0, 0, []
     for (name, _), (pages, jobs) in zip(files, parts):
         raw = assemble_pdf_text(pages, len(jobs), image_mode)
@@ -732,8 +745,14 @@ def run_generation_events(p: dict):
 
                 lecture_text, lecture_src, lecture_cuts = _join_side(
                     p["lecture_files"], lec_parts, IMAGE_TRANSCRIBE)
+                # 기출은 강의자료가 쓰고 남긴 몫까지 받는다 — 예산을 한쪽씩 고정하면
+                # 강의자료에 수만 자가 놀고 있는데 기출만 잘린다(실측: 기출 반영률 63%,
+                # 같은 시점 강의자료는 제 예산의 55%만 사용). 기출이 잘리면 유형통계·
+                # 대표문제·빈출포인트가 전부 잘린 텍스트 위에서 계산되므로 손해가 크다.
+                # 강의자료를 먼저 합친 지금은 실사용량이 확정돼 있어 여기서 계산할 수 있다.
                 exam_text, exam_src, exam_cuts = _join_side(
-                    p["exam_files"], exam_parts, IMAGE_DESCRIBE, by_question=True)
+                    p["exam_files"], exam_parts, IMAGE_DESCRIBE, by_question=True,
+                    side_budget=remaining_gen_budget(lecture_text))
                 source_info = {
                     "lecture": lecture_src,   # 원문 반영 범위 (파일 여러 개면 합산)
                     "exam":    exam_src,

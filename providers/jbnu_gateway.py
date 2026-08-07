@@ -14,24 +14,56 @@ import requests
 from providers.base import ProviderAuthError, ProviderError, ProviderRateLimitError
 from providers.openai_compatible import OpenAICompatibleProvider
 
-GATEWAY_BASE_URL = "https://factchat-cloud.mindlogic.ai/v1/gateway"
-DEFAULT_MODEL    = "claude-sonnet-4-5"
+# ══════════════════════════════════════════════════════════════════
+#  ▼ 자주 바꾸는 값 — 모델을 갈아끼울 땐 여기 네 줄만 고치면 된다 ▼
+#    (고른 근거·실측은 바로 아래 '모델 선택 근거'에 적어 두었다)
+# ══════════════════════════════════════════════════════════════════
 
-# 이미지(그림 설명·글자 전사) 전용 모델 — 게이트웨이에서는 사용자가 고르지 않는다.
-#
-# 저가 모델로 내려도 되는 근거는 실측이다. image_desc_cache에서 cache_key가 같은 행
-# (= 같은 PNG·같은 프롬프트·같은 출력 한도)끼리 짝지어 비교한 강의록 전사 결과:
-#     gemini-3.6-flash 783자 · gpt-5.6-luna 776자   (53쪽, 동일 조건)
-#     같은 문서에서 claude-sonnet-4-6 806자 · gpt-5.6-luna 790자 (54쪽)
-# 체급 차이가 거의 없다. 출력 한도를 풀고 나서 갈린 것은 모델이 아니라 한도였다
-# (llm.py의 DESCRIBE_MAX_OUTPUT 주석 참고). 그러면 가장 싼 것을 쓰는 게 맞다.
-IMAGE_MODEL = "gpt-5.6-luna"
+# 화면에서 사용자가 고르는 '사용할 모델'의 기본 선택값 (= 문제를 만드는 모델)
+DEFAULT_MODEL        = "gpt-5.6-sol"
 
-# 이미지 호출이 실패했을 때 한 번 더 물어볼 모델.
-# 게이트웨이는 여러 제공사의 모델을 한 키로 부를 수 있어서, 한쪽이 죽어도 다른 쪽이 산다.
-# 제공사를 일부러 다르게 골랐다 — 같은 제공사의 다른 모델은 장애가 같이 나기 쉽다.
-# 위 실측에서 전사량이 luna와 동률이라, 폴백으로 넘어가도 결과가 얇아지지 않는다.
+# 기출 주제 분석 탭 — '그림 설명용' 모델. 이미지 호출에만 쓰인다.
+#   (주제↔문항 대조는 사용자가 고른 모델이 그대로 한다)
+IMAGE_MODEL          = "gpt-5.6-luna"
+
+# 문제 생성 탭 — '분석용' 모델. 그림 읽기 + 개념·형식 분석을 맡는다.
+#   (문제를 만드는 것은 사용자가 고른 모델이다)
+ANALYSIS_MODEL       = "gpt-5.6-luna"
+
+# 이미지 호출이 실패했을 때 한 번 더 물어볼 모델 (이미지 전용 — 텍스트 분석엔 폴백이 없다)
 IMAGE_FALLBACK_MODEL = "gemini-3.6-flash"
+
+# ══════════════════════════════════════════════════════════════════
+#  모델 선택 근거 — 값을 바꾸기 전에 읽을 것
+# ══════════════════════════════════════════════════════════════════
+#
+# ① IMAGE_MODEL — 저가 모델로 내려도 되는 근거는 실측이다.
+#    image_desc_cache에서 cache_key가 같은 행(= 같은 PNG·같은 프롬프트·같은 출력 한도)
+#    끼리 짝지어 비교한 강의록 전사 결과:
+#        gemini-3.6-flash 783자 · gpt-5.6-luna 776자          (53쪽, 동일 조건)
+#        claude-sonnet-4-6 806자 · gpt-5.6-luna 790자          (같은 문서 54쪽)
+#    체급 차이가 거의 없다. 출력 한도를 풀고 나서 갈린 것은 모델이 아니라 한도였다
+#    (llm.py의 DESCRIBE_MAX_OUTPUT 주석 참고). 그러면 가장 싼 것을 쓰는 게 맞다.
+#
+# ② ANALYSIS_MODEL — 값이 ①과 같지만 근거는 따로다. ①은 '옮겨 적기'라 체급이 필요 없다는
+#    것이고, 이쪽은 텍스트 추론(기출 분석·대표문제 추출)까지 포함해 그 논리가 안 통한다.
+#    그래서 같은 자료로 luna와 terra를 각각 돌려 비교했다
+#    (session 63 vs 64, 생성 모델은 양쪽 다 claude-opus-5로 고정):
+#        크레딧      luna 225.63  ·  terra 397.82   ← terra는 이미지 호출값이 빠진 수치다
+#        대표문제    luna 5개(4유형 전부) · terra 4개(서술형 누락)
+#        빈출포인트  luna 11 · terra 8
+#        유형통계    luna 107문항 · terra 98문항
+#        금지 규칙 위반((필기:·판독불가·이미지 설명 누출)은 양쪽 다 0
+#    싼 쪽이 더 나았으므로 luna로 고정한다.
+#    ⚠️ 이 측정은 기출이 38% 잘린 입력(coverage 61~63%)에서 나왔다. 예산을 올린 뒤
+#       (llm.py GEN_SIDE_CHAR_BUDGET) 다시 재보지 않았으므로 재측정하면 뒤집힐 수 있다.
+#
+# ③ IMAGE_FALLBACK_MODEL — 게이트웨이는 여러 제공사 모델을 한 키로 부를 수 있어서
+#    한쪽이 죽어도 다른 쪽이 산다. 제공사를 일부러 다르게 골랐다 — 같은 제공사의 다른
+#    모델은 장애가 같이 나기 쉽다. ①의 실측에서 전사량이 luna와 동률이라, 폴백으로
+#    넘어가도 결과가 얇아지지 않는다.
+
+GATEWAY_BASE_URL = "https://factchat-cloud.mindlogic.ai/v1/gateway"
 
 CREDITS_URL     = GATEWAY_BASE_URL + "/credits/"
 CREDITS_TIMEOUT = 10        # 초 — 잔액 조회가 생성 전체를 붙잡지 않게
@@ -59,6 +91,7 @@ class JbnuGatewayProvider(OpenAICompatibleProvider):
     key_placeholder = "전북대 LLM 플랫폼에서 발급받은 API 키"
 
     image_model          = IMAGE_MODEL
+    analysis_model       = ANALYSIS_MODEL
     image_fallback_model = IMAGE_FALLBACK_MODEL
 
     # ── 여기 채워주세요 ──────────────────────────────────────────────
