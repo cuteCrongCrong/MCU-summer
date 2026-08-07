@@ -266,7 +266,7 @@ async function fallbackGenerate(form, signal) {
     loadSessions();
   }
   document.getElementById('result-box').style.display = 'block';
-  renderQuestions(data.questions, data.raw);
+  renderQuestions(data.questions, data.raw, { paged: true });
   applyGenerationResult(data);
   showGenResult();
   archiveLoaded = false;   // 보관함 캐시 무효화 — 다음에 열 때 새 결과가 보이도록
@@ -385,7 +385,7 @@ async function streamGenerate(form, signal) {
       // 문제는 모아뒀다가 done에서 한 번에 보여준다 (진행률만 실시간)
       genProgress.setStageProgress('generate', ev.index, ev.total);
     } else if (ev.type === 'done') {
-      renderQuestions(ev.payload.questions, ev.payload.raw);
+      renderQuestions(ev.payload.questions, ev.payload.raw, { paged: true });
       applyGenerationResult(ev.payload);
       showGenResult();
       archiveLoaded = false;   // 보관함 캐시 무효화 — 다음에 열 때 새 결과가 보이도록

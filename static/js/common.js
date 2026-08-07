@@ -182,6 +182,8 @@ function renderSourceInfo(sourceInfo) {
 //   서로의 카드를 집지 않도록 반드시 컨테이너마다 다른 값을 준다. (기본 '' = 생성기)
 //   ⚠️ ns 없이 두 컨테이너를 함께 쓰면 getElementById가 문서 앞쪽 카드를 집어
 //      '정답 확인'이 엉뚱한 카드를 여는 버그가 난다.
+// viewOpts.paged = true 면 10문제씩 끊어 보여주고 번호 바로가기 줄을 붙인다
+//   (파일 아래쪽 '문제 페이지 나누기' 절). 시험지 화면(생성 결과·보관함)에만 준다.
 const questionsByNs = {};              // ns → 그 컨테이너에 그려진 문제 배열
 function getQuestions(ns) { return questionsByNs[ns || ''] || []; }
 
@@ -233,6 +235,9 @@ function renderQuestions(questions, raw, viewOpts) {
 
   const container = document.getElementById(containerId);
   container.innerHTML = '';
+  // 번호 바로가기 줄은 컨테이너 '밖'에 있어서 innerHTML='' 로 지워지지 않는다.
+  // 지난 회차의 줄이 남으면 없어진 문제 번호를 가리키므로 여기서 같이 치운다.
+  clearQuestionPages(ns);
 
   // 결과 영역 제목 (오답 폴더 보기면 폴더명으로 교체)
   const titleEl = titleId ? document.getElementById(titleId) : null;
@@ -253,6 +258,10 @@ function renderQuestions(questions, raw, viewOpts) {
   }
 
   questions.forEach((q, idx) => container.appendChild(buildQuestionCard(q, idx, folder, ns)));
+
+  // 번호 바로가기 줄 + 페이지 버튼 (요청한 화면만). 페이지 버튼을 원본 접기보다
+  // 먼저 붙여, 컨테이너 안이 [카드들 → 페이지 버튼 → 원본 접기] 순서가 되게 한다.
+  if (viewOpts.paged) setupQuestionPages(ns, container, questions.length);
 
   // 원본 펼치기 (오답 폴더 보기 모드에서는 원본 응답이 없으므로 생략)
   if (raw) appendRawSection(container, raw);
@@ -409,6 +418,8 @@ function viewOriginalImage(src, title) {
 //   두 목록은 같은 .paper-grid 마크업을 쓰므로 자르는 규칙도 한 곳에 둔다.
 //   ⚠️ 문제 카드 목록(renderQuestions)에는 쓰지 않는다 — 고른 선택지·입력한 답·
 //      채점 색이 전부 DOM 에만 있어서, 잘라 다시 그리면 답안이 날아간다.
+//      문제 쪽 페이지 나누기는 파일 맨 아래 '문제 페이지 나누기' 절에 따로 있다
+//      (카드는 전부 만들어 두고 보이기/숨기기만 바꾸는 방식).
 // ══════════════════════════════════════════════
 
 // 목록 key → 한 페이지 개수 + 그 목록을 다시 그리는 함수.
@@ -590,6 +601,181 @@ async function describeHttpError(resp, endpoint) {
   }
   const snippet = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
   return `서버 오류 ${resp.status} ${resp.statusText}` + (snippet ? `\n${snippet}` : '');
+}
+
+// ══════════════════════════════════════════════
+// 문제 페이지 나누기 + 번호 바로가기 — 시험지 화면(생성 결과 · 보관함) 공용
+//   30문제짜리 시험지는 한 화면에 다 담기지 않아, 뒤쪽 문제로 가려면 계속 굴려야 했다.
+//   ① 10문제씩 끊어 보여주고 아래에 페이지 버튼을 둔다.
+//   ② 넓은 화면에서 비어 있던 본문 왼쪽 여백에 문제 번호를 늘어놓아, 몇 번이든
+//      한 번에 간다(다른 페이지의 번호를 누르면 그 페이지로 넘어간 뒤 그 문제로).
+//      번호 줄은 넓은 화면에만 나온다 — 좁은 화면은 CSS 가 통째로 감춘다(.q-rail).
+//      만드는 쪽은 화면 폭을 따지지 않는다. 폭이 바뀌면 다시 그려야 하기 때문이다.
+//
+//   ⚠️ 위의 목록 페이저(PAGED_LISTS)와 달리 **다시 그리지 않는다.** 고른 선택지·
+//      입력한 답·채점 색·열어 둔 정답이 전부 DOM 에만 있어서, 페이지를 넘길 때마다
+//      다시 그리면 앞 페이지에 쓴 답이 통째로 날아간다. 그래서 카드는 처음에 전부
+//      만들어 두고 .q-off 로 보이기/숨기기만 바꾼다. 돌아오면 답안이 그대로 있다.
+// ══════════════════════════════════════════════
+
+const QUESTIONS_PER_PAGE = 10;
+const qPagerByNs = {};   // ns → {containerId, total, totalPages} — 페이지를 나눈 컨테이너
+const qPageByNs  = {};   // ns → 지금 보고 있는 페이지 (1-based)
+
+// renderQuestions 가 카드를 다 그린 뒤 부른다.
+function setupQuestionPages(ns, container, total) {
+  if (total < 2) return;   // 한 문제뿐이면 번호줄도 페이지도 의미가 없다
+
+  qPagerByNs[ns] = {
+    containerId: container.id,
+    total,
+    totalPages: Math.ceil(total / QUESTIONS_PER_PAGE),
+  };
+
+  // ① 아래 페이지 버튼 (내용은 applyQuestionPage 가 채운다)
+  const pager = document.createElement('div');
+  pager.className = 'q-pager';
+  pager.id = `${ns}qpager`;
+  container.appendChild(pager);
+
+  // ② 번호 바로가기 줄 — 컨테이너 '앞'(밖)에 둔다. 본문 왼쪽 여백에
+  //    고정(position:fixed)하려면 카드 흐름 밖이어야 하기 때문이다.
+  //    탭·서브뷰가 숨겨지면(display:none) 이 줄도 같이 사라진다 —
+  //    조상이 안 그려지면 fixed 자손도 안 그려진다.
+  const rail = document.createElement('nav');
+  rail.className = 'q-rail';
+  rail.id = `${ns}qrail`;
+  rail.setAttribute('aria-label', '문제 번호 바로가기');
+  rail.innerHTML =
+    `<span class="q-rail-label">문제</span><div class="q-rail-nums">`
+    + Array.from({ length: total }, (_, i) =>
+        `<button type="button" class="q-rail-btn" id="${ns}qnav-${i}"`
+        + ` onclick="jumpToQuestion('${ns}', ${i})"`
+        + ` aria-label="${i + 1}번 문제로 이동">${i + 1}</button>`).join('')
+    + `</div>`;
+  container.parentNode.insertBefore(rail, container);
+  updateQRailTop();          // 지금 스크롤 위치에 맞는 세로 자리로 (아래 절)
+
+  applyQuestionPage(ns, 1);
+}
+
+// ── 번호 줄의 세로 자리 — 헤더 아래에서 시작해, 헤더가 밀려 올라가면 화면 맨 위 ──
+//   CSS 로는 못 한다. fixed 는 스크롤을 모르고, sticky 는 흐름 안에 있어야 하는데
+//   이 줄은 본문 옆 여백에 띄우느라 흐름 밖에 있다. 그래서 top 만 스크롤에 맞춰
+//   다시 준다 (가로 자리는 CSS 가 잡은 그대로 둔다).
+//
+//   헤더 높이를 상수로 박지 않고 매번 재는 이유 — 응원 문구 길이와 화면 폭에 따라
+//   헤더가 한 줄 더 늘거나 줄어든다(문구 바꾸기 버튼도 있다). 재면 늘 맞는다.
+const Q_RAIL_TOP_MIN = 16;      // 헤더가 사라진 뒤 화면 맨 위에서 띄울 간격
+const Q_RAIL_HEADER_GAP = 18;   // 헤더 아래끝과 줄 사이 간격
+const qRailMedia = window.matchMedia('(min-width: 960px)');   // style.css 의 표시 기준과 같은 값
+let qRailTick = false;
+
+function updateQRailTop() {
+  if (!qRailMedia.matches) return;      // 줄이 안 뜨는 폭 — 잴 것도 없다
+  const rails = document.querySelectorAll('.q-rail');
+  if (!rails.length) return;
+
+  // 헤더 아래끝의 '화면상' 위치. 스크롤을 내리면 줄어들다 음수가 되고,
+  // 그때부터 아래 max 가 Q_RAIL_TOP_MIN 을 골라 줄이 화면 맨 위에 붙는다.
+  const header = document.querySelector('header');
+  const headerBottom = header ? header.getBoundingClientRect().bottom : 0;
+  const top = Math.max(Q_RAIL_TOP_MIN, headerBottom + Q_RAIL_HEADER_GAP) + 'px';
+  rails.forEach(r => { r.style.top = top; });
+}
+
+// 스크롤 이벤트는 초당 수십 번 온다 — 프레임당 한 번으로 묶는다.
+function queueQRailTop() {
+  if (qRailTick) return;
+  qRailTick = true;
+  requestAnimationFrame(() => { qRailTick = false; updateQRailTop(); });
+}
+window.addEventListener('scroll', queueQRailTop, { passive: true });
+window.addEventListener('resize', queueQRailTop);   // 폭이 바뀌면 헤더 높이도 바뀐다
+
+// 다음 회차를 그리기 전 정리. 줄은 컨테이너 밖에 있어 innerHTML='' 로는 안 지워진다.
+function clearQuestionPages(ns) {
+  delete qPagerByNs[ns];
+  delete qPageByNs[ns];
+  const rail = document.getElementById(`${ns}qrail`);
+  if (rail) rail.remove();
+}
+
+// 페이지를 실제로 바꾼다 (스크롤은 건드리지 않는다).
+function applyQuestionPage(ns, n) {
+  const info = qPagerByNs[ns];
+  if (!info) return;
+  const page = Math.min(Math.max(1, n), info.totalPages);
+  qPageByNs[ns] = page;
+
+  const container = document.getElementById(info.containerId);
+  container.querySelectorAll('.question-card').forEach((card, i) => {
+    card.classList.toggle('q-off', Math.floor(i / QUESTIONS_PER_PAGE) + 1 !== page);
+  });
+
+  const pager = document.getElementById(`${ns}qpager`);
+  if (pager) pager.innerHTML = questionPagerHtml(ns, page, info);
+  markRailPage(ns, page, info);
+}
+
+// 아래 페이지 버튼. 보이는 문제가 통째로 바뀌므로 맨 위로 올려 준다
+// (보관함 목록 goPage 와 같은 어법 — 새 페이지의 1번부터 읽게 된다).
+function goQuestionPage(ns, n) {
+  applyQuestionPage(ns, n);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// 번호 바로가기. 다른 페이지의 번호면 그 페이지로 넘어간 뒤 그 카드로 간다.
+function jumpToQuestion(ns, idx) {
+  if (!qPagerByNs[ns]) return;
+  applyQuestionPage(ns, Math.floor(idx / QUESTIONS_PER_PAGE) + 1);
+  const card = document.getElementById(`${ns}qcard-${idx}`);
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// 번호 접기 규칙(pagerItems)은 목록 페이저와 같은 것을 쓴다 — 페이지가 많아도
+// 줄이 넘치지 않는다. 앞뒤 버튼은 글자를 넣어 '다음 페이지'임을 분명히 한다.
+function questionPagerHtml(ns, page, info) {
+  if (info.totalPages <= 1) return '';
+  const from = (page - 1) * QUESTIONS_PER_PAGE + 1;
+  const to   = Math.min(info.total, page * QUESTIONS_PER_PAGE);
+
+  const step = (target, label) =>
+    `<button class="pager-btn pager-step" onclick="goQuestionPage('${ns}', ${target})"`
+    + `${target < 1 || target > info.totalPages ? ' disabled' : ''}>${label}</button>`;
+
+  const nums = pagerItems(page, info.totalPages).map(n =>
+    n === '…'
+      ? '<span class="pager-gap" aria-hidden="true">…</span>'
+      : `<button class="pager-btn" onclick="goQuestionPage('${ns}', ${n})"`
+        + `${n === page ? ' aria-current="page"' : ` aria-label="${n}페이지로"`}>${n}</button>`
+  ).join('');
+
+  return `<div class="q-pager-info">${page} / ${info.totalPages} 페이지 · ${from}–${to}번</div>`
+    + `<nav class="pager" aria-label="문제 페이지">`
+    + step(page - 1, '◀ 이전 페이지') + nums + step(page + 1, '다음 페이지 ▶')
+    + `</nav>`;
+}
+
+// 지금 페이지에 속한 번호를 강조한다. 나머지 번호도 그대로 누를 수 있다(페이지 이동).
+function markRailPage(ns, page, info) {
+  const rail = document.getElementById(`${ns}qrail`);
+  if (!rail) return;
+  const first = (page - 1) * QUESTIONS_PER_PAGE;
+  const last  = Math.min(info.total, page * QUESTIONS_PER_PAGE) - 1;
+  for (let i = 0; i < info.total; i++) {
+    const btn = document.getElementById(`${ns}qnav-${i}`);
+    if (btn) btn.classList.toggle('on', i >= first && i <= last);
+  }
+
+  // 번호가 많으면 줄 안이 넘쳐 세로로 굴러간다 (칸 수는 화면 폭에 따라 CSS 가 정한다).
+  // 지금 페이지의 첫 번호를 줄 안에서 보이는 자리로 끌어온다.
+  // scrollIntoView 는 쓰지 않는다 — 줄뿐 아니라 페이지 전체까지 같이 움직인다.
+  const box = rail.querySelector('.q-rail-nums');
+  const btn = document.getElementById(`${ns}qnav-${first}`);
+  if (!box || !btn) return;
+  const b = box.getBoundingClientRect(), t = btn.getBoundingClientRect();
+  box.scrollTop += t.top - b.top - 4;
 }
 
 // ══════════════════════════════════════════════
