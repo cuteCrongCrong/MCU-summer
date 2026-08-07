@@ -478,6 +478,121 @@ function goPage(key, n) {
 }
 
 // ══════════════════════════════════════════════
+// 진행 상태 (퍼센트 바 + 단계 목록) — 문제 생성기·기출 주제 분석 공용
+//   두 탭이 같은 모양의 상자를 쓰고 서버도 같은 이벤트(stage/progress)를 보낸다.
+//   막대 id 가 탭마다 다르므로 계산기를 탭마다 하나씩 만들어 쓴다.
+// ══════════════════════════════════════════════
+
+// weights: 단계 key → 가중치. 오래 걸리는 단계일수록 크게 (실제 소요 시간에 대략 비례).
+// stepPrefix: 단계 <li> 의 id 접두사 ('step-' / 'topic-step-').
+function createProgress(opts) {
+  const weights    = opts.weights;
+  const stepPrefix = opts.stepPrefix || 'step-';
+  let progress = {};      // key → 0~1
+  let active   = [];      // 이번 실행에서 실제로 도는 단계
+
+  // 단계 줄 오른쪽의 '3 / 14' · '완료' 표시
+  function setNote(key, text) {
+    const el = document.getElementById(stepPrefix + key);
+    if (!el) return;
+    let note = el.querySelector('.step-note');
+    if (!note) {
+      note = document.createElement('span');
+      note.className = 'step-note';
+      el.appendChild(note);
+    }
+    note.textContent = text;
+  }
+
+  function render() {
+    const totalWeight = active.reduce((s, k) => s + weights[k], 0) || 1;
+    const acc = active.reduce((s, k) => s + weights[k] * (progress[k] || 0), 0);
+    const pct = Math.round(acc / totalWeight * 100);
+    document.getElementById(opts.barId).style.width = pct + '%';
+    document.getElementById(opts.pctId).textContent = pct + '%';
+  }
+
+  return {
+    // 이번 실행에서 도는 단계들 (세션 재사용처럼 일부를 건너뛰는 경우가 있다)
+    get stages() { return active; },
+
+    reset(stages) {
+      active = (stages || []).slice();
+      progress = {};
+      active.forEach(k => {
+        const note = document.getElementById(stepPrefix + k);
+        const el = note && note.querySelector('.step-note');
+        if (el) el.remove();
+      });
+      render();
+    },
+
+    setStageProgress(key, done, total) {
+      if (!(key in weights)) return;
+      progress[key] = total > 0 ? Math.min(1, done / total) : 0;
+      setNote(key, total > 0 ? `${done} / ${total}` : '진행 중…');
+      render();
+    },
+
+    completeStage(key) {
+      progress[key] = 1;
+      setNote(key, '완료');     // 진행률 이벤트가 없던 단계에도 표시가 남도록
+      render();
+    },
+
+    render,
+  };
+}
+
+// 스트림을 읽을 수 있는 환경인지 — 요청을 보내기 '전에' 판단해야 한다.
+// 요청 후에 폴백하면 서버가 이미 일을 시작해 토큰을 두 번 쓰게 된다.
+function canReadStream() {
+  // 'body'는 getter이므로 프로토타입에서 값을 '읽으면' 안 된다 (Illegal invocation).
+  // 존재 여부만 확인한다.
+  return typeof ReadableStream !== 'undefined' && 'body' in Response.prototype;
+}
+
+// SSE 본문을 이벤트 객체 하나씩으로 바꿔 주는 async 이터레이터.
+//   for await (const ev of sseEvents(resp)) { ... }
+// 도중에 빠져나가야 하면(분량 초과 확인 등) 그냥 break/return 하면 된다.
+// 이벤트 해석은 탭마다 다르므로 여기서는 프레임을 끊어 주기만 한다.
+async function* sseEvents(resp) {
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    // SSE는 빈 줄로 이벤트를 구분한다
+    let sep;
+    while ((sep = buffer.indexOf('\n\n')) !== -1) {
+      const frame = buffer.slice(0, sep).trim();
+      buffer = buffer.slice(sep + 2);
+      if (frame.startsWith('data: ')) yield JSON.parse(frame.slice(6));
+    }
+  }
+}
+
+// HTTP 오류를 '알 수 없는 오류'로 뭉개지 않고 원인을 알려준다.
+// (응답이 JSON이 아닌 경우 — 404 HTML, 디버그 트레이스백 등 — 이 경로로 온다)
+// endpoint: 404 안내에 실을 경로 ('/generate/stream' 등)
+async function describeHttpError(resp, endpoint) {
+  const text = await resp.text().catch(() => '');
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed.error) return parsed.error;
+  } catch (e) { /* JSON이 아니면 아래에서 상태 코드로 안내 */ }
+
+  if (resp.status === 404) {
+    return `서버에서 스트리밍 기능(${endpoint || '스트림'})을 찾을 수 없습니다.\n`
+         + 'Flask 서버가 예전 코드로 실행 중일 수 있습니다. 서버를 껐다가 다시 실행해주세요.';
+  }
+  const snippet = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+  return `서버 오류 ${resp.status} ${resp.statusText}` + (snippet ? `\n${snippet}` : '');
+}
+
+// ══════════════════════════════════════════════
 // 사용량 표시 (토큰 / 크레딧) — 문제 생성기·기출 주제 분석 공용
 //   두 탭이 각자 자기 결과 화면에 같은 모양의 접힌 상자를 띄운다.
 //   그래서 대상 상자 id와 작업 이름('생성'/'분석')을 인자로 받는다.
