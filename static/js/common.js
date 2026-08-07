@@ -415,8 +415,8 @@ function viewOriginalImage(src, title) {
 // render 를 화살표로 감싼 것은 호출 시점에 찾게 하려는 것이다 — 이 파일은
 // archive.js/topic_archive.js 보다 먼저 로드돼서 직접 적으면 undefined 다.
 const PAGED_LISTS = {
-  papers: { perPage: 10, render: () => renderArchive() },
-  topics: { perPage: 10, render: () => renderSavedTopics() },
+  papers: { perPage: 8, render: () => renderArchive() },
+  topics: { perPage: 8, render: () => renderSavedTopics() },
 };
 
 const pageByList = {};                 // key → 지금 보고 있는 페이지 (1-based)
