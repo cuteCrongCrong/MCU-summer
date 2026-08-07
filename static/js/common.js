@@ -995,11 +995,11 @@ function cutSpendText(payload) {
   if (c && c.spent_known && c.quota > 0 && c.remaining != null) {
     const after  = (c.remaining / c.quota) * 100;
     const before = ((c.remaining + c.spent) / c.quota) * 100;
-    return `${before.toFixed(1)}% → ${after.toFixed(1)}% 소모`;
+    return `token ${before.toFixed(1)}% → ${after.toFixed(1)}% 소모`;
   }
   const u = payload && payload.usage;
   if (!u || !u.calls) return '';
-  if (u.total) return `토큰 ${u.total.toLocaleString('ko-KR')}개 소모`;
+  if (u.total) return `token ${u.total.toLocaleString('ko-KR')}개 소모`;
   // 제공사가 토큰을 안 알려준 경우 — 호출 수만 안다
   return `LLM 호출 ${u.calls.toLocaleString('ko-KR')}회`;
 }
