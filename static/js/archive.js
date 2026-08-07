@@ -238,6 +238,7 @@ async function openPaper(gid) {
       containerId: 'archive-questions-container',
       titleId: null,
       ns: 'arc-',
+      paged: true,          // 생성 결과 화면과 같게 — 10문제씩 + 번호 바로가기
     });
     // 그때 쓴 토큰·크레딧 (기록 이전 회차는 값이 없어 상자째 숨는다).
     // 세션을 재사용한 회차는 분석을 건너뛰어 사용량이 작게 나오는데, 그게 사실이다.
