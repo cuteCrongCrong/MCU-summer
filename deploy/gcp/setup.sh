@@ -201,6 +201,32 @@ GOOGLE_CLIENT_SECRET=
 EOF
     echo "새로 만들었습니다: $ENV_FILE"
 fi
+
+# ── 나중에 늘어난 설정을 기존 .env 에 채워 넣는다 ──
+# 위 블록은 파일이 이미 있으면 통째로 건너뛴다(시크릿 키를 지키려고). 그래서 나중에
+# 생긴 설정은 **이미 돌아가는 서버에 영영 안 들어간다** — 새로 깐 서버만 안전하고
+# 업데이트한 서버는 조용히 코드 기본값으로 뜬다. 이미지 상한이 딱 그 경우다:
+# 코드 기본값은 RAM이 넉넉한 환경 기준(강의록 100·기출 60)이라 e2-micro에서는 두 배다.
+# 값이 이미 있으면 손대지 않는다 — 운영자가 조정해 둔 값을 스크립트가 되돌리면 안 된다.
+_env_appended=""
+add_env_if_missing() {
+    if grep -qE "^[[:space:]]*$1=" "$ENV_FILE"; then
+        return 0
+    fi
+    if [ -z "$_env_appended" ]; then
+        printf '\n# ── 설치 스크립트가 나중에 추가한 설정 ──\n' >> "$ENV_FILE"
+        _env_appended=1
+    fi
+    printf '%s=%s\n' "$1" "$2" >> "$ENV_FILE"
+    echo "  $ENV_FILE 에 추가: $1=$2"
+}
+
+add_env_if_missing MAX_UPLOAD_MB     "$DEF_MAX_UPLOAD_MB"
+add_env_if_missing SERVER_THREADS    "$DEF_SERVER_THREADS"
+add_env_if_missing IMAGE_CAP_LECTURE "$DEF_IMAGE_CAP_LECTURE"
+add_env_if_missing IMAGE_CAP_EXAM    "$DEF_IMAGE_CAP_EXAM"
+add_env_if_missing IMAGE_WORKERS     "$DEF_IMAGE_WORKERS"
+
 chmod 600 "$ENV_FILE"
 chown root:root "$ENV_FILE"
 
