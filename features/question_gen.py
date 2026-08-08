@@ -406,12 +406,15 @@ def generation_delete(gid):
 def get_providers():
     """선택 가능한 LLM 프로바이더 목록 (표시명·기본 모델·키 안내 문구).
 
-    업로드 상한도 함께 실어 보낸다 — 화면의 '전체 합쳐서 N MB' 안내에 쓴다.
-    이 값은 배포마다 다르므로(.env의 MAX_UPLOAD_MB) 화면에 숫자를 박아두면
-    거절 기준과 안내가 어긋난다. 두 탭 다 뜰 때 이 엔드포인트를 부르므로 여기 얹는다.
+    업로드 상한(용량·파일 개수)도 함께 실어 보낸다. 화면이 생성 버튼을 누르기 전에
+    같은 기준으로 걸러내려면 이 숫자가 필요한데, 화면에 박아두면 서버와 어긋난다 —
+    용량은 배포마다 .env(MAX_UPLOAD_MB)로 달라지고, 개수는 llm.py를 고칠 때
+    화면을 같이 고쳐야 한다는 것을 기억해야 한다. 둘 다 서버가 알려주는 편이 낫다.
+    두 탭 다 뜰 때 이 엔드포인트를 부르므로 왕복이 늘지 않는다.
     """
     return jsonify({"providers": list_providers(), "default": DEFAULT_PROVIDER,
-                    "max_upload_mb": config.MAX_UPLOAD_MB})
+                    "max_upload_mb": config.MAX_UPLOAD_MB,
+                    "max_files_per_side": MAX_FILES_PER_SIDE})
 
 
 @gen_bp.route("/credits", methods=["GET"])
@@ -578,7 +581,8 @@ def read_generate_params() -> dict:
         "session_id":     session_id,
         # 소유자는 요청 컨텍스트가 살아 있을 때 확정해둔다 (스트리밍 제너레이터에서는 못 읽음)
         "owner":          current_owner(),
-        "lecture_files":  lecture_files,   # [(파일명, bytes)]
+        # [(파일명, 디스크 경로)] — bytes가 아니다. 위 spill_upload 주석 참고.
+        "lecture_files":  lecture_files,
         "exam_files":     exam_files,
         "lecture_name":   lecture_name,    # 세션 이름에 쓸 대표 파일명 (첫 파일)
         "extract_token":  extract_token,   # 있으면 보관해둔 추출 결과를 재사용

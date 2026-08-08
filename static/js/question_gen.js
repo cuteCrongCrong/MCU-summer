@@ -3,8 +3,6 @@
 //   common.js 이후 로드. escHtml/renderQuestions/TYPE_BADGE 등은 common.js 것을 재사용.
 // ══════════════════════════════════════════════
 
-const GEN_MAX_FILES = 7;   // llm.py MAX_FILES_PER_SIDE와 같은 값으로 유지
-
 // ── 파일 드래그앤드롭 UX (여러 개 지원) ──
 function setupDrop(dropId, inputId, nameId) {
   const drop = document.getElementById(dropId);
@@ -14,9 +12,11 @@ function setupDrop(dropId, inputId, nameId) {
   const show = () => {
     const files = Array.from(input.files || []);
     if (!files.length) { nameEl.textContent = ''; return; }
-    nameEl.textContent = `✅ ${files.length}개 — ${files.map(f => f.name).join(', ')}`;
-    // 상한을 넘으면 빨갛게 — 생성 버튼을 누르기 전에 알아채도록
-    nameEl.style.color = files.length > GEN_MAX_FILES ? '#dc2626' : '';
+    nameEl.textContent = `✅ ${files.length}개${totalSizeLabel(files)} — `
+                       + files.map(f => f.name).join(', ');
+    // 상한을 넘으면 빨갛게 — 생성 버튼을 누르기 전에 알아채도록.
+    // 용량은 여기서 색을 바꾸지 않는다. 상한이 양쪽 합계 기준이라 한쪽만 보고는 못 정한다.
+    nameEl.style.color = files.length > uploadMaxFiles ? '#dc2626' : '';
   };
 
   input.addEventListener('change', show);
@@ -135,9 +135,12 @@ async function generate() {
   if (!useSession) {
     if (!lectureFiles.length) return alert('강의자료 PDF를 업로드하거나, 저장된 세션을 선택해주세요.');
     if (!examFiles.length)    return alert('기출문제 PDF를 업로드하거나, 저장된 세션을 선택해주세요.');
-    if (lectureFiles.length > GEN_MAX_FILES || examFiles.length > GEN_MAX_FILES) {
-      return alert(`강의자료·기출은 각각 최대 ${GEN_MAX_FILES}개까지 올릴 수 있습니다.`);
+    if (lectureFiles.length > uploadMaxFiles || examFiles.length > uploadMaxFiles) {
+      return alert(`강의자료·기출은 각각 최대 ${uploadMaxFiles}개까지 올릴 수 있습니다.`);
     }
+    // 서버도 막지만 본문을 다 받은 뒤에야 막는다 — 여기서 걸러야 헛업로드가 없다
+    const tooBig = uploadSizeError(lectureFiles, examFiles);
+    if (tooBig) return alert(tooBig);
   }
 
   // UI 초기화
@@ -511,7 +514,7 @@ async function loadProviders() {
   try {
     const resp = await fetch('/providers');
     const data = await resp.json();
-    setUploadCap(data.max_upload_mb);
+    setUploadLimits(data);
     providers = data.providers || [];
     if (!providers.length) return;
     renderProviders();

@@ -8,8 +8,6 @@
 //   한쪽 수정이 다른 쪽을 깨지 않게 하기 위함. (그래서 상태 이름이 전부 따로다)
 // ══════════════════════════════════════════════
 
-const TOPIC_MAX_FILES = 7;   // llm.py TOPIC_MAX_FILES_PER_SIDE와 같은 값으로 유지
-
 // ── 파일 드래그앤드롭 (여러 개 지원) ──
 function topicSetupDrop(dropId, inputId, nameId) {
   const drop = document.getElementById(dropId);
@@ -20,8 +18,9 @@ function topicSetupDrop(dropId, inputId, nameId) {
     const files = Array.from(input.files || []);
     if (!files.length) { nameEl.textContent = ''; return; }
     const names = files.map(f => f.name).join(', ');
-    nameEl.textContent = `✅ ${files.length}개 — ${names}`;
-    nameEl.style.color = files.length > TOPIC_MAX_FILES ? '#dc2626' : '';
+    nameEl.textContent = `✅ ${files.length}개${totalSizeLabel(files)} — ${names}`;
+    // 용량은 색을 바꾸지 않는다 — 상한이 양쪽 합계 기준이라 한쪽만 보고는 못 정한다
+    nameEl.style.color = files.length > uploadMaxFiles ? '#dc2626' : '';
   };
 
   input.addEventListener('change', show);
@@ -70,7 +69,7 @@ async function topicLoadProviders() {
   try {
     const resp = await fetch('/providers');
     const data = await resp.json();
-    setUploadCap(data.max_upload_mb);
+    setUploadLimits(data);
     topicProviders = data.providers || [];
     if (!topicProviders.length) return;
     document.getElementById('topic-provider-select').innerHTML = topicProviders.map(p =>
@@ -191,9 +190,12 @@ async function topicAnalyze() {
   if (!apiKey)             return alert('API 키를 입력해주세요.');
   if (!lectureFiles.length) return alert('강의록 PDF를 1개 이상 올려주세요.');
   if (!examFiles.length)    return alert('기출문제 PDF를 1개 이상 올려주세요.');
-  if (lectureFiles.length > TOPIC_MAX_FILES || examFiles.length > TOPIC_MAX_FILES) {
-    return alert(`강의록·기출은 각각 최대 ${TOPIC_MAX_FILES}개까지 올릴 수 있습니다.`);
+  if (lectureFiles.length > uploadMaxFiles || examFiles.length > uploadMaxFiles) {
+    return alert(`강의록·기출은 각각 최대 ${uploadMaxFiles}개까지 올릴 수 있습니다.`);
   }
+  // 서버도 막지만 본문을 다 받은 뒤에야 막는다 — 여기서 걸러야 헛업로드가 없다
+  const tooBig = uploadSizeError(lectureFiles, examFiles);
+  if (tooBig) return alert(tooBig);
 
   document.getElementById('topic-analyze-btn').disabled = true;
   document.getElementById('topic-status-box').classList.remove('hidden');
