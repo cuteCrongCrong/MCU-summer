@@ -1332,10 +1332,29 @@ def parse_question_block(block: str) -> dict:
     # 선택지로 집으면 선택지가 10개가 되고 해설은 그만큼 빈다. 이 구간에 들어서면
     # ①②③④⑤ 로 시작해도 선택지가 아니라 본문으로 본다.
     in_answer = False
+    # 선택지 수집 상태. 모델이 답을 고쳐 쓰겠다며 같은 목록을 한 번 더 뱉는 일이 있다
+    # (실제: '정답: ①, ③ (복수정답)' 을 쓴 뒤 선택지 블록을 통째로 재출력하고 '정답: ①').
+    # 번호가 안 늘어나면 목록이 끝난 것으로 보고 그 뒤 줄은 버린다 — 안 그러면 선지가 10개가 된다.
+    last_mark = -1
+    choices_closed = False
 
     def flush_buffer(key, buf):
         if key and buf:
             q[key] = "\n".join(buf).strip()
+
+    def take_choice(line):
+        """선택지 줄 하나를 받는다. 기호가 없으면 앞 선택지의 줄바꿈으로 본다."""
+        nonlocal last_mark, choices_closed
+        idx = choice_mark_index(line)
+        if idx < 0:
+            if choice_lines and not choices_closed:
+                choice_lines[-1] += " " + line
+            return
+        if idx <= last_mark:            # ①로 되돌아감 = 같은 목록을 또 쓴 것
+            choices_closed = True
+        if not choices_closed:
+            last_mark = idx
+            choice_lines.append(line)
 
     for line in block.split("\n"):
         line = line.strip()
@@ -1353,8 +1372,8 @@ def parse_question_block(block: str) -> dict:
         elif line == "선택지:":
             flush_buffer(current_key, buffer); buffer = []
             current_key = "선택지"
-        elif not in_answer and line.startswith(("①", "②", "③", "④", "⑤")):
-            choice_lines.append(line)
+        elif not in_answer and line.startswith(tuple(CIRCLED_MARKS)):
+            take_choice(line)
         elif line.startswith("정답:"):
             flush_buffer(current_key, buffer); buffer = []
             in_answer = True
@@ -1371,14 +1390,12 @@ def parse_question_block(block: str) -> dict:
             current_key = "함정포인트"
             val = line.replace("함정포인트:", "").strip()
             if val: buffer.append(val)
-        elif current_key == "선택지" and line:
+        elif not in_answer and current_key == "선택지" and line:
             # '선택지:' 아래인데 ①②③④⑤ 로 시작하지 않는 줄 ('a)' · '1.' 등).
             # 위 조건들이 먼저 걸리므로 정답:/해설: 라벨이 여기 들어올 일은 없다.
-            # 기호가 아예 없는 줄은 앞 선택지가 줄바꿈된 것으로 보고 이어 붙인다.
-            if CHOICE_MARK_RE.match(line) or not choice_lines:
-                choice_lines.append(line)
-            else:
-                choice_lines[-1] += " " + line
+            # ⚠️ not in_answer 를 빼면 안 된다 — 정답 뒤에 선택지를 다시 뱉는 모델이
+            #    있어서, 빼는 순간 그 두 번째 목록까지 주워 담아 선지가 10개가 된다.
+            take_choice(line)
         else:
             if current_key: buffer.append(line)
 
