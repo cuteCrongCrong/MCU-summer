@@ -844,8 +844,10 @@
   </div>
 </div>
 
-<!-- 분량 초과 경고 모달 (주제 분석·문제 생성 공용 — common.js의 confirmTruncation이 연다) -->
-<div class="modal-overlay" id="cut-modal" onclick="if(event.target===this)resolveCutModal(false)">
+<!-- 분량 초과 경고 모달 (주제 분석·문제 생성 공용 — common.js의 confirmTruncation이 연다)
+     배경 클릭으로 닫지 않는다. 취소는 이미 돈을 낸 추출 결과를 버리는 일이라
+     실수로 바깥을 눌러 생성이 끊기면 안 된다. 두 버튼으로만 답한다. -->
+<div class="modal-overlay" id="cut-modal">
   <div class="modal" style="max-width:640px;">
     <h3>⚠️ 일부 파일이 분량 상한을 넘습니다</h3>
     <div class="modal-sub" id="cut-modal-sub"></div>
