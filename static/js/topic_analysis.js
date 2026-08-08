@@ -225,6 +225,20 @@ async function topicAnalyze() {
   try {
     let out = await topicRunAnalysis(form, topicAbort.signal);
 
+    // 같은 자료·같은 모델로 분석한 결과가 이미 있으면, 서버가 PDF를 열기도 전에 멈춰
+    // 물어본다. 여기서 '열기'를 고르면 LLM 호출이 한 번도 안 나가 값이 0이다.
+    if (out && out.cached) {
+      if (!await topicConfirmReuse(out.payload)) {
+        await topicOpenSaved(out.payload.analysis_id);
+        return;
+      }
+      // 파일이 그대로 들어 있는 FormData를 다시 보낸다. 업로드를 한 번 더 하는 셈이지만,
+      // 값이 나가는 것은 LLM뿐이고 이건 사용자가 새로 돌리기로 고른 경우다.
+      form.append('force', '1');
+      topicResetSteps();
+      out = await topicRunAnalysis(form, topicAbort.signal);
+    }
+
     // 분량 상한을 넘는 파일이 있으면 서버가 추출까지만 하고 멈춰 물어본다.
     // 추출 결과는 서버에 보관돼 있으므로, 진행하면 토큰만 보내 이어서 돈다.
     if (out && out.needsConfirm) {
@@ -259,6 +273,47 @@ async function topicAnalyze() {
   }
 }
 
+// ── 같은 자료 재분석 확인 ──
+// 서버가 보관된 분석을 찾으면 LLM을 부르기 전에 멈추고 물어본다
+// (features/topic_analysis.py의 'cached' 이벤트). 조용히 재사용하지 않는 이유는
+// LLM이 같은 자료에도 매번 다르게 답하기 때문 — 다시 돌려보는 것도 정당한 요청이다.
+// 대신 '새로 분석하면 값이 든다'를 모달에서 분명히 말한다.
+let topicReuseResolve = null;
+
+// 모달의 두 버튼만 부른다 (index.html). 배경 클릭으로는 닫히지 않는다.
+function topicResolveReuse(redo) {
+  document.getElementById('reuse-modal').classList.remove('open');
+  const done = topicReuseResolve;
+  topicReuseResolve = null;
+  if (done) done(redo);
+}
+
+/**
+ * 보관된 분석을 알리고 선택을 기다린다.
+ * @param {Object} found 서버가 준 {analysis_id, title, created_at, model, num_topics, total_questions}
+ * @returns {Promise<boolean>} 새로 분석하면 true, 보관된 결과를 열면 false
+ */
+function topicConfirmReuse(found) {
+  const title = (found.title || '').trim();
+  document.getElementById('reuse-modal-sub').innerHTML =
+    `${escHtml(found.created_at || '')}에 <b>${escHtml(found.model || '')}</b>로 분석한 결과가 `
+    + `보관함에 있습니다${title ? ` — “${escHtml(title)}”` : ''}.<br>`
+    + `주제 ${found.num_topics || 0}개 · 기출 ${found.total_questions || 0}문항`;
+  document.getElementById('reuse-modal').classList.add('open');
+  return new Promise(resolve => { topicReuseResolve = resolve; });
+}
+
+// 보관된 분석 한 건을 열어 보여준다 — 보관함 탭의 '분석한 주제' 상세로 그대로 옮긴다.
+// 목록을 강제로 다시 받는 이유: 상세 헤더의 제목이 목록 행(savedTopicRows)에서 오는데,
+// 보관함에 한 번도 안 들어갔으면 그 목록이 비어 있어 제목 자리가 빈다.
+async function topicOpenSaved(aid) {
+  document.getElementById('topic-status-box').classList.add('hidden');
+  switchTab('archive');
+  showArchiveSubview('saved-topics-list-view');
+  await loadSavedTopics(true);
+  await openSavedTopic(aid);
+}
+
 // ── 중지 ──
 // 이 탭도 이제 SSE라, 연결을 끊으면 서버 제너레이터가 다음 yield에서 멈춘다
 // (문제 생성 탭과 같다). 다만 그 순간 이미 나가 있던 LLM 호출 한 건은 끝까지
@@ -269,8 +324,10 @@ function topicCancelAnalyze() {
   if (topicAbort) topicAbort.abort();
 }
 
-// 요청 한 번을 끝까지 처리한다.
-// 분량 초과로 멈추면 {needsConfirm, payload}, 그 밖에는 아무것도 돌려주지 않는다.
+// 요청 한 번을 끝까지 처리한다. 서버가 물어보려고 멈추면 그 내용을 돌려준다:
+//   {cached, payload}       — 같은 자료로 분석한 결과가 이미 있다 (LLM 호출 전)
+//   {needsConfirm, payload} — 분량 상한을 넘는 파일이 있다 (추출 후)
+// 끝까지 돈 경우에는 아무것도 돌려주지 않는다 (결과는 topicFinish가 그린다).
 // signal: 중지 버튼용. 스트림을 못 쓰는 환경의 폴백까지 같은 신호를 넘긴다.
 async function topicRunAnalysis(form, signal) {
   if (!canReadStream()) return topicFallbackAnalyze(form, signal);
@@ -300,6 +357,8 @@ async function topicRunAnalysis(form, signal) {
     } else if (ev.type === 'done') {
       finished = true;
       topicFinish(ev.payload);
+    } else if (ev.type === 'cached') {
+      return { cached: true, payload: ev.payload };
     } else if (ev.type === 'needs_confirm') {
       return { needsConfirm: true, payload: ev.payload };
     } else if (ev.type === 'error') {
@@ -334,6 +393,13 @@ async function topicFallbackAnalyze(form, signal) {
   if (!resp.ok || data.error) {
     topicShowError((data.error || '알 수 없는 오류가 발생했습니다.') + spendSuffix(data));
     return;
+  }
+  if (data.cached) {
+    // 서버가 LLM을 부르기 전에 멈춘 경우다 — 위에서 전부 'done'으로 채운 단계 표시를
+    // 되돌린다. 안 그러면 아무것도 안 했는데 다 끝난 것처럼 보인다.
+    TOPIC_STAGES.forEach(k => setStep('topic-step-' + k, 'wait'));
+    topicProgress.reset(TOPIC_STAGES);
+    return { cached: true, payload: data };
   }
   if (data.needs_confirm) return { needsConfirm: true, payload: data };
   topicFinish(data);

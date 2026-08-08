@@ -1734,6 +1734,76 @@ def build_topic_analysis_prompt(lecture_block: str, exam_block: str) -> str:
 - 출제가 확인된 주제는 **빠짐없이** 넣으세요. (개수 제한 없음)"""
 
 
+def file_digest(pdf) -> str:
+    """
+    업로드된 PDF 한 개의 내용 해시.
+
+    경로(spill_upload가 내려둔 사본)면 1MB씩 읽는다 — 파일 크기와 무관하게 일정 메모리로
+    끝난다. bytes·파일 객체도 받는데(테스트·옛 호출부), 파일 객체는 읽은 뒤 되감아
+    뒤에서 다시 읽는 쪽이 빈 파일을 보지 않게 한다.
+    """
+    h = hashlib.sha256()
+    if isinstance(pdf, (str, os.PathLike)):
+        with open(pdf, "rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    if hasattr(pdf, "read"):
+        h.update(pdf.read() or b"")
+        try:
+            pdf.seek(0)
+        except Exception:
+            pass
+        return h.hexdigest()
+    h.update(pdf or b"")
+    return h.hexdigest()
+
+
+def topic_input_key(lecture_files, exam_files, provider_name: str, model: str,
+                    image_model: str) -> str:
+    """
+    "같은 자료로 같은 분석을 또 하려는 것"을 알아보는 키.
+
+    같은 키의 분석이 보관돼 있으면 LLM을 한 번도 부르지 않고 그 결과를 그대로 쓸 수 있다.
+    이 탭은 요금의 대부분이 주제 대조 호출 하나(입력 14만 토큰)에서 나오므로, 같은
+    자료를 다시 올렸을 때 그 한 번을 건너뛰는 것이 곧 절감이다.
+
+    무엇을 넣는가:
+      ① 파일은 **내용**으로 잡는다 — 이름만 바꿔 올린 같은 파일은 같은 키다. 이름도 함께
+         넣는 이유는 결과 화면·보관함에 파일명이 그대로 나오기 때문이다. 업로드 순서를
+         유지한다 — 순서가 라벨(강의록1·강의록2)과 표시 순서를 정한다.
+      ② 추출한 텍스트가 아니라 **원본 파일**을 해싱한다. 그림 설명은 회차마다 미세하게
+         흔들려서(실측 topic_analyses 25→26: 같은 기출인데 3,418자 차이) 추출 결과를
+         해싱하면 재실행마다 키가 어긋나 캐시가 사실상 안 맞는다.
+      ③ 프롬프트는 빈 블록으로 한 번 만들어 그 **템플릿**을 해싱한다 — 프롬프트를 고치면
+         키가 저절로 바뀐다. 버전 번호를 손으로 올리는 방식은 언젠가 까먹는다.
+      ④ 결과를 바꾸는 상수(글자 예산·이미지 상한·출력 한도)도 넣는다. 안 넣으면 상한을
+         올린 뒤에도 그 전에 잘려 나온 결과가 그대로 재사용된다.
+
+    ※ 여기서 잡는 범위는 'LLM에 무엇을 보내는가'까지다. 응답을 해석하는 규칙
+      (parse_topic_analysis)을 고쳐도 키는 그대로다 — 보관된 행은 그때의 규칙으로 만든
+      결과이고, 보관함이 이미 그렇게 동작한다(옛 회차를 다시 파싱하지 않는다).
+    """
+    h = hashlib.sha256()
+
+    def feed(*parts):
+        for p in parts:
+            h.update(str(p).encode("utf-8"))
+            h.update(b"\x00")
+
+    feed(build_topic_analysis_prompt("", ""),
+         provider_name, model, image_model,
+         TOPIC_SIDE_CHAR_BUDGET, TOPIC_TOTAL_CHAR_BUDGET,
+         TOPIC_DOC_MIN_CHARS, TOPIC_MAX_TOKENS,
+         sorted(IMAGE_DESCRIBE.items()), sorted(IMAGE_TRANSCRIBE.items()))
+
+    for side, files in (("강의록", lecture_files), ("기출", exam_files)):
+        feed(side)
+        for name, pdf in files or []:
+            feed(name or "", file_digest(pdf))
+    return h.hexdigest()
+
+
 def _resolve_doc_name(value: str, docs: list) -> str:
     """LLM이 준 '자료' 값을 실제 파일명으로 복원. 라벨 → 파일명, 파일명이면 그대로."""
     key = str(value or "").strip()

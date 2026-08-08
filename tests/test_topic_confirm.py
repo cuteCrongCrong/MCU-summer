@@ -157,6 +157,17 @@ def test_topic_confirm():
                      content_type="multipart/form-data")
     check("같은 토큰은 다시 못 쓴다", r3.status_code == 400, r3.status_code)
 
+    # ── 확인을 거쳐 만든 분석도 다음번에 다시 쓸 수 있어야 한다 ──
+    # 2단계에는 파일이 없어 입력 지문(llm.topic_input_key)을 만들 수 없다 — 1단계가
+    # extract_cache에 넣어 넘겨준 값을 쓴다. 그 연결이 끊기면 '확인을 거친 분석'만
+    # 조용히 키 없이 저장돼, 같은 자료를 다시 올려도 못 찾고 값을 또 낸다.
+    r4 = client.post("/analyze-topics", data=payload(),
+                     content_type="multipart/form-data")
+    d4 = r4.get_json()
+    check("확인을 거친 분석도 다음번에 찾아진다", d4.get("cached") is True, str(d4)[:200])
+    check("그때 그 회차를 가리킨다", d4.get("analysis_id") == d2.get("analysis_id"),
+          f'{d4.get("analysis_id")} vs {d2.get("analysis_id")}')
+
 
 def test_image_model_pinned():
     """
@@ -220,10 +231,92 @@ def test_image_model_pinned():
           "user-picked" not in (set(pinned.image_models_used) | set(free.image_models_used)))
 
 
+def test_reuse_same_input():
+    """
+    같은 자료·같은 모델로 또 분석하려 하면 LLM을 부르기 **전에** 멈추고 알려준다.
+
+    이 탭은 요금의 대부분이 주제 대조 호출 하나(입력 14만 토큰)에서 나온다. 실제 기록에
+    같은 PDF 쌍을 네 번 돌린 흔적이 있어(topic_analyses 18·19·25·26) 실험 한 번이 그대로
+    요금이었다. 이 장치가 되돌아가도 화면은 멀쩡하고 결과도 나온다 — 값만 다시 나간다.
+
+    무엇을 '같다'고 볼지도 함께 못 박는다. 키가 헐거우면 다른 분석에 엉뚱한 결과를
+    돌려주고, 빡빡하면 재실행마다 어긋나 아무것도 못 아낀다.
+    """
+    print("\n[같은 자료 재분석 — 보관된 결과 재사용]")
+    extract_cache.clear()
+
+    calls = {"n": 0}
+
+    def counting_analysis(*a, **k):
+        calls["n"] += 1
+        return dict(FAKE_RESULT)
+
+    topic_analysis.get_provider = lambda *a, **k: FakeProvider()
+    topic_analysis.run_topic_analysis = counting_analysis
+
+    client = app_module.app.test_client()
+
+    # 쪽마다 글자를 넉넉히 — 글자가 거의 없는 쪽은 스캔으로 잡혀 이미지 호출이 끼어든다.
+    # 여기서 세려는 것은 주제 대조 호출이므로 그 잡음을 없앤다.
+    lecture = make_pdf(["머리뼈는 뇌머리뼈와 얼굴머리뼈로 나뉜다.",
+                        "뇌머리뼈: 이마뼈 · 마루뼈 · 뒤통수뼈 · 관자뼈"])
+    exam    = make_pdf(["1. 머리뼈를 이루는 뼈를 모두 쓰시오.",
+                        "2. 이마뼈가 이루는 부위를 설명하시오."])
+
+    def post(cl, extra=None, lec=None, lec_name="강의록.pdf"):
+        data = {"api_key": "test-key", "model": "fake-model", "provider": "fake",
+                "lectures": (io.BytesIO(lec or lecture), lec_name),
+                "exams":    (io.BytesIO(exam), "기출.pdf")}
+        data.update(extra or {})
+        return cl.post("/analyze-topics", data=data,
+                       content_type="multipart/form-data").get_json()
+
+    # ── 첫 분석 ──
+    d1 = post(client, {"title": "1회"})
+    check("첫 분석은 결과가 온다", d1.get("success") is True, d1.get("error"))
+    first_id = d1.get("analysis_id")
+    check("보관되어 id가 생긴다", bool(first_id), str(first_id))
+    check("주제 대조를 한 번 불렀다", calls["n"] == 1, str(calls["n"]))
+
+    # ── 같은 파일·같은 모델로 다시 ──
+    d2 = post(client, {"title": "2회"})
+    check("같은 자료면 보관된 것을 알려준다", d2.get("cached") is True, str(d2)[:200])
+    check("그 회차의 id를 준다", d2.get("analysis_id") == first_id, str(d2.get("analysis_id")))
+    check("주제 대조를 부르지 않았다", calls["n"] == 1, str(calls["n"]))
+    check("결과를 통째로 싣지는 않는다", "topics" not in d2)
+    check("무엇이 들었는지는 알려준다",
+          d2.get("num_topics") == 1 and d2.get("total_questions") == 1, str(d2))
+
+    # ── '그래도 새로 분석'을 고르면 그대로 돈다 ──
+    d3 = post(client, {"title": "3회", "force": "1"})
+    check("force면 결과가 온다", d3.get("success") is True, d3.get("error"))
+    check("주제 대조를 다시 불렀다", calls["n"] == 2, str(calls["n"]))
+    check("새 회차로 보관된다", d3.get("analysis_id") != first_id, str(d3.get("analysis_id")))
+
+    # ── 무엇이 달라지면 '다른 자료'인가 ──
+    before = calls["n"]
+    check("모델이 다르면 재사용하지 않는다",
+          post(client, {"model": "other-model"}).get("cached") is not True)
+    check("내용이 다르면 재사용하지 않는다",
+          post(client, lec=make_pdf(["어깨뼈와 빗장뼈는 팔이음뼈를 이룬다."]))
+          .get("cached") is not True)
+    check("이름만 달라도 재사용하지 않는다",
+          post(client, lec_name="이름만 다른 강의록.pdf").get("cached") is not True,
+          "파일명이 결과 화면에 그대로 나오므로 다른 결과다")
+    check("셋 다 실제로 분석이 돌았다", calls["n"] == before + 3, str(calls["n"] - before))
+
+    # ── 남의 회차는 주지 않는다 ──
+    # 키는 내용 주소라 같은 파일을 가진 사람만 만들 수 있지만, 돌려주는 값에는 사용자가
+    # 붙인 이름과 회차가 딸려 온다. 쿠키가 다른 클라이언트 = 다른 게스트.
+    d4 = post(app_module.app.test_client())
+    check("소유자가 다르면 재사용하지 않는다", d4.get("cached") is not True, str(d4)[:200])
+
+
 if __name__ == "__main__":
     try:
         test_topic_confirm()
         test_image_model_pinned()
+        test_reuse_same_input()
     finally:
         try:
             pathlib.Path(_tmp.name).unlink()

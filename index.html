@@ -864,6 +864,25 @@
   </div>
 </div>
 
+<!-- 같은 자료 재분석 확인 모달 (기출 주제 분석 전용 — topic_analysis.js의 topicConfirmReuse가 연다)
+     배경 클릭으로 닫지 않는다. 어느 쪽을 골라도 다음 동작이 갈리므로 두 버튼으로만 답한다.
+     기본(오른쪽)이 '열기'인 이유: 값이 안 드는 쪽이고, 여기까지 온 사람은 대개
+     같은 자료를 실수로 다시 올린 것이다. -->
+<div class="modal-overlay" id="reuse-modal">
+  <div class="modal" style="max-width:560px;">
+    <h3>🔍 같은 자료로 분석한 결과가 이미 있습니다</h3>
+    <div class="modal-sub" id="reuse-modal-sub"></div>
+    <div class="cut-note">
+      <span>※ 보관된 결과를 열면 LLM을 부르지 않아 값이 들지 않습니다.
+        새로 분석하면 같은 값을 한 번 더 냅니다 — 같은 자료라도 결과 문장은 매번 조금씩 다릅니다.</span>
+    </div>
+    <div class="cut-actions">
+      <button class="btn-ghost" onclick="topicResolveReuse(true)">그래도 새로 분석</button>
+      <button class="btn btn-primary" onclick="topicResolveReuse(false)">보관된 결과 열기</button>
+    </div>
+  </div>
+</div>
+
 <!-- 골학 원본(이름 표시) 이미지 모달 -->
 <div class="modal-overlay" id="bone-original-modal" onclick="if(event.target===this)closeBoneOriginal()">
   <div class="modal" style="max-width:640px;">
