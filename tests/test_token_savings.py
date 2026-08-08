@@ -26,6 +26,8 @@ LLM 호출 없이 가짜 프로바이더로 돈다. API 키도 요금도 필요 
     python tests/test_token_savings.py
 """
 
+import io
+import os
 import pathlib
 import sys
 import tempfile
@@ -270,9 +272,14 @@ def test_output_cap():
     """
     print("[⑦ 출력 한도 — 모드별 전달 + 한도 변경 시 캐시 무효화]")
 
-    check("전사 한도가 설명 한도보다 크다",
-          llm.TRANSCRIBE_MAX_OUTPUT > llm.DESCRIBE_MAX_OUTPUT,
-          f"{llm.TRANSCRIBE_MAX_OUTPUT} vs {llm.DESCRIBE_MAX_OUTPUT}")
+    # 예전에는 '전사 한도가 설명보다 커야 한다'로 못박았다. 설명은 한 문단이면 된다는
+    # 전제였는데 (필기: …) 규칙이 들어오면서 깨졌다 — 스캔 기출은 인쇄 문항과 손글씨를
+    # 갈라 적어야 해서 출력이 전사만큼 길어진다. 실제로 설명이 2048에 눌려 본문 0자로
+    # 나온 회차가 있었다(generation 209 — llm.py의 DESCRIBE_MAX_OUTPUT 주석 참고).
+    # 지금 지킬 것은 둘의 대소가 아니라 '사고 토큰에 눌리지 않을 만큼 넉넉한가'다.
+    check("두 모드 다 사고에 눌리지 않을 한도",
+          min(llm.DESCRIBE_MAX_OUTPUT, llm.TRANSCRIBE_MAX_OUTPUT) >= 4096,
+          f"설명 {llm.DESCRIBE_MAX_OUTPUT} / 전사 {llm.TRANSCRIBE_MAX_OUTPUT}")
     check("두 모드 모두 한도를 들고 있다",
           llm.IMAGE_DESCRIBE.get("max_output") and llm.IMAGE_TRANSCRIBE.get("max_output"))
 
@@ -419,14 +426,23 @@ def test_image_coverage():
     check("건너뛴 수", cov["skipped"] == 4, str(cov["skipped"]))
     check("건너뛴 쪽 번호(1부터)", cov["skipped_pages"] == [3, 4, 5, 6],
           str(cov["skipped_pages"]))
+    # 렌더 결과는 메모리가 아니라 디스크에 있다 (llm.py의 spill 절) — 경로만 들고 있다.
     check("렌더는 상한까지만 (건너뛴 쪽엔 png 없음)",
-          sum(1 for e in pages if e.get("png")) == 2)
+          sum(1 for e in pages if e.get("png_path")) == 2)
+    check("PNG를 메모리에 들고 있지 않는다",
+          all("png" not in e for e in pages))
+    check("내려둔 PNG 파일이 실제로 있다",
+          all(os.path.exists(e["png_path"]) for e in pages if e.get("png_path")))
+    llm.discard_spills(pages)
+    check("discard_spills가 파일과 경로를 함께 지운다",
+          all("png_path" not in e for e in pages))
 
     # 상한에 안 걸리면 경고가 안 뜬다
     pages2, jobs2 = llm.read_pdf_pages(pdf, "key", llm.IMAGE_DESCRIBE, max_images=99)
     cov2 = llm.image_coverage(pages2, jobs2)
     check("여유가 있으면 건너뛴 쪽 없음", cov2["skipped"] == 0 and cov2["processed"] == 6,
           str(cov2))
+    llm.discard_spills(pages2)
 
     # 이미지 처리를 안 하면 후보 자체가 0 (헛돌지 않는다)
     pages3, jobs3 = llm.read_pdf_pages(pdf, "key", None)
@@ -819,6 +835,50 @@ def test_question_boundary_cut():
           str(llm.count_question_types(raw)["총문항"]))
 
 
+def test_upload_spill():
+    """
+    업로드를 디스크로 넘겨도 읽는 결과가 같아야 한다.
+
+    라우트는 업로드를 경로로 바꿔 넘긴다(llm.spill_upload) — bytes로 들고 있으면
+    생성이 끝날 때까지 파일 전체가 힙에 남기 때문이다. 결과가 조금이라도 달라지면
+    메모리를 아끼려다 추출 품질을 바꾸는 셈이 되므로 여기서 못을 박는다.
+    """
+    print("\n[⑮ 업로드를 디스크로 넘겨도 결과가 같다]")
+
+    doc = fitz.open()
+    for i in range(3):
+        p = doc.new_page()
+        p.insert_text((50, 60), f"{i + 1}. 대퇴골의 몸쪽 끝 구조는?", fontsize=10)
+        p.insert_image(fitz.Rect(50, 300, 500, 750), stream=_png(64))
+    pdf = doc.tobytes()
+    doc.close()
+
+    by_bytes, jobs_b = llm.read_pdf_pages(pdf, "key", llm.IMAGE_DESCRIBE, max_images=99)
+    text_b = "".join(e["text"] for e in by_bytes)
+    llm.discard_spills(by_bytes)
+
+    path = llm.spill_upload(io.BytesIO(pdf))
+    check("업로드 사본이 만들어진다", os.path.exists(path))
+    check("사본 크기가 원본과 같다", os.path.getsize(path) == len(pdf))
+
+    by_path, jobs_p = llm.read_pdf_pages(path, "key", llm.IMAGE_DESCRIBE, max_images=99)
+    text_p = "".join(e["text"] for e in by_path)
+
+    check("텍스트가 같다", text_b == text_p, f"{len(text_b)} vs {len(text_p)}")
+    check("이미지 후보 수가 같다", len(jobs_b) == len(jobs_p),
+          f"{len(jobs_b)} vs {len(jobs_p)}")
+    llm.discard_spills(by_path)
+
+    # 라우트의 finally가 부르는 정리 — (이름, 경로) 목록을 그대로 받는다
+    files = [("기출.pdf", path)]
+    llm.discard_upload_spills(files)
+    check("discard_upload_spills가 사본을 지운다", not os.path.exists(path))
+
+    # bytes가 섞여 들어와도(세션 재사용 경로 등) 터지지 않아야 한다
+    llm.discard_upload_spills([("x.pdf", b"not a path")])
+    check("bytes가 섞여도 조용히 넘어간다", True)
+
+
 if __name__ == "__main__":
     try:
         test_image_selection()
@@ -835,6 +895,7 @@ if __name__ == "__main__":
         test_char_budget_handoff()
         test_gen_char_budget_handoff()
         test_question_boundary_cut()
+        test_upload_spill()
     finally:
         try:
             pathlib.Path(_tmp.name).unlink()

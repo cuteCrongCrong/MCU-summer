@@ -81,8 +81,13 @@ TRUSTED_PROXY = os.environ.get("TRUSTED_PROXY") or "*"
 # 동시 처리 스레드 수. 문제 생성 요청 하나가 수 분 걸리므로 넉넉히 잡는다.
 SERVER_THREADS = _int("SERVER_THREADS", 16)
 
-# 업로드 용량 상한(MB). 공개 서버에서 거대 파일 업로드를 막는다.
-MAX_UPLOAD_MB = _int("MAX_UPLOAD_MB", 100)
+# 업로드 용량 상한(MB) — 요청 하나 전체 기준(강의록+기출 합).
+#   이 값은 이제 RAM이 아니라 디스크에 걸린다. 예전에는 업로드를 bytes로 읽고 렌더한
+#   PNG도 힙에 들고 있어서 상한이 곧 메모리였지만, 지금은 둘 다 디스크로 내려간다
+#   (llm.spill_upload / llm._spill_png). 받는 단계도 werkzeug가 500KB 넘는 파일을
+#   디스크로 스풀하므로, 요청 하나가 쥐는 메모리가 업로드 크기와 무관해졌다.
+#   남는 제약은 스필 디렉터리(DB 옆)가 쓰는 디스크와 추출에 걸리는 시간뿐이다.
+MAX_UPLOAD_MB = _int("MAX_UPLOAD_MB", 200)
 
 # Vision으로 읽을 이미지 페이지 상한 — **한쪽(강의록 전체 / 기출 전체) 기준**, 파일당이 아니다.
 #   설정으로 뺀 이유는 메모리다. llm.read_pdf_pages가 렌더한 PNG를 설명이 끝날 때까지

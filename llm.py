@@ -8,7 +8,11 @@ LLM 도메인 로직 — PDF 텍스트/이미지 추출, 프롬프트 설계, �
 
 import hashlib
 import json
+import os
 import re
+import shutil
+import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import fitz  # pymupdf
 
@@ -83,7 +87,16 @@ TRANSCRIBE_MIN_AREA_RATIO = 0.03
 #   실측(같은 PNG·프롬프트끼리 짝지은 강의록 전사, 쪽당 글자수): 같은 gemini-3.6-flash가
 #   한도 1024에서 175자 → 한도 4096에서 783자. 갈린 것은 모델 체급이 아니라 한도였다.
 #   한도는 천장일 뿐이라 올려도 실제 생성한 만큼만 과금된다.
-DESCRIBE_MAX_OUTPUT   = 2048
+#
+#   설명(기출)도 2048에서 4096으로 올렸다. 2048은 '무엇인지 한 문단'이면 된다는 전제였는데,
+#   그 전제가 (필기: …) 규칙과 함께 깨졌다 — 스캔 기출은 인쇄 문항과 손글씨를 갈라 적어야
+#   해서 출력이 전사에 가까워진다. 실측(generation 209, gpt-5.6-luna): 출력이 정확히
+#   2048로 끝났고 image_desc_cache에 아무것도 안 남았다. 캐시는 설명이 비었을 때만
+#   건너뛰므로, **사고가 한도를 다 먹고 본문이 0자로 나온 것**이다. 그 쪽은 값만 치르고
+#   프롬프트에 한 글자도 안 들어갔다. 바로 다음 회차(topic_analyses 26)는 1,909토큰으로
+#   끝나 3,400자를 남겼다 — 같은 모델이 한도에 안 눌리면 이만큼 쓴다.
+#   ※ 이 값은 image_cache_key에 들어간다. 바꾸면 설명 캐시가 전부 무효가 된다.
+DESCRIBE_MAX_OUTPUT   = 4096
 TRANSCRIBE_MAX_OUTPUT = 4096
 
 # 태블릿 벡터 필기(굿노트 등) 감지 임계값 — 페이지의 '곡선' 세그먼트 개수.
@@ -182,6 +195,130 @@ def has_vector_ink(page) -> bool:
     return False
 
 
+# ──────────────────────────────────────────────
+# 렌더한 PNG 임시 보관 (spill)
+# ──────────────────────────────────────────────
+# 왜 디스크로 내리는가:
+#   read_pdf_pages는 LLM을 부르기 **전에** 이 회차의 그림을 전부 렌더한다 —
+#   진행률을 내려면 총 장수를 먼저 알아야 하기 때문이다(read_labeled_pdfs 주석).
+#   그래서 메모리 피크는 '동시에 처리 중인 장수'가 아니라 '이 회차의 전체 장수'였다.
+#   상한이 강의록 100 + 기출 60이고 스캔 PNG가 장당 2~3MB이므로 요청 하나가
+#   수백 MB를 쥐고 있었다. RAM 1GB짜리 배포(e2-micro)에서 업로드 상한을 올리지
+#   못한 진짜 이유가 이것이다.
+#   경로만 들고 있다가 프로바이더에 보내기 직전에 읽으면, 동시에 메모리에 뜨는
+#   장수가 IMAGE_WORKERS개로 묶인다.
+#
+#   ⚠️ pix.save()가 내는 바이트는 pix.tobytes("png")와 완전히 같다. 캐시 키가 PNG
+#      바이트를 그대로 해싱하므로(image_cache_key) 이게 어긋나면 지난 회차에 돈을
+#      내고 받아둔 설명이 전부 무효가 된다. 저장 방식을 바꿀 일이 있으면 반드시 확인할 것.
+_SPILL_SUBDIR = "png-spill"
+# 정상 경로에서는 다 쓴 즉시 지운다. 이건 오류·취소로 그 삭제를 못 밟았을 때를 위한
+# 청소 기준 — 확인 모달 대기(extract_cache.TTL_SECONDS = 20분)보다 넉넉해야 한다.
+_SPILL_MAX_AGE = 3600
+# 청소를 얼마나 자주 돌지. _spill_dir()은 페이지마다 불리므로(상한이면 160번) 매번
+# 훑으면 디렉터리 스캔이 장수의 제곱으로 늘어난다. 찌꺼기 청소는 급할 게 없다.
+_SPILL_SWEEP_INTERVAL = 600
+_spill_swept_at = 0.0
+
+
+def _sweep_spills(path: str, cutoff: float):
+    """cutoff보다 오래된 찌꺼기를 지운다. 실패는 삼킨다 — 다음 차례에 다시 본다."""
+    try:
+        names = os.listdir(path)
+    except OSError:
+        return
+    for name in names:
+        stale = os.path.join(path, name)
+        try:
+            if os.path.getmtime(stale) < cutoff:
+                os.remove(stale)
+        except OSError:
+            pass              # 다른 스레드가 방금 지웠거나 아직 쓰는 중
+
+
+def _spill_dir() -> str:
+    """PNG를 내려둘 디렉터리. 없으면 만들고, 가끔 오래된 찌꺼기를 치운다.
+
+    DB 옆에 두는 이유: 배포 스크립트가 DB_PATH를 반드시 실제 디스크의 영구 경로로
+    잡는다(deploy/*/setup.sh). 시스템 임시 폴더는 배포판 설정에 따라 tmpfs(=RAM)일
+    수 있어서, 메모리를 아끼려고 내린 것이 그대로 메모리에 남는다.
+    DB_PATH가 없는 로컬 개발에서만 시스템 임시 폴더로 떨어진다.
+    """
+    global _spill_swept_at
+    base = (os.path.dirname(os.path.abspath(config.DB_PATH)) if config.DB_PATH
+            else tempfile.gettempdir())
+    path = os.path.join(base, _SPILL_SUBDIR)
+    os.makedirs(path, exist_ok=True)
+
+    # 여러 요청 스레드가 동시에 지나갈 수 있지만 경합해도 손해가 없다 —
+    # 최악이라도 청소가 한 번 더 도는 것뿐이라 잠금을 걸지 않는다.
+    now = time.time()
+    if now - _spill_swept_at > _SPILL_SWEEP_INTERVAL:
+        _spill_swept_at = now
+        _sweep_spills(path, now - _SPILL_MAX_AGE)
+    return path
+
+
+def _spill_png(pix) -> str:
+    """pixmap을 PNG 파일로 내리고 경로를 돌려준다. (bytes를 거치지 않는다)"""
+    fd, path = tempfile.mkstemp(suffix=".png", dir=_spill_dir())
+    os.close(fd)
+    pix.save(path, output="png")
+    return path
+
+
+def _read_spill(entry) -> bytes:
+    """내려둔 PNG를 읽어온다. 부르는 쪽이 다 쓰면 참조를 놓아야 한다."""
+    with open(entry["png_path"], "rb") as f:
+        return f.read()
+
+
+def _drop_spill(entry):
+    """다 쓴 PNG 파일을 지운다. 경로도 지워 두 번 읽지 않게 한다."""
+    path = entry.pop("png_path", None)
+    if path:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def discard_spills(pages):
+    """남은 PNG 파일을 정리한다 — 오류·취소로 중간에 끝났을 때 호출부가 부른다."""
+    for entry in pages or []:
+        _drop_spill(entry)
+
+
+def spill_upload(fileobj, suffix: str = ".pdf") -> str:
+    """업로드 파일을 디스크로 옮기고 경로를 돌려준다.
+
+    라우트는 업로드를 미리 읽어둬야 한다 — 스트리밍 제너레이터가 요청 컨텍스트가
+    닫힌 뒤에 돌기 때문이다. 그런데 bytes로 읽으면 **생성이 끝날 때까지** 파일 전체가
+    힙에 남는다. 텍스트를 다 뽑은 뒤에도, 문제를 만드는 몇 분 내내 그대로다.
+    경로로 넘기면 그 상주분이 사라지고 MuPDF가 디스크에서 필요한 만큼만 읽어간다.
+
+    (fitz.open(stream=…)이 사본을 더 뜨지는 않는다 — 원본 bytes 객체의 참조를
+     붙들어 공유한다. 대신 그래서 문서가 살아 있는 동안 그 bytes를 놓을 수도 없다.)
+
+    1MB씩 옮기므로 이 함수 자체는 파일 크기와 무관하게 일정한 메모리만 쓴다.
+    """
+    fd, path = tempfile.mkstemp(suffix=suffix, dir=_spill_dir())
+    with os.fdopen(fd, "wb") as out:
+        shutil.copyfileobj(fileobj, out, 1024 * 1024)
+    return path
+
+
+def discard_upload_spills(files):
+    """spill_upload로 만든 (이름, 경로) 목록을 정리한다. bytes가 섞여 있으면 건너뛴다."""
+    for item in files or []:
+        path = item[1] if isinstance(item, tuple) else item
+        if isinstance(path, (str, os.PathLike)):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+
 def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None,
                    max_images: int = None):
     """
@@ -193,10 +330,16 @@ def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None,
                 호출부가 여러 PDF에 예산을 나눠 쓸 때(주제 분석) 그 몫을 넘긴다.
     반환: (pages, img_jobs) — img_jobs는 pages 안 엔트리를 그대로 참조한다.
     """
-    # 업로드 객체(FileStorage)와 bytes 모두 허용 — 스트리밍 경로는 요청 컨텍스트가
-    # 닫힌 뒤에 실행되므로 라우트가 미리 읽어둔 bytes를 넘긴다.
-    pdf_bytes = pdf.read() if hasattr(pdf, "read") else pdf
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    # 경로 / 업로드 객체(FileStorage) / bytes 를 모두 받는다.
+    #   경로: 스트리밍 경로가 쓰는 방식이다(spill_upload). MuPDF가 디스크에서 필요한
+    #         만큼만 읽어가므로 파일 전체가 메모리에 올라오지 않는다.
+    #   나머지: 테스트와 옛 호출부 호환. bytes는 그대로 메모리에 상주하므로,
+    #         큰 파일을 다루는 경로에서는 쓰지 말 것.
+    if isinstance(pdf, (str, os.PathLike)):
+        doc = fitz.open(pdf)
+    else:
+        pdf_bytes = pdf.read() if hasattr(pdf, "read") else pdf
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     mode = image_mode or {}
     max_pages = mode.get("max_pages", 0) if max_images is None else max_images
     detect_ink = mode.get("detect_ink", False)
@@ -221,8 +364,9 @@ def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None,
         if is_candidate:
             if len(img_jobs) < max_pages:
                 try:
-                    pix = page.get_pixmap(dpi=dpi)
-                    entry["png"] = pix.tobytes("png")
+                    # 렌더한 즉시 디스크로 내린다 (위 spill 절 참고). 메모리에 남는 것은
+                    # 경로 문자열뿐이고, pixmap은 이 줄을 벗어나면 회수된다.
+                    entry["png_path"] = _spill_png(page.get_pixmap(dpi=dpi))
                     img_jobs.append(entry)
                 except Exception:
                     pass
@@ -296,6 +440,18 @@ def _describe_one(prov, png_bytes: bytes, api_key: str, model: str, fallback: st
                                prompt=prompt, max_tokens=max_output), fallback
 
 
+def _describe_spilled(prov, entry, api_key: str, model: str, fallback: str,
+                      usage, prompt: str, max_output: int):
+    """내려둔 PNG를 **워커 안에서** 읽어 _describe_one에 넘긴다.
+
+    읽기를 제출 시점이 아니라 워커 안에서 하는 것이 요점이다 — 제출할 때 읽으면
+    pending 전체가 한꺼번에 메모리에 떠서 디스크로 내린 의미가 사라진다.
+    워커 수(IMAGE_WORKERS)가 곧 동시에 메모리에 뜨는 장수가 된다.
+    """
+    return _describe_one(prov, _read_spill(entry), api_key, model, fallback,
+                         usage, prompt, max_output)
+
+
 def describe_images_progressively(img_jobs, api_key: str, model: str, provider=None,
                                   usage=None, image_mode: dict = None):
     """
@@ -321,7 +477,9 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
     done = 0
     pending = []
     for e in img_jobs:
-        e["cache_key"] = image_cache_key(prompt, e["png"], max_output)
+        # 키는 PNG 바이트 전체를 해싱하므로 한 장씩 읽어 계산하고 곧바로 놓는다.
+        # 여기는 순차라 동시에 뜨는 것은 한 장이다.
+        e["cache_key"] = image_cache_key(prompt, _read_spill(e), max_output)
         cached = get_cached_image_desc(e["cache_key"], prov_name, model)
         if not cached and fallback:
             # 지난 회차에 폴백이 만들어둔 결과도 받아준다. 이 조회가 없으면 본 모델이
@@ -329,6 +487,7 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
             cached = get_cached_image_desc(e["cache_key"], prov_name, fallback)
         if cached:
             e["desc"] = cached
+            _drop_spill(e)          # 캐시에서 나왔으니 이 그림은 더 볼 일이 없다
             done += 1
             yield done
         else:
@@ -338,7 +497,7 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
         return
 
     with ThreadPoolExecutor(max_workers=config.IMAGE_WORKERS) as ex:
-        futs = {ex.submit(_describe_one, prov, e["png"], api_key, model, fallback,
+        futs = {ex.submit(_describe_spilled, prov, e, api_key, model, fallback,
                           usage, prompt, max_output): e
                 for e in pending}
         for fut in as_completed(futs):
@@ -354,6 +513,7 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
                 # 저장하면 본 모델이 복구된 뒤에도 그 페이지를 다시 물어보지 않는다.
                 put_cached_image_desc(entry["cache_key"], prov_name, used_model,
                                       entry["desc"])
+            _drop_spill(entry)      # 성공이든 실패든 이 그림은 끝났다
             done += 1
             yield done
 
@@ -1352,6 +1512,10 @@ def read_labeled_pdfs(files, label_prefix: str, api_key: str = None,
             # quota가 0이어도 image_mode는 그대로 넘긴다 (next_image_quota 주석 참고)
             pages, img_jobs = read_pdf_pages(pdf, api_key, image_mode, max_images=quota)
         except Exception as e:
+            # 앞 파일들이 이미 내려둔 PNG를 두고 나가지 않는다 (여러 개 중 하나만
+            # 손상된 경우 — 청소 주기를 기다릴 것 없이 여기서 바로 치운다).
+            for done_part in parts:
+                discard_spills(done_part["pages"])
             # 손상·암호 걸린 PDF (fitz의 영문 예외를 어떤 파일이 문제인지 알려주는 문구로)
             raise ValueError(
                 f"'{name}' 파일을 읽을 수 없습니다. "

@@ -511,6 +511,7 @@ async function loadProviders() {
   try {
     const resp = await fetch('/providers');
     const data = await resp.json();
+    setUploadCap(data.max_upload_mb);
     providers = data.providers || [];
     if (!providers.length) return;
     renderProviders();

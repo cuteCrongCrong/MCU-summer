@@ -32,6 +32,7 @@ from llm import (
     IMAGE_DESCRIBE, IMAGE_TRANSCRIBE, MAX_FILES_PER_SIDE,
     describe_images_progressively, finish_labeled_docs, read_labeled_pdfs,
     remaining_char_budget, run_topic_analysis,
+    spill_upload, discard_upload_spills, discard_spills,
 )
 from features import extract_cache
 
@@ -346,9 +347,10 @@ def read_topic_params() -> dict:
         "title":    title,
         "extract_token": token,
         "owner":    current_owner(),
-        # 지금 bytes로 읽어둔다 (read_pdf_pages는 업로드 객체와 bytes를 모두 받는다)
-        "lecture_files": [(f.filename, f.read()) for f in lectures],
-        "exam_files":    [(f.filename, f.read()) for f in exams],
+        # 지금 디스크로 옮겨둔다 — bytes로 읽으면 분석이 끝날 때까지 파일 전체가
+        # 힙에 남는다 (llm.spill_upload 주석). 정리는 제너레이터의 finally에서.
+        "lecture_files": [(f.filename, spill_upload(f)) for f in lectures],
+        "exam_files":    [(f.filename, spill_upload(f)) for f in exams],
     }
 
 
@@ -389,6 +391,9 @@ def run_topic_analysis_events(p: dict):
                                       credits_snapshot(provider, api_key)),
         }
 
+    # 렌더한 PNG 정리용 — 아래 finally 참고. (question_gen과 같은 방식)
+    rendered_parts = []
+
     try:
         usage.set_stage("extract")
         yield {"type": "stage", "key": "extract", "status": "active"}
@@ -422,6 +427,7 @@ def run_topic_analysis_events(p: dict):
                                            api_key, IMAGE_TRANSCRIBE)
             exam_parts = read_labeled_pdfs(p["exam_files"], "기출",
                                            api_key, IMAGE_DESCRIBE)
+            rendered_parts += lec_parts + exam_parts
 
             total_imgs = sum(len(x["img_jobs"]) for x in lec_parts + exam_parts)
             yield {"type": "progress", "key": "extract", "done": 0, "total": total_imgs}
@@ -509,6 +515,13 @@ def run_topic_analysis_events(p: dict):
     except Exception as e:
         yield {"type": "error", "status": 500, "message": f"서버 오류: {str(e)}",
                **spend()}
+    finally:
+        # 정상 종료·오류뿐 아니라 브라우저가 중간에 끊어도(GeneratorExit) 돈다.
+        # 2단계(확인 후 진행)는 파일 없이 토큰만 오므로 지울 것이 없다.
+        for part in rendered_parts:
+            discard_spills(part["pages"])
+        discard_upload_spills(p["lecture_files"])
+        discard_upload_spills(p["exam_files"])
 
 
 @topic_bp.route("/analyze-topics", methods=["POST"])

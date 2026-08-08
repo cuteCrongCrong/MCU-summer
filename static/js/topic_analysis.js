@@ -70,6 +70,7 @@ async function topicLoadProviders() {
   try {
     const resp = await fetch('/providers');
     const data = await resp.json();
+    setUploadCap(data.max_upload_mb);
     topicProviders = data.providers || [];
     if (!topicProviders.length) return;
     document.getElementById('topic-provider-select').innerHTML = topicProviders.map(p =>

@@ -9,6 +9,7 @@
 #   4. systemd 서비스 등록 → 재부팅해도 자동 시작
 #   5. Caddy 리버스 프록시 설정 → https 자동 적용
 #   6. 인스턴스 방화벽(iptables)에 80/443 개방
+#   7. (토큰을 주면) DuckDNS 자동 갱신 등록
 #
 # 사용법 (서버에 SSH 접속 후):
 #   curl -fsSL https://raw.githubusercontent.com/cuteCrongCrong/MCU-summer/main/deploy/oracle/setup.sh -o setup.sh
@@ -16,6 +17,12 @@
 #
 # 예:
 #   sudo bash setup.sh mcu-club.duckdns.org
+#
+# DuckDNS를 쓰고 토큰을 넘기면, 공인 IP가 바뀌어도 5분마다 자동으로 도메인을 갱신한다:
+#   sudo env DUCKDNS_TOKEN=<토큰> bash setup.sh mcu-club.duckdns.org
+#
+# (sudo VAR=값 이 아니라 sudo env VAR=값 을 쓰는 이유: 전자는 sudoers의 setenv
+#  정책에 따라 변수가 걸러질 수 있다. env를 거치면 정책과 무관하게 전달된다)
 #
 # ⚠️ 이 스크립트를 돌리기 전에 반드시:
 #   - Oracle 콘솔의 보안 목록(Security List)에서 80·443 포트를 열어둘 것
@@ -36,6 +43,7 @@ ENV_FILE="$ENV_DIR/mcu.env"
 APP_PORT=8000
 
 say() { printf '\n\033[1;36m== %s\033[0m\n' "$*"; }
+warn() { printf '\n\033[1;33m[주의] %s\033[0m\n' "$*"; }
 die() { printf '\n\033[1;31m[오류] %s\033[0m\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || die "sudo로 실행하세요:  sudo bash setup.sh <도메인>"
@@ -46,8 +54,10 @@ say "1/7  시스템 패키지 설치"
 # ──────────────────────────────────────────────
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
+# sqlite3: backup.sh 의 .backup 명령에 필요하다 (WAL 때문에 파일 복사로는 안 된다).
+# cron   : DuckDNS 자동 갱신에 쓴다.
 apt-get install -y \
-    python3 python3-venv python3-pip git curl ca-certificates \
+    python3 python3-venv python3-pip git curl ca-certificates cron sqlite3 \
     debian-keyring debian-archive-keyring apt-transport-https \
     iptables-persistent
 
@@ -148,6 +158,25 @@ for port in 80 443; do
 done
 netfilter-persistent save >/dev/null
 
+# DuckDNS 자동 갱신 — 토큰을 줬고 도메인이 duckdns.org일 때만.
+# OCI의 ephemeral 공인 IP는 인스턴스 수명 동안 유지되므로, GCP와 달리 정지→시작으로는
+# 바뀌지 않는다. 다만 인스턴스를 다시 만들거나 IP를 재할당하면 바뀌고, 그때 도메인이
+# 어긋나면 접속뿐 아니라 Caddy의 인증서 갱신까지 막힌다 → 안전망으로 걸어둔다.
+if [ -n "${DUCKDNS_TOKEN:-}" ] && [ "${DOMAIN%.duckdns.org}" != "$DOMAIN" ]; then
+    SUB="${DOMAIN%.duckdns.org}"
+    cat > /usr/local/bin/mcu-duckdns.sh <<EOF
+#!/bin/sh
+# DuckDNS에 현재 공인 IP를 알린다. ip= 를 비워 보내면 DuckDNS가 접속 IP를 자동 인식한다.
+curl -fsS "https://www.duckdns.org/update?domains=$SUB&token=$DUCKDNS_TOKEN&ip=" -o /var/log/mcu-duckdns.log
+EOF
+    # 토큰이 들어 있으므로 root만 읽을 수 있게 한다.
+    chmod 700 /usr/local/bin/mcu-duckdns.sh
+    ( crontab -l 2>/dev/null | grep -v 'mcu-duckdns.sh' || true
+      echo "*/5 * * * * /usr/local/bin/mcu-duckdns.sh" ) | crontab -
+    /usr/local/bin/mcu-duckdns.sh || warn "DuckDNS 갱신 요청이 실패했습니다. 토큰을 확인하세요."
+    echo "DuckDNS 자동 갱신 등록됨 ($SUB, 5분 주기)"
+fi
+
 # ──────────────────────────────────────────────
 say "완료"
 # ──────────────────────────────────────────────
@@ -174,6 +203,7 @@ cat <<EOF
 자주 쓰는 명령:
     sudo systemctl status mcu      # 상태 확인
     sudo journalctl -u mcu -f      # 실시간 로그
-    sudo bash $APP_DIR/deploy/oracle/update.sh    # 코드 업데이트
+    sudo bash $APP_DIR/deploy/oracle/update.sh     # 코드 업데이트
+    sudo bash $APP_DIR/deploy/oracle/backup.sh     # DB 백업
 
 EOF
