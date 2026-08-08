@@ -168,12 +168,16 @@
               style="--mini-line:#6ee7b7;--mini-ink:#047857;">✕</button>
     </div>
 
+    <!-- ⚠️ 파일 입력의 accept 에는 MIME 타입(application/pdf)을 반드시 먼저 둔다.
+         확장자('.pdf')만 적으면 모바일에서 파일 목록이 통째로 비어 보인다 —
+         안드로이드 문서 선택기와 클라우드 제공자(드라이브 등)는 확장자를 모르고
+         MIME 으로만 거른다. 확장자는 데스크톱 파일 대화상자를 위해 함께 남긴다. -->
     <div class="form-grid">
       <!-- 강의자료 -->
       <div>
         <label>📄 강의자료 (PDF · 여러 개 선택 가능)</label>
         <div class="file-drop" id="drop-lecture">
-          <input type="file" id="lecture-file" accept=".pdf" multiple />
+          <input type="file" id="lecture-file" accept="application/pdf,.pdf" multiple />
           <div class="icon">📂</div>
           <div>파일을 끌어다 놓거나 클릭하세요</div>
           <div class="hint">PDF만 · 최대 7개</div>
@@ -184,13 +188,17 @@
       <div>
         <label>📝 기출문제 (PDF · 여러 개 선택 가능)</label>
         <div class="file-drop" id="drop-exam">
-          <input type="file" id="exam-file" accept=".pdf" multiple />
+          <input type="file" id="exam-file" accept="application/pdf,.pdf" multiple />
           <div class="icon">📂</div>
           <div>파일을 끌어다 놓거나 클릭하세요</div>
           <div class="hint">PDF만 · 최대 7개</div>
           <div class="filename" id="exam-name"></div>
         </div>
       </div>
+    </div>
+
+    <div style="font-size:0.78rem;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;margin:-4px 0 16px;">
+      ⚠️ 강의자료 + 기출문제 <b>전체 합쳐서 30MB</b>까지 업로드할 수 있습니다. 넘으면 업로드가 거부돼요.
     </div>
 
     <!-- LLM 제공사 선택 -->
@@ -686,7 +694,7 @@
         <div>
           <label>📄 강의록 (PDF · 여러 개 선택 가능)</label>
           <div class="file-drop" id="topic-drop-lecture">
-            <input type="file" id="topic-lecture-file" accept=".pdf" multiple />
+            <input type="file" id="topic-lecture-file" accept="application/pdf,.pdf" multiple />
             <div class="icon">📂</div>
             <div>파일을 끌어다 놓거나 클릭하세요</div>
             <div class="hint">PDF만 · 최대 7개</div>
@@ -697,13 +705,17 @@
         <div>
           <label>📝 기출문제 (PDF · 여러 개 선택 가능)</label>
           <div class="file-drop" id="topic-drop-exam">
-            <input type="file" id="topic-exam-file" accept=".pdf" multiple />
+            <input type="file" id="topic-exam-file" accept="application/pdf,.pdf" multiple />
             <div class="icon">📂</div>
             <div>파일을 끌어다 놓거나 클릭하세요</div>
             <div class="hint">PDF만 · 최대 7개</div>
             <div class="filename" id="topic-exam-name"></div>
           </div>
         </div>
+      </div>
+
+      <div style="font-size:0.78rem;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;margin:-4px 0 16px;">
+        ⚠️ 강의록 + 기출문제 <b>전체 합쳐서 30MB</b>까지 업로드할 수 있습니다. 넘으면 업로드가 거부돼요.
       </div>
 
       <!-- LLM 제공사 선택 -->
