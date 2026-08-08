@@ -316,6 +316,10 @@
       <span id="overall-pct" class="overall-pct">0%</span>
       <button type="button" id="cancel-btn" class="cancel-btn" onclick="cancelGenerate()">■ 중지</button>
     </div>
+    <!-- 대기열 안내 — 동시 생성 상한(MAX_CONCURRENT_GENERATIONS)에 걸렸을 때만 보인다.
+         진행률 막대 '위'에 두는 이유: 대기는 생성의 한 단계가 아니라 아직 시작을 못 한
+         상태다. 아래 목록에 끼워 넣으면 5단계짜리 작업처럼 보이고, 0%인 이유도 안 보인다. -->
+    <div class="queue-note" id="queue-note" style="display:none;"></div>
     <div class="progress-track"><div class="progress-bar" id="overall-bar"></div></div>
     <ul class="step-list">
       <li class="step-item wait" id="step-extract">
