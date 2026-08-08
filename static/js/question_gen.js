@@ -226,25 +226,7 @@ const genProgress = createProgress({
   weights: { extract: 15, concepts: 20, format: 20, generate: 45 },
 });
 
-// ── 대기열 안내 ──
-// 서버(features/gen_queue.py)가 동시 생성 상한에 걸린 동안에만 queue 이벤트를 보낸다.
-// 상한에 안 걸리면 한 번도 안 오므로, 평소 화면은 지금과 완전히 똑같다.
-function showQueueNote(ahead) {
-  const el = document.getElementById('queue-note');
-  if (!el) return;
-  el.innerHTML = ahead > 0
-    ? `⏳ 앞에 <b>${ahead}</b>명 대기 중 — 차례가 되면 자동으로 시작합니다`
-    : '⏳ 곧 시작합니다';
-  el.style.display = 'flex';
-}
-
-function hideQueueNote() {
-  const el = document.getElementById('queue-note');
-  if (el) el.style.display = 'none';
-}
-
 function resetSteps(useSession) {
-  hideQueueNote();   // 지난 회차의 대기 안내가 남아 보이지 않게
   // 저장된 세션을 재사용하면 분석 단계는 아예 실행되지 않는다 → 숨기고 진행률에서도 제외
   const active = useSession ? ['generate'] : STAGE_STEPS.slice();
 
@@ -362,10 +344,7 @@ async function streamGenerate(form, signal) {
 
   // 프레임 끊기는 common.js 의 sseEvents 가 한다 (기출 주제 분석 탭과 공용)
   for await (const ev of sseEvents(resp)) {
-    if (ev.type === 'queue') {
-      showQueueNote(ev.ahead);
-    } else if (ev.type === 'stage') {
-      hideQueueNote();     // 첫 단계가 시작됐다 = 차례가 왔다
+    if (ev.type === 'stage') {
       setStep('step-' + ev.key, ev.status);
       if (ev.status === 'active') {
         genProgress.setStageProgress(ev.key, 0, ev.total || 0);

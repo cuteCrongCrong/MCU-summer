@@ -330,20 +330,6 @@ input:focus { outline: none; border-color: var(--primary); }
   color: var(--primary);
   font-variant-numeric: tabular-nums;
 }
-/* 대기열 안내 — 동시 생성 상한에 걸려 아직 시작을 못 했을 때만 보인다.
-   진행률 막대 위에 붙으므로 막대의 음수 위쪽 여백(-8px)을 여기서 상쇄한다. */
-.queue-note {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 0.88rem;
-  color: var(--text-muted);
-  background: var(--primary-soft);
-  border: 1px solid var(--border-soft);
-  border-radius: 8px;
-  padding: 10px 12px;
-  margin: 0 0 14px;
-}
-.queue-note b { color: var(--primary); font-variant-numeric: tabular-nums; }
-
 .progress-track {
   height: 8px;
   background: var(--border);

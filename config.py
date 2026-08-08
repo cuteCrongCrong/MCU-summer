@@ -79,20 +79,7 @@ TRUST_PROXY = _flag("TRUST_PROXY", default=IS_PRODUCTION)
 TRUSTED_PROXY = os.environ.get("TRUSTED_PROXY") or "*"
 
 # 동시 처리 스레드 수. 문제 생성 요청 하나가 수 분 걸리므로 넉넉히 잡는다.
-#   ⚠️ 이 값으로 '동시 생성 건수'를 제한하지 말 것. 그러면 생성이 스레드를 다 차지한
-#      순간 생성과 무관한 사람들까지 페이지를 못 연다(정적 파일도 앱을 거친다).
-#      메모리를 먹는 쪽은 아래 MAX_CONCURRENT_GENERATIONS 가 따로 막는다.
 SERVER_THREADS = _int("SERVER_THREADS", 16)
-
-# 동시에 돌릴 문제 생성 건수. 넘으면 대기열에 서고 화면에 '앞에 N명'이 뜬다.
-#   메모리가 걸린다 — 생성 한 건이 Vision 호출을 IMAGE_WORKERS 만큼 병렬로 돌리며
-#   그 PNG를 들고 있다. RAM 1GB 서버는 2~3, 넉넉한 서버는 더 올려도 된다.
-MAX_CONCURRENT_GENERATIONS = _int("MAX_CONCURRENT_GENERATIONS", 3)
-
-# 대기열에서 기다릴 수 있는 최대 시간(초). 넘으면 '나중에 다시' 안내를 내보낸다.
-#   프록시·서버의 연결 유지 한도(900초)보다 짧아야 한다 — 길게 잡으면 안내를 띄우기
-#   전에 연결이 먼저 끊겨 사용자는 이유를 모른 채 실패를 본다.
-GEN_QUEUE_TIMEOUT = _int("GEN_QUEUE_TIMEOUT", 600)
 
 # 업로드 용량 상한(MB) — 요청 하나 전체 기준(강의록+기출 합).
 #   이 값은 이제 RAM이 아니라 디스크에 걸린다. 예전에는 업로드를 bytes로 읽고 렌더한
