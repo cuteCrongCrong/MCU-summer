@@ -58,17 +58,23 @@ APP_PORT=8000
 SWAP_FILE=/swapfile
 SWAP_SIZE=2G
 
-# e2-micro(1GB RAM) 기준 기본값. llm.py는 PDF 전체를 메모리에 올리고
-# 페이지를 150DPI로 렌더하므로(A4 1장 ≈ 6.5MB), 기본값 100MB/16스레드로 두면 OOM이 난다.
-DEF_MAX_UPLOAD_MB=30
+# e2-micro(1GB RAM · 공유 vCPU) 기준 기본값.
+#
+# 업로드 상한은 더 이상 RAM에 걸리지 않는다. 예전에는 업로드를 bytes로 읽고 렌더한
+# PNG도 힙에 들고 있어서 30MB로 조여야 했는데, 지금은 둘 다 디스크로 내려간다
+# (llm.spill_upload / llm._spill_png). 남는 제약은 스필 디렉터리가 쓰는 디스크와
+# 추출에 걸리는 시간이다. 디스크가 빠듯한 서버라면 이 값을 도로 낮춰야 한다 —
+# 요청 하나가 '업로드 크기 + 이미지 상한 × PNG 한 장'만큼 디스크를 잡는다.
+DEF_MAX_UPLOAD_MB=200
+# 스레드는 낮게 유지한다. 이제 막히는 쪽은 메모리가 아니라 공유 vCPU다 —
+# 요청 하나가 PDF 전 쪽을 훑고(get_text·그림 판별) 페이지를 렌더한다.
 DEF_SERVER_THREADS=4
-# 이미지 상한도 여기서 낮춘다. 렌더한 PNG는 설명이 끝날 때까지 전부 메모리에 남으므로
-# '상한 합계 × PNG 한 장'이 요청 하나의 상주 메모리다 (PNG는 슬라이드 0.3~0.6MB,
-# 스캔 2~3MB). 코드 기본값(100/60)은 RAM이 넉넉한 환경 기준이라 여기서는 절반으로 잡는다.
+# 이미지 상한을 코드 기본값(100/60)보다 낮춰 잡는 이유도 이제 메모리가 아니라 시간이다.
+# 공유 vCPU에서는 렌더가 느리고, 호출 수만큼 대기가 그대로 쌓인다.
+# (PNG는 디스크에 있고, 보내기 직전 워커 수만큼만 메모리로 올라온다)
 DEF_IMAGE_CAP_LECTURE=50
 DEF_IMAGE_CAP_EXAM=30
-# 워커는 코드 기본값(8)보다 낮춰 둔다 — 동시에 뜨는 pixmap이 그만큼 늘고,
-# e2-micro는 vCPU도 공유(버스트)라 늘려도 이득이 적다.
+# 워커는 코드 기본값(8)보다 낮춰 둔다 — e2-micro는 vCPU가 공유(버스트)라 늘려도 이득이 적다.
 DEF_IMAGE_WORKERS=4
 
 # 문제 생성이 실제로 되는지는 이 게이트웨이에 닿느냐에 달려 있다. (llm.py의 GATEWAY_BASE_URL)
@@ -180,11 +186,12 @@ PORT=$APP_PORT
 # 프록시(Caddy)가 같은 서버에 있으므로 127.0.0.1만 신뢰한다.
 TRUSTED_PROXY=127.0.0.1
 
-# ── e2-micro(RAM 1GB) 대응 ──
-# llm.py는 업로드된 PDF 전체를 메모리에 올리고(read()), 이미지 페이지를 렌더해
-# 설명이 끝날 때까지 PNG를 들고 있다(A4 1장 raw ≈ 6.5MB, PNG는 0.3~3MB).
-# 기본값(100MB / 16스레드 / 이미지 100·60장)이면 OOM이 난다.
-# e2-small(2GB) 이상으로 올렸다면 아래 값들을 키워도 된다.
+# ── e2-micro(RAM 1GB · 공유 vCPU) 대응 ──
+# 업로드 PDF도 렌더한 PNG도 디스크로 내려가므로(llm.spill_upload / _spill_png)
+# 업로드 상한은 메모리가 아니라 디스크 여유에 걸린다. 요청 하나가 잡는 디스크는
+# 대략 '업로드 크기 + 이미지 상한 × PNG 한 장(0.3~3MB)'이다.
+#   → df -h / 로 여유를 보고 정할 것. 빠듯하면 이 값을 낮춘다.
+# 스레드는 공유 vCPU 때문에 낮게 둔다 (기본 16이면 추출이 서로를 굶긴다).
 MAX_UPLOAD_MB=$DEF_MAX_UPLOAD_MB
 SERVER_THREADS=$DEF_SERVER_THREADS
 
