@@ -1,5 +1,5 @@
 [Unit]
-Description=의대 예상문제 생성기 (Flask + waitress)
+Description=MCU 학습 플랫폼 (Flask + waitress)
 Documentation=https://github.com/cuteCrongCrong/MCU-summer
 After=network-online.target
 Wants=network-online.target

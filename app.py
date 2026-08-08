@@ -1,5 +1,5 @@
 """
-의대 예상문제 생성기 — Flask 진입점 (전북대 LLM 플랫폼)
+MCU 학습 플랫폼 — Flask 진입점 (전북대 LLM 플랫폼)
 
 앱 생성 + Blueprint 등록 + 서버 실행만 담당한다. (거의 바뀔 일 없음)
 기능별 로직은 아래에 있음:
@@ -90,7 +90,7 @@ if __name__ == "__main__":
 
     if not is_reload_child:
         print("=" * 55)
-        print("  의대 예상문제 생성기 서버 시작")
+        print("  MCU 학습 플랫폼 서버 시작")
         print(f"  접속 주소: http://localhost:{config.PORT}")
         print(f"  LLM 게이트웨이: {GATEWAY_BASE_URL}")
         print(f"  기본 모델: {DEFAULT_MODEL}")

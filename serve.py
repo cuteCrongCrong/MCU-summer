@@ -33,7 +33,7 @@ from providers.jbnu_gateway import GATEWAY_BASE_URL, DEFAULT_MODEL
 
 def main():
     print("=" * 60)
-    print("  의대 예상문제 생성기 — waitress 서버")
+    print("  MCU 학습 플랫폼 — waitress 서버")
     print(f"  모드      : {config.APP_ENV}")
     print(f"  수신      : http://{config.HOST}:{config.PORT}")
     print(f"  스레드    : {config.SERVER_THREADS}")
