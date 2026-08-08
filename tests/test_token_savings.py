@@ -272,9 +272,14 @@ def test_output_cap():
     """
     print("[⑦ 출력 한도 — 모드별 전달 + 한도 변경 시 캐시 무효화]")
 
-    check("전사 한도가 설명 한도보다 크다",
-          llm.TRANSCRIBE_MAX_OUTPUT > llm.DESCRIBE_MAX_OUTPUT,
-          f"{llm.TRANSCRIBE_MAX_OUTPUT} vs {llm.DESCRIBE_MAX_OUTPUT}")
+    # 예전에는 '전사 한도가 설명보다 커야 한다'로 못박았다. 설명은 한 문단이면 된다는
+    # 전제였는데 (필기: …) 규칙이 들어오면서 깨졌다 — 스캔 기출은 인쇄 문항과 손글씨를
+    # 갈라 적어야 해서 출력이 전사만큼 길어진다. 실제로 설명이 2048에 눌려 본문 0자로
+    # 나온 회차가 있었다(generation 209 — llm.py의 DESCRIBE_MAX_OUTPUT 주석 참고).
+    # 지금 지킬 것은 둘의 대소가 아니라 '사고 토큰에 눌리지 않을 만큼 넉넉한가'다.
+    check("두 모드 다 사고에 눌리지 않을 한도",
+          min(llm.DESCRIBE_MAX_OUTPUT, llm.TRANSCRIBE_MAX_OUTPUT) >= 4096,
+          f"설명 {llm.DESCRIBE_MAX_OUTPUT} / 전사 {llm.TRANSCRIBE_MAX_OUTPUT}")
     check("두 모드 모두 한도를 들고 있다",
           llm.IMAGE_DESCRIBE.get("max_output") and llm.IMAGE_TRANSCRIBE.get("max_output"))
 
