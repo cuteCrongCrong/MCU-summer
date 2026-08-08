@@ -196,8 +196,11 @@ def has_vector_ink(page) -> bool:
 
 
 # ──────────────────────────────────────────────
-# 렌더한 PNG 임시 보관 (spill)
+# 큰 것들을 디스크로 내려두기 (spill)
 # ──────────────────────────────────────────────
+# 여기로 내려가는 것은 둘이다 — 렌더한 PNG(_spill_png)와 올라온 PDF 원본(spill_upload).
+# 둘 다 같은 디렉터리(_spill_dir)를 쓰고 같은 청소를 받는다.
+#
 # 왜 디스크로 내리는가:
 #   read_pdf_pages는 LLM을 부르기 **전에** 이 회차의 그림을 전부 렌더한다 —
 #   진행률을 내려면 총 장수를 먼저 알아야 하기 때문이다(read_labeled_pdfs 주석).
@@ -211,6 +214,9 @@ def has_vector_ink(page) -> bool:
 #   ⚠️ pix.save()가 내는 바이트는 pix.tobytes("png")와 완전히 같다. 캐시 키가 PNG
 #      바이트를 그대로 해싱하므로(image_cache_key) 이게 어긋나면 지난 회차에 돈을
 #      내고 받아둔 설명이 전부 무효가 된다. 저장 방식을 바꿀 일이 있으면 반드시 확인할 것.
+# 폴더 이름이 png인 것은 PNG만 내려두던 시절의 흔적이다(지금은 업로드 PDF도 여기 있다).
+# 이름을 바꾸면 이미 돌고 있는 서버의 옛 폴더에 남은 찌꺼기를 아무도 치우지 않게 된다 —
+# 청소는 지금 쓰는 폴더만 훑기 때문이다. 그 대가를 치를 만한 이유가 아니라 그대로 둔다.
 _SPILL_SUBDIR = "png-spill"
 # 정상 경로에서는 다 쓴 즉시 지운다. 이건 오류·취소로 그 삭제를 못 밟았을 때를 위한
 # 청소 기준 — 확인 모달 대기(extract_cache.TTL_SECONDS = 20분)보다 넉넉해야 한다.
@@ -237,7 +243,7 @@ def _sweep_spills(path: str, cutoff: float):
 
 
 def _spill_dir() -> str:
-    """PNG를 내려둘 디렉터리. 없으면 만들고, 가끔 오래된 찌꺼기를 치운다.
+    """내려둔 것들(PNG·업로드 PDF)이 사는 디렉터리. 없으면 만들고, 가끔 찌꺼기를 치운다.
 
     DB 옆에 두는 이유: 배포 스크립트가 DB_PATH를 반드시 실제 디스크의 영구 경로로
     잡는다(deploy/*/setup.sh). 시스템 임시 폴더는 배포판 설정에 따라 tmpfs(=RAM)일
@@ -496,7 +502,9 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
     if not pending:
         return
 
-    with ThreadPoolExecutor(max_workers=config.IMAGE_WORKERS) as ex:
+    # with 문 대신 직접 여닫는 이유는 아래 finally 에 있다.
+    ex = ThreadPoolExecutor(max_workers=config.IMAGE_WORKERS)
+    try:
         futs = {ex.submit(_describe_spilled, prov, e, api_key, model, fallback,
                           usage, prompt, max_output): e
                 for e in pending}
@@ -516,6 +524,15 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
             _drop_spill(entry)      # 성공이든 실패든 이 그림은 끝났다
             done += 1
             yield done
+    finally:
+        # 중지를 누르거나 브라우저가 끊기면 이 제너레이터가 닫히면서(GeneratorExit)
+        # 여기를 지난다. 그때 **아직 시작도 안 한 장은 버려야 한다.**
+        #   with 문의 기본 동작은 shutdown(wait=True) 라 큐에 남은 것을 끝까지 다 돌린다.
+        #   상한이 160장이면 사용자는 멈췄다고 보는데 남은 그림값이 그대로 나가고,
+        #   중지 자체도 그게 다 끝날 때까지 붙잡혀 있다.
+        # 이미 워커에 올라간 장(최대 IMAGE_WORKERS개)은 못 되돌린다 — 그 결과는
+        # 아무도 안 읽고 버려진다. wait=False 라 중지가 그것마저 기다리지도 않는다.
+        ex.shutdown(wait=False, cancel_futures=True)
 
 
 def assemble_pdf_text(pages, img_job_count: int = 0, image_mode: dict = None,
@@ -1494,8 +1511,10 @@ def read_labeled_pdfs(files, label_prefix: str, api_key: str = None,
     알아야 한다. 호출부가 양쪽(강의록·기출)을 다 읽어 총계를 센 뒤에
     describe_images_progressively 를 돌리게 하려고 여기서 끊는다.
 
-    files: (파일명, FileStorage 또는 bytes) 쌍의 목록.
-           스트리밍 경로는 요청 컨텍스트가 닫힌 뒤에 도니 bytes 를 넘긴다.
+    files: (파일명, PDF) 쌍의 목록. PDF 는 디스크 경로·FileStorage·bytes 중 아무거나.
+           스트리밍 경로는 **경로**를 넘긴다 — 요청 컨텍스트가 닫힌 뒤에 도는데,
+           bytes 로 읽어두면 생성이 끝날 때까지 파일 전체가 힙에 남기 때문이다
+           (spill_upload 주석).
     img_budget: 이미지 처리 상한 — **파일당이 아니라 이쪽 전체 기준**. 생략하면 모드의
            max_pages. '남은 예산 ÷ 남은 파일 수'로 배정한다(next_image_quota).
     반환: [{label, name, pages, img_jobs, quota}] (img_jobs 는 pages 안 엔트리를 참조한다)

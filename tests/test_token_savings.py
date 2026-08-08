@@ -20,6 +20,7 @@
 
   ⑧ 글자 예산 넘겨주기   — 강의록이 안 쓴 몫이 기출로 넘어간다
   ⑨ 기출 자르기 경계     — 상한을 넘겨도 반쪽짜리 문항은 남기지 않는다
+  ⑰ 중지가 실제로 멈춘다 — 취소하면 아직 시작 안 한 그림 호출을 버린다
 
 LLM 호출 없이 가짜 프로바이더로 돈다. API 키도 요금도 필요 없다:
 
@@ -31,6 +32,8 @@ import os
 import pathlib
 import sys
 import tempfile
+import threading
+import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
@@ -134,6 +137,25 @@ class CountingProvider:
 
     def list_models(self, api_key):
         return [self.default_model]
+
+
+class SlowProvider(CountingProvider):
+    """그림 한 장에 시간이 걸리는 프로바이더 — 취소했을 때 큐에 남는 장이 생기도록."""
+    name = "slow-fake"
+    CALL_SECONDS = 0.25
+
+    def __init__(self):
+        super().__init__()
+        self._lock = threading.Lock()   # 여러 워커가 동시에 센다
+
+    def describe_image(self, png_bytes, api_key, model, usage=None, prompt=None,
+                       max_tokens=None):
+        # 자기 **전에** 센다 — 돈은 호출이 시작되는 순간 나가기 때문이다
+        with self._lock:
+            self.image_calls += 1
+            n = self.image_calls
+        time.sleep(self.CALL_SECONDS)
+        return f"그림 결과 {n}"
 
 
 class FakeUpload:
@@ -876,6 +898,56 @@ def test_upload_spill():
 
     # bytes가 섞여 들어와도(세션 재사용 경로 등) 터지지 않아야 한다
     llm.discard_upload_spills([("x.pdf", b"not a path")])
+
+
+def test_cancel_stops_image_calls():
+    """
+    중지하면 아직 시작도 안 한 그림 호출은 버려야 한다.
+
+    describe_images_progressively 는 제너레이터라, 사용자가 '중지'를 누르거나 브라우저가
+    끊기면 닫히면서(GeneratorExit) 스레드 풀을 정리한다. 이때 with 문의 기본 동작
+    (shutdown(wait=True))에 맡기면 큐에 남은 장을 **끝까지 다 돌린다** — 사용자는 멈췄다고
+    보는데 남은 그림값이 그대로 나가고, 중지도 그게 끝날 때까지 붙잡혀 있다.
+    상한이 강의록 100 + 기출 60이라 한 번에 날아갈 수 있는 양이 작지 않다.
+
+    화면에는 아무 흔적이 없고 요금서에만 보이는 종류라 여기서 못을 박는다.
+    """
+    print("\n[⑰ 중지하면 남은 그림 호출을 버린다]")
+
+    total = 12
+    doc = fitz.open()
+    for i in range(total):
+        p = doc.new_page()
+        p.insert_text((50, 60), f"{i + 1}", fontsize=9)
+        # 장마다 회색을 달리한다 — 같은 PNG면 캐시 키가 겹쳐 호출 없이 지나간다
+        p.insert_image(fitz.Rect(50, 300, 500, 750), stream=_png(64, gray=10 + i * 7))
+    pdf = doc.tobytes()
+    doc.close()
+
+    pages, jobs = llm.read_pdf_pages(pdf, "key", llm.IMAGE_DESCRIBE, max_images=total)
+    check("그림 페이지가 다 잡혔다", len(jobs) == total, len(jobs))
+
+    prov = SlowProvider()
+    saved_workers = llm.config.IMAGE_WORKERS
+    llm.config.IMAGE_WORKERS = 2        # 큐에 남는 장이 생기도록 좁힌다
+    try:
+        gen = llm.describe_images_progressively(jobs, "key", "fake-model", provider=prov)
+        next(gen)                       # 한 장 받아보고
+        t0 = time.perf_counter()
+        gen.close()                     # 사용자가 '중지' → GeneratorExit
+        blocked = time.perf_counter() - t0
+    finally:
+        llm.config.IMAGE_WORKERS = saved_workers
+
+    # 이미 워커에 올라간 장은 뒤늦게 끝난다 — 그것까지 세고 나서 판정한다
+    time.sleep(SlowProvider.CALL_SECONDS * 3)
+    called = prov.image_calls
+
+    # 고치기 전에는 12/12 가 나가고 중지가 1초 넘게 붙잡혀 있었다
+    check("남은 장을 버린다", called < total, f"{called}/{total}장이 호출됐다")
+    check("중지가 큐를 기다리지 않는다", blocked < 1.0, f"{blocked:.2f}초 붙잡혔다")
+
+    llm.discard_spills(pages)
     check("bytes가 섞여도 조용히 넘어간다", True)
 
 
@@ -896,6 +968,7 @@ if __name__ == "__main__":
         test_gen_char_budget_handoff()
         test_question_boundary_cut()
         test_upload_spill()
+        test_cancel_stops_image_calls()
     finally:
         try:
             pathlib.Path(_tmp.name).unlink()
