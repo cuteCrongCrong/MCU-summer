@@ -15,6 +15,7 @@ from datetime import datetime
 
 from flask import Blueprint, request, jsonify, Response
 
+import config
 from db import get_conn, json_col, owner_clause, LEGACY_PROVIDER
 from features.auth import current_owner   # (user_id, guest_id) 튜플
 from features import extract_cache
@@ -403,8 +404,14 @@ def generation_delete(gid):
 
 @gen_bp.route("/providers", methods=["GET"])
 def get_providers():
-    """선택 가능한 LLM 프로바이더 목록 (표시명·기본 모델·키 안내 문구)."""
-    return jsonify({"providers": list_providers(), "default": DEFAULT_PROVIDER})
+    """선택 가능한 LLM 프로바이더 목록 (표시명·기본 모델·키 안내 문구).
+
+    업로드 상한도 함께 실어 보낸다 — 화면의 '전체 합쳐서 N MB' 안내에 쓴다.
+    이 값은 배포마다 다르므로(.env의 MAX_UPLOAD_MB) 화면에 숫자를 박아두면
+    거절 기준과 안내가 어긋난다. 두 탭 다 뜰 때 이 엔드포인트를 부르므로 여기 얹는다.
+    """
+    return jsonify({"providers": list_providers(), "default": DEFAULT_PROVIDER,
+                    "max_upload_mb": config.MAX_UPLOAD_MB})
 
 
 @gen_bp.route("/credits", methods=["GET"])

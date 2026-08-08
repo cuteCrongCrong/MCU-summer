@@ -4,6 +4,16 @@
 //   · 여기의 함수/전역은 모든 기능에서 재사용하세요 (재정의 금지).
 // ══════════════════════════════════════════════
 
+// ── 업로드 상한 안내 채우기 ──
+// 화면의 '전체 합쳐서 N MB' 자리(.upload-cap-mb)를 서버가 알려준 값으로 채운다.
+// 숫자를 HTML에 박아두지 않는 이유: 이 값은 배포마다 .env(MAX_UPLOAD_MB)로 달라져서,
+// 박아두면 안내와 실제 거절 기준이 어긋난다(서버는 200인데 화면은 30이라고 하는 식).
+// /providers 응답에 실려 오므로 문제 생성·주제 분석 중 먼저 뜨는 쪽이 채우면 된다.
+function setUploadCap(mb) {
+  if (!mb) return;                      // 못 받았으면 '…' 을 그대로 둔다 (거짓말보다 낫다)
+  document.querySelectorAll('.upload-cap-mb').forEach(el => { el.textContent = mb; });
+}
+
 // ── 공용 유틸 ──
 function escHtml(str) {
   return String(str)
