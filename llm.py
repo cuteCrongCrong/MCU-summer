@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -279,6 +280,36 @@ def discard_spills(pages):
         _drop_spill(entry)
 
 
+def spill_upload(fileobj, suffix: str = ".pdf") -> str:
+    """업로드 파일을 디스크로 옮기고 경로를 돌려준다.
+
+    라우트는 업로드를 미리 읽어둬야 한다 — 스트리밍 제너레이터가 요청 컨텍스트가
+    닫힌 뒤에 돌기 때문이다. 그런데 bytes로 읽으면 **생성이 끝날 때까지** 파일 전체가
+    힙에 남는다. 텍스트를 다 뽑은 뒤에도, 문제를 만드는 몇 분 내내 그대로다.
+    경로로 넘기면 그 상주분이 사라지고 MuPDF가 디스크에서 필요한 만큼만 읽어간다.
+
+    (fitz.open(stream=…)이 사본을 더 뜨지는 않는다 — 원본 bytes 객체의 참조를
+     붙들어 공유한다. 대신 그래서 문서가 살아 있는 동안 그 bytes를 놓을 수도 없다.)
+
+    1MB씩 옮기므로 이 함수 자체는 파일 크기와 무관하게 일정한 메모리만 쓴다.
+    """
+    fd, path = tempfile.mkstemp(suffix=suffix, dir=_spill_dir())
+    with os.fdopen(fd, "wb") as out:
+        shutil.copyfileobj(fileobj, out, 1024 * 1024)
+    return path
+
+
+def discard_upload_spills(files):
+    """spill_upload로 만든 (이름, 경로) 목록을 정리한다. bytes가 섞여 있으면 건너뛴다."""
+    for item in files or []:
+        path = item[1] if isinstance(item, tuple) else item
+        if isinstance(path, (str, os.PathLike)):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+
 def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None,
                    max_images: int = None):
     """
@@ -290,10 +321,16 @@ def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None,
                 호출부가 여러 PDF에 예산을 나눠 쓸 때(주제 분석) 그 몫을 넘긴다.
     반환: (pages, img_jobs) — img_jobs는 pages 안 엔트리를 그대로 참조한다.
     """
-    # 업로드 객체(FileStorage)와 bytes 모두 허용 — 스트리밍 경로는 요청 컨텍스트가
-    # 닫힌 뒤에 실행되므로 라우트가 미리 읽어둔 bytes를 넘긴다.
-    pdf_bytes = pdf.read() if hasattr(pdf, "read") else pdf
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    # 경로 / 업로드 객체(FileStorage) / bytes 를 모두 받는다.
+    #   경로: 스트리밍 경로가 쓰는 방식이다(spill_upload). MuPDF가 디스크에서 필요한
+    #         만큼만 읽어가므로 파일 전체가 메모리에 올라오지 않는다.
+    #   나머지: 테스트와 옛 호출부 호환. bytes는 그대로 메모리에 상주하므로,
+    #         큰 파일을 다루는 경로에서는 쓰지 말 것.
+    if isinstance(pdf, (str, os.PathLike)):
+        doc = fitz.open(pdf)
+    else:
+        pdf_bytes = pdf.read() if hasattr(pdf, "read") else pdf
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     mode = image_mode or {}
     max_pages = mode.get("max_pages", 0) if max_images is None else max_images
     detect_ink = mode.get("detect_ink", False)

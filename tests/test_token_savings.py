@@ -26,6 +26,7 @@ LLM 호출 없이 가짜 프로바이더로 돈다. API 키도 요금도 필요 
     python tests/test_token_savings.py
 """
 
+import io
 import os
 import pathlib
 import sys
@@ -829,6 +830,50 @@ def test_question_boundary_cut():
           str(llm.count_question_types(raw)["총문항"]))
 
 
+def test_upload_spill():
+    """
+    업로드를 디스크로 넘겨도 읽는 결과가 같아야 한다.
+
+    라우트는 업로드를 경로로 바꿔 넘긴다(llm.spill_upload) — bytes로 들고 있으면
+    생성이 끝날 때까지 파일 전체가 힙에 남기 때문이다. 결과가 조금이라도 달라지면
+    메모리를 아끼려다 추출 품질을 바꾸는 셈이 되므로 여기서 못을 박는다.
+    """
+    print("\n[⑮ 업로드를 디스크로 넘겨도 결과가 같다]")
+
+    doc = fitz.open()
+    for i in range(3):
+        p = doc.new_page()
+        p.insert_text((50, 60), f"{i + 1}. 대퇴골의 몸쪽 끝 구조는?", fontsize=10)
+        p.insert_image(fitz.Rect(50, 300, 500, 750), stream=_png(64))
+    pdf = doc.tobytes()
+    doc.close()
+
+    by_bytes, jobs_b = llm.read_pdf_pages(pdf, "key", llm.IMAGE_DESCRIBE, max_images=99)
+    text_b = "".join(e["text"] for e in by_bytes)
+    llm.discard_spills(by_bytes)
+
+    path = llm.spill_upload(io.BytesIO(pdf))
+    check("업로드 사본이 만들어진다", os.path.exists(path))
+    check("사본 크기가 원본과 같다", os.path.getsize(path) == len(pdf))
+
+    by_path, jobs_p = llm.read_pdf_pages(path, "key", llm.IMAGE_DESCRIBE, max_images=99)
+    text_p = "".join(e["text"] for e in by_path)
+
+    check("텍스트가 같다", text_b == text_p, f"{len(text_b)} vs {len(text_p)}")
+    check("이미지 후보 수가 같다", len(jobs_b) == len(jobs_p),
+          f"{len(jobs_b)} vs {len(jobs_p)}")
+    llm.discard_spills(by_path)
+
+    # 라우트의 finally가 부르는 정리 — (이름, 경로) 목록을 그대로 받는다
+    files = [("기출.pdf", path)]
+    llm.discard_upload_spills(files)
+    check("discard_upload_spills가 사본을 지운다", not os.path.exists(path))
+
+    # bytes가 섞여 들어와도(세션 재사용 경로 등) 터지지 않아야 한다
+    llm.discard_upload_spills([("x.pdf", b"not a path")])
+    check("bytes가 섞여도 조용히 넘어간다", True)
+
+
 if __name__ == "__main__":
     try:
         test_image_selection()
@@ -845,6 +890,7 @@ if __name__ == "__main__":
         test_char_budget_handoff()
         test_gen_char_budget_handoff()
         test_question_boundary_cut()
+        test_upload_spill()
     finally:
         try:
             pathlib.Path(_tmp.name).unlink()

@@ -32,7 +32,7 @@ from llm import (
     MAX_FILES_PER_SIDE, GEN_SIDE_CHAR_BUDGET, GEN_DOC_MIN_CHARS,
     remaining_gen_budget,
     read_labeled_pdfs, describe_images_progressively, assemble_pdf_text,
-    image_coverage,
+    image_coverage, spill_upload, discard_upload_spills, discard_spills,
     truncate, truncation_report, build_source_info,
     analyze_concepts_progressively, analyze_format_progressively,
     compute_type_targets, build_question_generation_prompt, call_llm_stream,
@@ -537,10 +537,12 @@ def read_generate_params() -> dict:
         if len(lectures) > MAX_FILES_PER_SIDE or len(exams) > MAX_FILES_PER_SIDE:
             raise GenerateParamError(
                 f"강의자료·기출은 각각 최대 {MAX_FILES_PER_SIDE}개까지 올릴 수 있습니다.")
-        # 요청 컨텍스트가 살아 있을 때 바이트로 읽어둔다
+        # 요청 컨텍스트가 살아 있을 때 디스크로 옮겨둔다
         # (스트리밍 제너레이터는 컨텍스트가 닫힌 뒤에 돈다 — owner를 미리 잡는 것과 같은 이유)
-        lecture_files = [(f.filename or "강의자료", f.read()) for f in lectures]
-        exam_files    = [(f.filename or "기출문제", f.read()) for f in exams]
+        # bytes로 읽지 않는 이유는 llm.spill_upload 주석 참고 — 추출이 끝난 뒤에도
+        # 생성이 끝날 때까지 파일 전체가 힙에 남는다. 정리는 아래 finally에서 한다.
+        lecture_files = [(f.filename or "강의자료", spill_upload(f)) for f in lectures]
+        exam_files    = [(f.filename or "기출문제", spill_upload(f)) for f in exams]
         lecture_name  = lecture_files[0][0]
 
     model = request.form.get("model", "").strip() or provider.default_model
@@ -693,6 +695,11 @@ def run_generation_events(p: dict):
                                       credits_snapshot(provider, api_key)),
         }
 
+    # 렌더한 PNG를 정리하기 위해 읽어들인 parts를 모아 둔다 (아래 finally).
+    # 정상 경로에서는 describe_images_progressively가 장마다 지우므로 대개 비어 있고,
+    # 오류·취소로 그 사이에서 끊겼을 때만 실제로 지울 것이 남는다.
+    rendered_parts = []
+
     try:
         # ── 경로 A: 저장된 세션 재사용 (분석 LLM 호출 0회 → 토큰 절약) ──
         if session_id:
@@ -734,6 +741,7 @@ def run_generation_events(p: dict):
                                                api_key, IMAGE_TRANSCRIBE)
                 exam_parts = read_labeled_pdfs(p["exam_files"], "기출",
                                                api_key, IMAGE_DESCRIBE)
+                rendered_parts += lec_parts + exam_parts
 
                 total_imgs = sum(len(x["img_jobs"]) for x in lec_parts + exam_parts)
                 yield {"type": "progress", "key": "extract", "done": 0, "total": total_imgs}
@@ -941,6 +949,15 @@ def run_generation_events(p: dict):
     except Exception as e:
         yield {"type": "error", "status": 500, "message": f"서버 오류: {str(e)}",
                **spend()}
+    finally:
+        # 디스크로 내려둔 것들을 여기서 반드시 치운다. 제너레이터라 정상 종료·오류뿐
+        # 아니라 **브라우저가 중간에 끊어도**(close() → GeneratorExit) 이 절이 돈다.
+        # 확인 모달로 빠지는 경로도 여기를 지난다 — extract_cache가 보관하는 것은
+        # 추출된 '텍스트'라, 원본 PDF는 그 시점에 이미 필요 없다.
+        for part in rendered_parts:
+            discard_spills(part["pages"])
+        discard_upload_spills(p["lecture_files"])
+        discard_upload_spills(p["exam_files"])
 
 
 @gen_bp.route("/generate", methods=["POST"])
