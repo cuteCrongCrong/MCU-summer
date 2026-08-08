@@ -196,8 +196,11 @@ def has_vector_ink(page) -> bool:
 
 
 # ──────────────────────────────────────────────
-# 렌더한 PNG 임시 보관 (spill)
+# 큰 것들을 디스크로 내려두기 (spill)
 # ──────────────────────────────────────────────
+# 여기로 내려가는 것은 둘이다 — 렌더한 PNG(_spill_png)와 올라온 PDF 원본(spill_upload).
+# 둘 다 같은 디렉터리(_spill_dir)를 쓰고 같은 청소를 받는다.
+#
 # 왜 디스크로 내리는가:
 #   read_pdf_pages는 LLM을 부르기 **전에** 이 회차의 그림을 전부 렌더한다 —
 #   진행률을 내려면 총 장수를 먼저 알아야 하기 때문이다(read_labeled_pdfs 주석).
@@ -211,6 +214,9 @@ def has_vector_ink(page) -> bool:
 #   ⚠️ pix.save()가 내는 바이트는 pix.tobytes("png")와 완전히 같다. 캐시 키가 PNG
 #      바이트를 그대로 해싱하므로(image_cache_key) 이게 어긋나면 지난 회차에 돈을
 #      내고 받아둔 설명이 전부 무효가 된다. 저장 방식을 바꿀 일이 있으면 반드시 확인할 것.
+# 폴더 이름이 png인 것은 PNG만 내려두던 시절의 흔적이다(지금은 업로드 PDF도 여기 있다).
+# 이름을 바꾸면 이미 돌고 있는 서버의 옛 폴더에 남은 찌꺼기를 아무도 치우지 않게 된다 —
+# 청소는 지금 쓰는 폴더만 훑기 때문이다. 그 대가를 치를 만한 이유가 아니라 그대로 둔다.
 _SPILL_SUBDIR = "png-spill"
 # 정상 경로에서는 다 쓴 즉시 지운다. 이건 오류·취소로 그 삭제를 못 밟았을 때를 위한
 # 청소 기준 — 확인 모달 대기(extract_cache.TTL_SECONDS = 20분)보다 넉넉해야 한다.
@@ -237,7 +243,7 @@ def _sweep_spills(path: str, cutoff: float):
 
 
 def _spill_dir() -> str:
-    """PNG를 내려둘 디렉터리. 없으면 만들고, 가끔 오래된 찌꺼기를 치운다.
+    """내려둔 것들(PNG·업로드 PDF)이 사는 디렉터리. 없으면 만들고, 가끔 찌꺼기를 치운다.
 
     DB 옆에 두는 이유: 배포 스크립트가 DB_PATH를 반드시 실제 디스크의 영구 경로로
     잡는다(deploy/*/setup.sh). 시스템 임시 폴더는 배포판 설정에 따라 tmpfs(=RAM)일
@@ -496,7 +502,9 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
     if not pending:
         return
 
-    with ThreadPoolExecutor(max_workers=config.IMAGE_WORKERS) as ex:
+    # with 문 대신 직접 여닫는 이유는 아래 finally 에 있다.
+    ex = ThreadPoolExecutor(max_workers=config.IMAGE_WORKERS)
+    try:
         futs = {ex.submit(_describe_spilled, prov, e, api_key, model, fallback,
                           usage, prompt, max_output): e
                 for e in pending}
@@ -516,6 +524,15 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
             _drop_spill(entry)      # 성공이든 실패든 이 그림은 끝났다
             done += 1
             yield done
+    finally:
+        # 중지를 누르거나 브라우저가 끊기면 이 제너레이터가 닫히면서(GeneratorExit)
+        # 여기를 지난다. 그때 **아직 시작도 안 한 장은 버려야 한다.**
+        #   with 문의 기본 동작은 shutdown(wait=True) 라 큐에 남은 것을 끝까지 다 돌린다.
+        #   상한이 160장이면 사용자는 멈췄다고 보는데 남은 그림값이 그대로 나가고,
+        #   중지 자체도 그게 다 끝날 때까지 붙잡혀 있다.
+        # 이미 워커에 올라간 장(최대 IMAGE_WORKERS개)은 못 되돌린다 — 그 결과는
+        # 아무도 안 읽고 버려진다. wait=False 라 중지가 그것마저 기다리지도 않는다.
+        ex.shutdown(wait=False, cancel_futures=True)
 
 
 def assemble_pdf_text(pages, img_job_count: int = 0, image_mode: dict = None,
@@ -1573,8 +1590,10 @@ def read_labeled_pdfs(files, label_prefix: str, api_key: str = None,
     알아야 한다. 호출부가 양쪽(강의록·기출)을 다 읽어 총계를 센 뒤에
     describe_images_progressively 를 돌리게 하려고 여기서 끊는다.
 
-    files: (파일명, FileStorage 또는 bytes) 쌍의 목록.
-           스트리밍 경로는 요청 컨텍스트가 닫힌 뒤에 도니 bytes 를 넘긴다.
+    files: (파일명, PDF) 쌍의 목록. PDF 는 디스크 경로·FileStorage·bytes 중 아무거나.
+           스트리밍 경로는 **경로**를 넘긴다 — 요청 컨텍스트가 닫힌 뒤에 도는데,
+           bytes 로 읽어두면 생성이 끝날 때까지 파일 전체가 힙에 남기 때문이다
+           (spill_upload 주석).
     img_budget: 이미지 처리 상한 — **파일당이 아니라 이쪽 전체 기준**. 생략하면 모드의
            max_pages. '남은 예산 ÷ 남은 파일 수'로 배정한다(next_image_quota).
     반환: [{label, name, pages, img_jobs, quota}] (img_jobs 는 pages 안 엔트리를 참조한다)
@@ -1792,6 +1811,76 @@ def build_topic_analysis_prompt(lecture_block: str, exam_block: str) -> str:
 - "강의록.페이지"는 숫자만 담으세요.
 - "기출.문항"의 각 원소는 반드시 {{"번호","페이지","원문"}} 객체로 쓰세요 (문자열만 쓰지 마세요).
 - 출제가 확인된 주제는 **빠짐없이** 넣으세요. (개수 제한 없음)"""
+
+
+def file_digest(pdf) -> str:
+    """
+    업로드된 PDF 한 개의 내용 해시.
+
+    경로(spill_upload가 내려둔 사본)면 1MB씩 읽는다 — 파일 크기와 무관하게 일정 메모리로
+    끝난다. bytes·파일 객체도 받는데(테스트·옛 호출부), 파일 객체는 읽은 뒤 되감아
+    뒤에서 다시 읽는 쪽이 빈 파일을 보지 않게 한다.
+    """
+    h = hashlib.sha256()
+    if isinstance(pdf, (str, os.PathLike)):
+        with open(pdf, "rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    if hasattr(pdf, "read"):
+        h.update(pdf.read() or b"")
+        try:
+            pdf.seek(0)
+        except Exception:
+            pass
+        return h.hexdigest()
+    h.update(pdf or b"")
+    return h.hexdigest()
+
+
+def topic_input_key(lecture_files, exam_files, provider_name: str, model: str,
+                    image_model: str) -> str:
+    """
+    "같은 자료로 같은 분석을 또 하려는 것"을 알아보는 키.
+
+    같은 키의 분석이 보관돼 있으면 LLM을 한 번도 부르지 않고 그 결과를 그대로 쓸 수 있다.
+    이 탭은 요금의 대부분이 주제 대조 호출 하나(입력 14만 토큰)에서 나오므로, 같은
+    자료를 다시 올렸을 때 그 한 번을 건너뛰는 것이 곧 절감이다.
+
+    무엇을 넣는가:
+      ① 파일은 **내용**으로 잡는다 — 이름만 바꿔 올린 같은 파일은 같은 키다. 이름도 함께
+         넣는 이유는 결과 화면·보관함에 파일명이 그대로 나오기 때문이다. 업로드 순서를
+         유지한다 — 순서가 라벨(강의록1·강의록2)과 표시 순서를 정한다.
+      ② 추출한 텍스트가 아니라 **원본 파일**을 해싱한다. 그림 설명은 회차마다 미세하게
+         흔들려서(실측 topic_analyses 25→26: 같은 기출인데 3,418자 차이) 추출 결과를
+         해싱하면 재실행마다 키가 어긋나 캐시가 사실상 안 맞는다.
+      ③ 프롬프트는 빈 블록으로 한 번 만들어 그 **템플릿**을 해싱한다 — 프롬프트를 고치면
+         키가 저절로 바뀐다. 버전 번호를 손으로 올리는 방식은 언젠가 까먹는다.
+      ④ 결과를 바꾸는 상수(글자 예산·이미지 상한·출력 한도)도 넣는다. 안 넣으면 상한을
+         올린 뒤에도 그 전에 잘려 나온 결과가 그대로 재사용된다.
+
+    ※ 여기서 잡는 범위는 'LLM에 무엇을 보내는가'까지다. 응답을 해석하는 규칙
+      (parse_topic_analysis)을 고쳐도 키는 그대로다 — 보관된 행은 그때의 규칙으로 만든
+      결과이고, 보관함이 이미 그렇게 동작한다(옛 회차를 다시 파싱하지 않는다).
+    """
+    h = hashlib.sha256()
+
+    def feed(*parts):
+        for p in parts:
+            h.update(str(p).encode("utf-8"))
+            h.update(b"\x00")
+
+    feed(build_topic_analysis_prompt("", ""),
+         provider_name, model, image_model,
+         TOPIC_SIDE_CHAR_BUDGET, TOPIC_TOTAL_CHAR_BUDGET,
+         TOPIC_DOC_MIN_CHARS, TOPIC_MAX_TOKENS,
+         sorted(IMAGE_DESCRIBE.items()), sorted(IMAGE_TRANSCRIBE.items()))
+
+    for side, files in (("강의록", lecture_files), ("기출", exam_files)):
+        feed(side)
+        for name, pdf in files or []:
+            feed(name or "", file_digest(pdf))
+    return h.hexdigest()
 
 
 def _resolve_doc_name(value: str, docs: list) -> str:

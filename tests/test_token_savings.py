@@ -20,6 +20,7 @@
 
   ⑧ 글자 예산 넘겨주기   — 강의록이 안 쓴 몫이 기출로 넘어간다
   ⑨ 기출 자르기 경계     — 상한을 넘겨도 반쪽짜리 문항은 남기지 않는다
+  ⑰ 중지가 실제로 멈춘다 — 취소하면 아직 시작 안 한 그림 호출을 버린다
 
 LLM 호출 없이 가짜 프로바이더로 돈다. API 키도 요금도 필요 없다:
 
@@ -31,6 +32,8 @@ import os
 import pathlib
 import sys
 import tempfile
+import threading
+import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
@@ -134,6 +137,25 @@ class CountingProvider:
 
     def list_models(self, api_key):
         return [self.default_model]
+
+
+class SlowProvider(CountingProvider):
+    """그림 한 장에 시간이 걸리는 프로바이더 — 취소했을 때 큐에 남는 장이 생기도록."""
+    name = "slow-fake"
+    CALL_SECONDS = 0.25
+
+    def __init__(self):
+        super().__init__()
+        self._lock = threading.Lock()   # 여러 워커가 동시에 센다
+
+    def describe_image(self, png_bytes, api_key, model, usage=None, prompt=None,
+                       max_tokens=None):
+        # 자기 **전에** 센다 — 돈은 호출이 시작되는 순간 나가기 때문이다
+        with self._lock:
+            self.image_calls += 1
+            n = self.image_calls
+        time.sleep(self.CALL_SECONDS)
+        return f"그림 결과 {n}"
 
 
 class FakeUpload:
@@ -876,7 +898,101 @@ def test_upload_spill():
 
     # bytes가 섞여 들어와도(세션 재사용 경로 등) 터지지 않아야 한다
     llm.discard_upload_spills([("x.pdf", b"not a path")])
+
+
+def test_cancel_stops_image_calls():
+    """
+    중지하면 아직 시작도 안 한 그림 호출은 버려야 한다.
+
+    describe_images_progressively 는 제너레이터라, 사용자가 '중지'를 누르거나 브라우저가
+    끊기면 닫히면서(GeneratorExit) 스레드 풀을 정리한다. 이때 with 문의 기본 동작
+    (shutdown(wait=True))에 맡기면 큐에 남은 장을 **끝까지 다 돌린다** — 사용자는 멈췄다고
+    보는데 남은 그림값이 그대로 나가고, 중지도 그게 끝날 때까지 붙잡혀 있다.
+    상한이 강의록 100 + 기출 60이라 한 번에 날아갈 수 있는 양이 작지 않다.
+
+    화면에는 아무 흔적이 없고 요금서에만 보이는 종류라 여기서 못을 박는다.
+    """
+    print("\n[⑰ 중지하면 남은 그림 호출을 버린다]")
+
+    total = 12
+    doc = fitz.open()
+    for i in range(total):
+        p = doc.new_page()
+        p.insert_text((50, 60), f"{i + 1}", fontsize=9)
+        # 장마다 회색을 달리한다 — 같은 PNG면 캐시 키가 겹쳐 호출 없이 지나간다
+        p.insert_image(fitz.Rect(50, 300, 500, 750), stream=_png(64, gray=10 + i * 7))
+    pdf = doc.tobytes()
+    doc.close()
+
+    pages, jobs = llm.read_pdf_pages(pdf, "key", llm.IMAGE_DESCRIBE, max_images=total)
+    check("그림 페이지가 다 잡혔다", len(jobs) == total, len(jobs))
+
+    prov = SlowProvider()
+    saved_workers = llm.config.IMAGE_WORKERS
+    llm.config.IMAGE_WORKERS = 2        # 큐에 남는 장이 생기도록 좁힌다
+    try:
+        gen = llm.describe_images_progressively(jobs, "key", "fake-model", provider=prov)
+        next(gen)                       # 한 장 받아보고
+        t0 = time.perf_counter()
+        gen.close()                     # 사용자가 '중지' → GeneratorExit
+        blocked = time.perf_counter() - t0
+    finally:
+        llm.config.IMAGE_WORKERS = saved_workers
+
+    # 이미 워커에 올라간 장은 뒤늦게 끝난다 — 그것까지 세고 나서 판정한다
+    time.sleep(SlowProvider.CALL_SECONDS * 3)
+    called = prov.image_calls
+
+    # 고치기 전에는 12/12 가 나가고 중지가 1초 넘게 붙잡혀 있었다
+    check("남은 장을 버린다", called < total, f"{called}/{total}장이 호출됐다")
+    check("중지가 큐를 기다리지 않는다", blocked < 1.0, f"{blocked:.2f}초 붙잡혔다")
+
+    llm.discard_spills(pages)
     check("bytes가 섞여도 조용히 넘어간다", True)
+
+
+def test_topic_default_model():
+    """
+    주제 분석 탭의 기본 모델이 문제 생성 탭과 갈라져 있어야 한다.
+
+    되돌아가도 화면은 멀쩡하다 — 드롭다운에 뜨는 이름이 하나 바뀔 뿐이라 아무도
+    못 알아챈다. 그런데 이 탭은 고른 모델이 프롬프트 전체(강의록+기출, 입력 14만
+    토큰)를 혼자 읽으므로, 기본값이 문제 생성 쪽 값으로 되돌아가면 회차마다 요금이
+    몇 배가 된다. 실측 근거는 providers/jbnu_gateway.py 의 ④.
+
+    화면과 서버가 **같은 규칙**으로 기본값을 고르는지도 함께 본다 — 한쪽만 되돌아가면
+    드롭다운에 보이는 모델과 실제로 도는 모델이 어긋난다.
+    """
+    print("\n[⑯ 주제 분석 기본 모델]")
+
+    from providers.factory import get_provider, list_providers
+    from features.topic_analysis import read_topic_params
+
+    gw = get_provider("jbnu_gateway")
+    check("게이트웨이가 주제 분석용 기본값을 따로 갖는다", bool(gw.topic_default_model))
+    check("문제 생성 기본값과 다른 모델이다",
+          gw.topic_default_model != gw.default_model, f"둘 다 {gw.default_model}")
+
+    infos = {p["name"]: p for p in list_providers()}
+    check("/providers 가 topic_default_model 을 내려보낸다",
+          infos["jbnu_gateway"].get("topic_default_model") == gw.topic_default_model,
+          str(infos["jbnu_gateway"].get("topic_default_model")))
+
+    # 값을 안 정한 제공사는 빈 값 → 화면·서버 양쪽이 default_model 로 떨어진다
+    check("값을 안 정한 제공사는 빈 값이다",
+          get_provider("openai").topic_default_model == "")
+
+    # 서버 폴백 — 폼이 model 을 안 보내는 경우(열어둔 옛날 탭·직접 만든 요청)에
+    # 값을 정하는 곳이 여기다. extract_token 을 주면 파일 검사를 건너뛰므로 PDF 없이 확인된다.
+    import app as app_module
+    with app_module.app.test_request_context(
+            "/analyze-topics", method="POST",
+            data={"api_key": "k", "provider": "jbnu_gateway", "extract_token": "t"}):
+        p = read_topic_params()
+    check("model 을 안 보내면 서버도 주제 분석 기본값을 고른다",
+          p["model"] == gw.topic_default_model, p["model"])
+    check("그림 읽는 모델은 여전히 image_model 이다",
+          p["analysis_model"] == gw.image_model, p["analysis_model"])
 
 
 if __name__ == "__main__":
@@ -896,6 +1012,8 @@ if __name__ == "__main__":
         test_gen_char_budget_handoff()
         test_question_boundary_cut()
         test_upload_spill()
+        test_cancel_stops_image_calls()
+        test_topic_default_model()
     finally:
         try:
             pathlib.Path(_tmp.name).unlink()

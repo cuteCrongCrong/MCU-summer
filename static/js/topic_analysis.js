@@ -8,8 +8,6 @@
 //   한쪽 수정이 다른 쪽을 깨지 않게 하기 위함. (그래서 상태 이름이 전부 따로다)
 // ══════════════════════════════════════════════
 
-const TOPIC_MAX_FILES = 7;   // llm.py TOPIC_MAX_FILES_PER_SIDE와 같은 값으로 유지
-
 // ── 파일 드래그앤드롭 (여러 개 지원) ──
 function topicSetupDrop(dropId, inputId, nameId) {
   const drop = document.getElementById(dropId);
@@ -20,8 +18,9 @@ function topicSetupDrop(dropId, inputId, nameId) {
     const files = Array.from(input.files || []);
     if (!files.length) { nameEl.textContent = ''; return; }
     const names = files.map(f => f.name).join(', ');
-    nameEl.textContent = `✅ ${files.length}개 — ${names}`;
-    nameEl.style.color = files.length > TOPIC_MAX_FILES ? '#dc2626' : '';
+    nameEl.textContent = `✅ ${files.length}개${totalSizeLabel(files)} — ${names}`;
+    // 용량은 색을 바꾸지 않는다 — 상한이 양쪽 합계 기준이라 한쪽만 보고는 못 정한다
+    nameEl.style.color = files.length > uploadMaxFiles ? '#dc2626' : '';
   };
 
   input.addEventListener('change', show);
@@ -70,7 +69,7 @@ async function topicLoadProviders() {
   try {
     const resp = await fetch('/providers');
     const data = await resp.json();
-    setUploadCap(data.max_upload_mb);
+    setUploadLimits(data);
     topicProviders = data.providers || [];
     if (!topicProviders.length) return;
     document.getElementById('topic-provider-select').innerHTML = topicProviders.map(p =>
@@ -109,7 +108,7 @@ function topicSelectProvider(name) {
   renderKeyHelp(info, 'topic-key-help');
   topicLoadCredits();
 
-  topicPopulateModels([info.default_model]);
+  topicPopulateModels([topicDefaultModel(info)]);
   topicLoadModels();
 }
 
@@ -144,11 +143,18 @@ async function topicLoadModels() {
   }
 }
 
+// 이 탭의 기본 선택 모델. 제공사가 주제 분석용 기본값을 따로 정해두지 않았으면
+// 제공사 기본값으로 떨어진다. 문제 생성 탭과 갈라 둔 이유는 providers/base.py 의
+// topic_default_model 주석에 있다 (여기서 고른 모델이 프롬프트 전체를 읽는다).
+function topicDefaultModel(info) {
+  return (info && (info.topic_default_model || info.default_model)) || '';
+}
+
 function topicPopulateModels(models) {
   const sel = document.getElementById('topic-model-select');
   const prev = sel.value;
   const info = topicProviders.find(p => p.name === topicCurrentProvider) || {};
-  const defaultModel = info.default_model;
+  const defaultModel = topicDefaultModel(info);
   sel.innerHTML = models.map(m => {
     const label = (m === defaultModel) ? `${m} (기본)` : m;
     return `<option value="${escHtml(m)}">${escHtml(label)}</option>`;
@@ -191,9 +197,12 @@ async function topicAnalyze() {
   if (!apiKey)             return alert('API 키를 입력해주세요.');
   if (!lectureFiles.length) return alert('강의록 PDF를 1개 이상 올려주세요.');
   if (!examFiles.length)    return alert('기출문제 PDF를 1개 이상 올려주세요.');
-  if (lectureFiles.length > TOPIC_MAX_FILES || examFiles.length > TOPIC_MAX_FILES) {
-    return alert(`강의록·기출은 각각 최대 ${TOPIC_MAX_FILES}개까지 올릴 수 있습니다.`);
+  if (lectureFiles.length > uploadMaxFiles || examFiles.length > uploadMaxFiles) {
+    return alert(`강의록·기출은 각각 최대 ${uploadMaxFiles}개까지 올릴 수 있습니다.`);
   }
+  // 서버도 막지만 본문을 다 받은 뒤에야 막는다 — 여기서 걸러야 헛업로드가 없다
+  const tooBig = uploadSizeError(lectureFiles, examFiles);
+  if (tooBig) return alert(tooBig);
 
   document.getElementById('topic-analyze-btn').disabled = true;
   document.getElementById('topic-status-box').classList.remove('hidden');
@@ -215,6 +224,20 @@ async function topicAnalyze() {
   topicAbort = new AbortController();
   try {
     let out = await topicRunAnalysis(form, topicAbort.signal);
+
+    // 같은 자료·같은 모델로 분석한 결과가 이미 있으면, 서버가 PDF를 열기도 전에 멈춰
+    // 물어본다. 여기서 '열기'를 고르면 LLM 호출이 한 번도 안 나가 값이 0이다.
+    if (out && out.cached) {
+      if (!await topicConfirmReuse(out.payload)) {
+        await topicOpenSaved(out.payload.analysis_id);
+        return;
+      }
+      // 파일이 그대로 들어 있는 FormData를 다시 보낸다. 업로드를 한 번 더 하는 셈이지만,
+      // 값이 나가는 것은 LLM뿐이고 이건 사용자가 새로 돌리기로 고른 경우다.
+      form.append('force', '1');
+      topicResetSteps();
+      out = await topicRunAnalysis(form, topicAbort.signal);
+    }
 
     // 분량 상한을 넘는 파일이 있으면 서버가 추출까지만 하고 멈춰 물어본다.
     // 추출 결과는 서버에 보관돼 있으므로, 진행하면 토큰만 보내 이어서 돈다.
@@ -250,6 +273,47 @@ async function topicAnalyze() {
   }
 }
 
+// ── 같은 자료 재분석 확인 ──
+// 서버가 보관된 분석을 찾으면 LLM을 부르기 전에 멈추고 물어본다
+// (features/topic_analysis.py의 'cached' 이벤트). 조용히 재사용하지 않는 이유는
+// LLM이 같은 자료에도 매번 다르게 답하기 때문 — 다시 돌려보는 것도 정당한 요청이다.
+// 대신 '새로 분석하면 값이 든다'를 모달에서 분명히 말한다.
+let topicReuseResolve = null;
+
+// 모달의 두 버튼만 부른다 (index.html). 배경 클릭으로는 닫히지 않는다.
+function topicResolveReuse(redo) {
+  document.getElementById('reuse-modal').classList.remove('open');
+  const done = topicReuseResolve;
+  topicReuseResolve = null;
+  if (done) done(redo);
+}
+
+/**
+ * 보관된 분석을 알리고 선택을 기다린다.
+ * @param {Object} found 서버가 준 {analysis_id, title, created_at, model, num_topics, total_questions}
+ * @returns {Promise<boolean>} 새로 분석하면 true, 보관된 결과를 열면 false
+ */
+function topicConfirmReuse(found) {
+  const title = (found.title || '').trim();
+  document.getElementById('reuse-modal-sub').innerHTML =
+    `${escHtml(found.created_at || '')}에 <b>${escHtml(found.model || '')}</b>로 분석한 결과가 `
+    + `보관함에 있습니다${title ? ` — “${escHtml(title)}”` : ''}.<br>`
+    + `주제 ${found.num_topics || 0}개 · 기출 ${found.total_questions || 0}문항`;
+  document.getElementById('reuse-modal').classList.add('open');
+  return new Promise(resolve => { topicReuseResolve = resolve; });
+}
+
+// 보관된 분석 한 건을 열어 보여준다 — 보관함 탭의 '분석한 주제' 상세로 그대로 옮긴다.
+// 목록을 강제로 다시 받는 이유: 상세 헤더의 제목이 목록 행(savedTopicRows)에서 오는데,
+// 보관함에 한 번도 안 들어갔으면 그 목록이 비어 있어 제목 자리가 빈다.
+async function topicOpenSaved(aid) {
+  document.getElementById('topic-status-box').classList.add('hidden');
+  switchTab('archive');
+  showArchiveSubview('saved-topics-list-view');
+  await loadSavedTopics(true);
+  await openSavedTopic(aid);
+}
+
 // ── 중지 ──
 // 이 탭도 이제 SSE라, 연결을 끊으면 서버 제너레이터가 다음 yield에서 멈춘다
 // (문제 생성 탭과 같다). 다만 그 순간 이미 나가 있던 LLM 호출 한 건은 끝까지
@@ -260,8 +324,10 @@ function topicCancelAnalyze() {
   if (topicAbort) topicAbort.abort();
 }
 
-// 요청 한 번을 끝까지 처리한다.
-// 분량 초과로 멈추면 {needsConfirm, payload}, 그 밖에는 아무것도 돌려주지 않는다.
+// 요청 한 번을 끝까지 처리한다. 서버가 물어보려고 멈추면 그 내용을 돌려준다:
+//   {cached, payload}       — 같은 자료로 분석한 결과가 이미 있다 (LLM 호출 전)
+//   {needsConfirm, payload} — 분량 상한을 넘는 파일이 있다 (추출 후)
+// 끝까지 돈 경우에는 아무것도 돌려주지 않는다 (결과는 topicFinish가 그린다).
 // signal: 중지 버튼용. 스트림을 못 쓰는 환경의 폴백까지 같은 신호를 넘긴다.
 async function topicRunAnalysis(form, signal) {
   if (!canReadStream()) return topicFallbackAnalyze(form, signal);
@@ -291,6 +357,8 @@ async function topicRunAnalysis(form, signal) {
     } else if (ev.type === 'done') {
       finished = true;
       topicFinish(ev.payload);
+    } else if (ev.type === 'cached') {
+      return { cached: true, payload: ev.payload };
     } else if (ev.type === 'needs_confirm') {
       return { needsConfirm: true, payload: ev.payload };
     } else if (ev.type === 'error') {
@@ -325,6 +393,13 @@ async function topicFallbackAnalyze(form, signal) {
   if (!resp.ok || data.error) {
     topicShowError((data.error || '알 수 없는 오류가 발생했습니다.') + spendSuffix(data));
     return;
+  }
+  if (data.cached) {
+    // 서버가 LLM을 부르기 전에 멈춘 경우다 — 위에서 전부 'done'으로 채운 단계 표시를
+    // 되돌린다. 안 그러면 아무것도 안 했는데 다 끝난 것처럼 보인다.
+    TOPIC_STAGES.forEach(k => setStep('topic-step-' + k, 'wait'));
+    topicProgress.reset(TOPIC_STAGES);
+    return { cached: true, payload: data };
   }
   if (data.needs_confirm) return { needsConfirm: true, payload: data };
   topicFinish(data);

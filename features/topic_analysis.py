@@ -31,7 +31,7 @@ from providers.usage import (
 from llm import (
     IMAGE_DESCRIBE, IMAGE_TRANSCRIBE, MAX_FILES_PER_SIDE,
     describe_images_progressively, finish_labeled_docs, read_labeled_pdfs,
-    remaining_char_budget, run_topic_analysis,
+    remaining_char_budget, run_topic_analysis, topic_input_key,
     spill_upload, discard_upload_spills, discard_spills,
 )
 from features import extract_cache
@@ -57,7 +57,7 @@ def _collect_pdfs(field: str):
 
 
 def _analysis_payload(result, lecture_docs, exam_docs, model, provider, title,
-                      spend, owner):
+                      spend, owner, input_key=None):
     """
     분석 결과를 보관하고 응답 본문(dict)을 만든다.
     바로 진행한 경우와 '분량 초과 확인 후 진행'한 경우가 같은 응답을 내도록 공유한다.
@@ -77,6 +77,8 @@ def _analysis_payload(result, lecture_docs, exam_docs, model, provider, title,
             usage=spent["usage"],
             # 잔액은 시간이 지나면 틀린 값이 되므로 쓴 만큼만 남긴다
             credits=credits_for_history(spent["credits"]),
+            # 다음에 같은 자료를 올리면 이 값으로 찾아 LLM을 건너뛴다
+            input_key=input_key,
         )
 
     return {
@@ -133,11 +135,14 @@ def _doc_meta(d: dict) -> dict:
 
 def save_analysis(result: dict, lecture_docs: list, exam_docs: list,
                   model: str, provider: str, owner, title: str = None,
-                  usage: dict = None, credits: dict = None) -> int:
+                  usage: dict = None, credits: dict = None,
+                  input_key: str = None) -> int:
     """
     분석 한 건을 보관하고 id 반환.
     title은 사용자가 입력 화면에서 붙인 이름 — 비우면 NULL로 두고 화면에서 '제N회'로 대체한다.
     usage·credits는 이번 분석에 쓴 양 — 없으면 NULL로 두어 '모름'과 0을 구분한다.
+    input_key는 이 결과를 만든 입력의 지문(llm.topic_input_key). 다음에 같은 자료를
+    올리면 이 값으로 찾아 LLM을 다시 부르지 않는다. 없으면 NULL(= 다시 못 찾음).
     """
     user_id, guest_id = owner
     conn = get_conn()
@@ -145,8 +150,9 @@ def save_analysis(result: dict, lecture_docs: list, exam_docs: list,
         cur = conn.execute(
             """INSERT INTO topic_analyses
                (title, created_at, model, provider, lecture_docs, exam_docs,
-                topics, dropped, total_questions, user_id, guest_id, usage, credits)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                topics, dropped, total_questions, user_id, guest_id, usage, credits,
+                input_key)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 (title or "").strip() or None,
                 datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -161,12 +167,51 @@ def save_analysis(result: dict, lecture_docs: list, exam_docs: list,
                 guest_id,
                 json.dumps(usage, ensure_ascii=False) if usage else None,
                 json.dumps(credits, ensure_ascii=False) if credits else None,
+                input_key or None,
             ),
         )
         conn.commit()
         return cur.lastrowid
     finally:
         conn.close()
+
+
+def find_analysis_by_key(input_key: str, owner):
+    """
+    같은 자료·같은 모델로 이미 보관해 둔 분석 (가장 최근 것). 없으면 None.
+
+    소유자 것만 찾는다. 키가 내용 주소라 같은 파일을 가진 사람만 만들 수 있긴 하지만,
+    여기서 돌려주는 값에는 사용자가 붙인 이름과 회차가 딸려 오므로 남의 행을 보여줄
+    이유가 없다. (이미지 설명 캐시가 소유자를 안 보는 것과 여기가 다른 지점)
+
+    반환하는 것은 "이걸 열까요?"라고 물어보는 데 필요한 만큼이다 — 주제 배열 전체는
+    싣지 않는다. 사용자가 열기로 하면 화면이 /topic-analysis/<id> 로 따로 받아 간다.
+    """
+    if not input_key:
+        return None
+    frag, params = owner_clause(owner)
+    conn = get_conn()
+    try:
+        r = conn.execute(
+            f"""SELECT id, title, created_at, model, provider, total_questions,
+                       json_array_length(topics) AS num_topics
+                FROM topic_analyses
+                WHERE input_key=? AND {frag} ORDER BY id DESC LIMIT 1""",
+            [input_key] + params,
+        ).fetchone()
+    finally:
+        conn.close()
+    if not r:
+        return None
+    return {
+        "analysis_id":     r["id"],
+        "title":           r["title"] or "",
+        "created_at":      r["created_at"],
+        "model":           r["model"] or "",
+        "provider":        r["provider"] or LEGACY_PROVIDER,
+        "num_topics":      r["num_topics"] or 0,
+        "total_questions": r["total_questions"] or 0,
+    }
 
 
 def list_analyses(owner) -> list:
@@ -328,7 +373,12 @@ def read_topic_params() -> dict:
             raise TopicParamError(
                 f"강의록·기출은 각각 최대 {MAX_FILES_PER_SIDE}개까지 올릴 수 있습니다.")
 
-    model = request.form.get("model", "").strip() or provider.default_model
+    # 폼 값이 비었을 때의 기본값은 화면이 첫 선택으로 쓰는 값과 같아야 한다 —
+    # 이 탭은 제공사가 따로 정한 기본값(topic_default_model)이 있으면 그쪽이 우선이다.
+    # 갈라 둔 이유는 providers/base.py 의 topic_default_model 주석 참고.
+    model = (request.form.get("model", "").strip()
+             or getattr(provider, "topic_default_model", "")
+             or provider.default_model)
     # 이미지 호출 전용 모델 — 기출 그림 설명(IMAGE_DESCRIBE)과 강의록 글자 전사
     # (IMAGE_TRANSCRIBE) 양쪽 다. 주제 대조 자체는 위 model이 한다.
     # 사용자가 고르지 않는다: 제공사가 image_model을 선언했으면(게이트웨이) 그 모델로
@@ -339,6 +389,11 @@ def read_topic_params() -> dict:
     # (문제 생성기도 같은 방식이지만, 거기는 개념·형식 분석까지 맡아 analysis_model을 본다)
     analysis_model = getattr(provider, "image_model", "") or model
 
+    # 지금 디스크로 옮겨둔다 — bytes로 읽으면 분석이 끝날 때까지 파일 전체가
+    # 힙에 남는다 (llm.spill_upload 주석). 정리는 제너레이터의 finally에서.
+    lecture_files = [(f.filename, spill_upload(f)) for f in lectures]
+    exam_files    = [(f.filename, spill_upload(f)) for f in exams]
+
     return {
         "api_key":  api_key,
         "provider": provider,
@@ -347,10 +402,16 @@ def read_topic_params() -> dict:
         "title":    title,
         "extract_token": token,
         "owner":    current_owner(),
-        # 지금 디스크로 옮겨둔다 — bytes로 읽으면 분석이 끝날 때까지 파일 전체가
-        # 힙에 남는다 (llm.spill_upload 주석). 정리는 제너레이터의 finally에서.
-        "lecture_files": [(f.filename, spill_upload(f)) for f in lectures],
-        "exam_files":    [(f.filename, spill_upload(f)) for f in exams],
+        "lecture_files": lecture_files,
+        "exam_files":    exam_files,
+        # 같은 자료·같은 모델로 이미 분석했는지 알아보는 지문 (llm.topic_input_key).
+        # 확인 후 진행(extract_token) 경로는 파일이 없어 여기서 못 만든다 — 1단계에서
+        # 만든 값을 extract_cache가 들고 있다가 넘겨준다. 그 경로는 이미 이 검사를
+        # 통과해 온 요청이라 다시 물어볼 일도 없다.
+        "input_key": topic_input_key(lecture_files, exam_files, provider.name,
+                                     model, analysis_model) if lecture_files else "",
+        # 사용자가 '그래도 새로 분석'을 골라 다시 온 요청 — 보관된 결과를 건너뛴다.
+        "force": request.form.get("force", "").strip() in ("1", "true", "yes"),
     }
 
 
@@ -391,10 +452,26 @@ def run_topic_analysis_events(p: dict):
                                       credits_snapshot(provider, api_key)),
         }
 
+    # 이 분석 결과를 만든 입력의 지문 — 보관할 때 함께 남기고, 시작할 때 조회에 쓴다.
+    # 2단계(확인 후 진행)는 파일이 없어 못 만들므로 extract_cache가 넘겨준 값을 쓴다.
+    input_key = p.get("input_key") or ""
+
     # 렌더한 PNG 정리용 — 아래 finally 참고. (question_gen과 같은 방식)
     rendered_parts = []
 
     try:
+        # ── 같은 자료·같은 모델로 이미 분석해 둔 것이 있는가 ──
+        # PDF를 열기도 전에 본다. 적중하면 렌더링·Vision·주제 대조가 **하나도** 안 돈다
+        # (이 탭 요금의 대부분이 주제 대조 호출 하나에서 나온다 — llm.topic_input_key).
+        # 조용히 재사용하지 않고 물어보는 이유: LLM은 같은 입력에도 매번 다르게 답하므로
+        # "다시 돌려보고 싶다"가 정당한 요청이다. 그쪽을 고르면 force=1로 다시 와서
+        # 여기를 건너뛴다.
+        if input_key and not p.get("force"):
+            found = find_analysis_by_key(input_key, owner)
+            if found:
+                yield {"type": "cached", "payload": found}
+                return
+
         usage.set_stage("extract")
         yield {"type": "stage", "key": "extract", "status": "active"}
 
@@ -414,6 +491,9 @@ def run_topic_analysis_events(p: dict):
             credits_before = cached["credits_before"]
             model          = cached["model"]
             provider       = get_provider(cached["provider"])
+            # 1단계에서 만든 지문 — 이 경로는 파일이 없어 다시 만들 수 없다.
+            # .get: 이 값을 안 넣던 시절에 만들어진 토큰이 살아 있을 수 있다(TTL 20분).
+            input_key      = cached.get("input_key") or ""
             # 추출은 이미 끝났으므로 진행률을 100%로 채워 보낸다 (바가 0%로 되돌아가지 않게)
             imgs = cached["img_count"]
             yield {"type": "progress", "key": "extract", "done": imgs, "total": imgs}
@@ -478,6 +558,10 @@ def run_topic_analysis_events(p: dict):
                     "model": model, "provider": provider.name,
                     # 확인 후 이어서 돌 때 추출 진행률을 100%로 채우는 데 쓴다
                     "img_count": total_imgs,
+                    # 2단계에는 파일이 없어 지문을 다시 만들 수 없다 — 여기서 넘겨준다.
+                    # 안 넘기면 확인을 거친 분석만 조용히 키 없이 저장돼, 다음에 같은
+                    # 자료를 올려도 못 찾는다.
+                    "input_key": input_key,
                 }, owner)
                 yield {"type": "needs_confirm", "payload": {
                     "extract_token": token,
@@ -498,7 +582,7 @@ def run_topic_analysis_events(p: dict):
 
         yield {"type": "stage", "key": "finish", "status": "active"}
         payload = _analysis_payload(result, lecture_docs, exam_docs, model, provider,
-                                    p["title"], spend, owner)
+                                    p["title"], spend, owner, input_key)
         yield {"type": "stage", "key": "finish", "status": "done"}
         yield {"type": "done", "payload": payload}
 
@@ -537,6 +621,9 @@ def analyze_topics():
             return jsonify({"error": ev["message"],
                             "usage": ev.get("usage"),
                             "credits": ev.get("credits")}), ev["status"]
+        # 같은 자료를 이미 분석해 둠 — 열지 새로 돌릴지 물어야 하므로 결과 대신 알린다
+        if ev["type"] == "cached":
+            return jsonify({"cached": True, **ev["payload"]})
         # 분량 초과 — 진행 여부를 물어야 하므로 결과 대신 확인 요청을 돌려준다
         if ev["type"] == "needs_confirm":
             return jsonify({"needs_confirm": True, **ev["payload"]})

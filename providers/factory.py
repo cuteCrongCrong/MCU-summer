@@ -49,6 +49,9 @@ def list_providers() -> list:
             "key_help_steps":  cls.key_help_steps,
             "key_help_note":   cls.key_help_note,
             "supports_credits": cls.supports_credits,
+            # 기출 주제 분석 탭의 기본 선택 모델. 빈 값이면 화면이 default_model로 떨어진다.
+            # 이건 내려보낸다 — 드롭다운의 첫 선택값이라 화면이 알아야 하는 값이다.
+            "topic_default_model": cls.topic_default_model,
             # image_model·analysis_model·image_fallback_model은 일부러 안 내려보낸다 —
             # 화면이 고를 수 있는 값이 아니라 서버가 알아서 쓰는 값이라, 보내봐야 쓰는 곳이 없다.
         }

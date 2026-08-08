@@ -19,7 +19,7 @@ if not defined PYEXE py -c "%PYCHK%" >nul 2>nul && set "PYEXE=py"
 
 if defined PYEXE (
   echo ============================================
-  echo   의대 예상문제 생성기 실행 중...
+  echo   MCU 학습 플랫폼 실행 중...
   echo   사용 Python: %PYEXE%
   echo   잠시 후 브라우저가 자동으로 열립니다.
   echo   (이 창을 닫으면 서버가 종료됩니다^)

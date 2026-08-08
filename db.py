@@ -261,6 +261,15 @@ def init_db():
         # 백필하지 않는 이유는 generations 쪽과 같다.
         _ensure_column(conn, "topic_analyses", "usage", "TEXT")     # JSON: usage.summary()
         _ensure_column(conn, "topic_analyses", "credits", "TEXT")   # JSON: 쓴 크레딧만
+        # 같은 자료·같은 모델로 또 분석하려 할 때 이 행을 다시 쓰기 위한 키
+        # (llm.topic_input_key — 올린 PDF의 내용 해시 + 프롬프트·모델·예산 상수).
+        # 백필하지 않는다: 옛 행은 무엇으로 만든 것인지 알 수 없어 NULL이 정직하다.
+        # 인덱스는 소유자 조건과 함께 걸리므로 키 하나로 충분하다(행이 몇 개 안 된다).
+        _ensure_column(conn, "topic_analyses", "input_key", "TEXT")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_topic_analyses_key "
+            "ON topic_analyses(input_key)"
+        )
 
         # ── 이미지 처리 결과 캐시 (llm.py 담당 — 위 헬퍼 함수 주석 참고) ──
         # 모델까지 키에 넣는 이유: 싼 모델로 만든 설명을 비싼 모델을 고른 회차에 물려주면 안 된다.

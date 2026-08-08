@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 의대 예상문제 생성기 — Oracle Cloud (Ubuntu) 자동 설치 스크립트
+# MCU 학습 플랫폼 — Oracle Cloud (Ubuntu) 자동 설치 스크립트
 #
 # 하는 일:
 #   1. 필요한 패키지 + Caddy(HTTPS 자동 발급) 설치
@@ -108,7 +108,7 @@ if [ -f "$ENV_FILE" ]; then
 else
     SECRET="$(python3 -c 'import secrets;print(secrets.token_urlsafe(48))')"
     cat > "$ENV_FILE" <<EOF
-# 의대 예상문제 생성기 — 배포 환경변수
+# MCU 학습 플랫폼 — 배포 환경변수
 # 값을 바꾼 뒤에는:  sudo systemctl restart mcu
 
 APP_ENV=production

@@ -4,14 +4,57 @@
 //   · 여기의 함수/전역은 모든 기능에서 재사용하세요 (재정의 금지).
 // ══════════════════════════════════════════════
 
-// ── 업로드 상한 안내 채우기 ──
-// 화면의 '전체 합쳐서 N MB' 자리(.upload-cap-mb)를 서버가 알려준 값으로 채운다.
-// 숫자를 HTML에 박아두지 않는 이유: 이 값은 배포마다 .env(MAX_UPLOAD_MB)로 달라져서,
-// 박아두면 안내와 실제 거절 기준이 어긋난다(서버는 200인데 화면은 30이라고 하는 식).
-// /providers 응답에 실려 오므로 문제 생성·주제 분석 중 먼저 뜨는 쪽이 채우면 된다.
-function setUploadCap(mb) {
-  if (!mb) return;                      // 못 받았으면 '…' 을 그대로 둔다 (거짓말보다 낫다)
-  document.querySelectorAll('.upload-cap-mb').forEach(el => { el.textContent = mb; });
+// ── 업로드 상한 (서버가 알려준다) ──
+// 용량·개수 모두 화면에 박아두지 않는다. 박아두면 서버와 어긋나는데, 어긋난 것이
+// 조용해서 알아채기 어렵다 — 용량은 배포마다 .env(MAX_UPLOAD_MB)로 달라지고,
+// 개수는 llm.py(MAX_FILES_PER_SIDE)를 고칠 때 화면을 같이 고쳐야 한다는 것을
+// 기억해야 한다. /providers 응답에 실려 오므로 두 탭 중 먼저 뜨는 쪽이 채우면 된다.
+let uploadCapMB = 0;      // 용량 상한(MB). 0이면 아직 모른다 → 재지 않고 서버에 맡긴다.
+// 한쪽당 파일 개수 상한. 응답이 오기 전에 파일을 고르는 짧은 순간에만 이 기본값을 쓴다.
+// 서버와 어긋나 있어도 최종 판정은 서버가 하므로 화면이 조금 느슨하게 굴 뿐이다.
+let uploadMaxFiles = 7;
+
+function setUploadLimits(data) {
+  // 못 받은 값은 건드리지 않는다 — 안내 자리는 '…' 인 채로 둔다 (틀린 숫자보다 낫다)
+  if (data.max_files_per_side) uploadMaxFiles = data.max_files_per_side;
+  if (!data.max_upload_mb) return;
+  uploadCapMB = data.max_upload_mb;
+  document.querySelectorAll('.upload-cap-mb')
+          .forEach(el => { el.textContent = uploadCapMB; });
+}
+
+// ── 업로드 상한 미리 재기 ──
+// 서버는 요청 **본문 전체**가 상한을 넘으면 413을 낸다(app.py MAX_CONTENT_LENGTH).
+// 그런데 waitress 는 본문을 끝까지 받은 뒤에야 앱에 넘기므로, 여기서 안 막으면 사용자는
+// 200MB 를 몇 분에 걸쳐 다 올린 다음에야 '너무 큽니다'를 본다. 파일 개수는 이미 화면에서
+// 막고 있으니(uploadMaxFiles) 크기도 같은 자리에서 막는다.
+// 상한은 한쪽이 아니라 요청 하나 전체 기준이라 강의자료·기출을 합쳐서 잰다.
+// 넘으면 안내 문구를, 괜찮으면 null 을 돌려준다.
+function uploadSizeError(lectureFiles, examFiles) {
+  if (!uploadCapMB) return null;    // 상한을 못 받았으면 재지 않는다 — 서버 판단에 맡긴다
+  const files = lectureFiles.concat(examFiles);
+  const total = files.reduce((sum, f) => sum + (f.size || 0), 0);
+  // 멀티파트 봉투(파트 경계선·헤더, API 키 같은 폼 필드)가 파일 합계 위에 더 붙으므로
+  // 그만큼 미리 떼어두고 잰다 — 화면이 통과시킨 요청을 서버가 거절하면 안 된다.
+  // 32KB인 이유는 양쪽에서 눌린 값이라서다. 아래로는 실제 봉투(파일 14개를 긴 파일명으로
+  // 다 채워도 10KB 안쪽)의 세 배쯤은 돼야 하고, 위로는 0.1MB를 넘으면 안 된다 —
+  // 넘으면 상한 바로 아래에서 "200MB까지인데 199.9MB가 안 된다"는 문구가 나온다.
+  if (total <= uploadCapMB * 1024 * 1024 - 32 * 1024) return null;
+
+  const mb = n => (n / 1024 / 1024).toFixed(1);
+  // 어느 파일을 빼야 하는지까지 알려준다 — 합계만 알려주면 사용자가 하나씩 지워봐야 한다
+  const biggest = files.reduce((a, b) => (b.size > a.size ? b : a));
+  // 한쪽을 문제 생성 탭은 '강의자료', 주제 분석 탭은 '강의록'이라 부른다. 공용 문구라
+  // 어느 쪽 말도 쓰지 않고, 화면 안내와 같은 '전체 합쳐서'로만 말한다.
+  return `업로드는 전체 합쳐서 ${uploadCapMB}MB까지입니다.\n`
+       + `지금 고른 ${files.length}개는 ${mb(total)}MB입니다.\n`
+       + `가장 큰 파일: ${biggest.name} (${mb(biggest.size)}MB)`;
+}
+
+// 파일 목록 옆에 붙일 용량 표시 — 생성 버튼을 누르기 전에 합계를 가늠하도록.
+function totalSizeLabel(files) {
+  const total = files.reduce((sum, f) => sum + (f.size || 0), 0);
+  return total ? ` (${(total / 1024 / 1024).toFixed(1)}MB)` : '';
 }
 
 // ── 공용 유틸 ──

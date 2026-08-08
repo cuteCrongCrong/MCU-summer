@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>의대 예상문제 생성기</title>
+  <title>MCU 학습 플랫폼</title>
   <!-- Pretendard — dynamic subset 이라 유니코드 구간별로 쪼개진 조각 중 실제 화면에 뜬 글자의
        것만 내려받는다(한글 웹폰트를 통째로 받으면 1MB가 넘는다).
        CDN 이 막힌 환경(오프라인·내부망)에서는 이 줄이 통째로 실패해도 style.css 의
@@ -860,6 +860,25 @@
     <div class="cut-actions">
       <button class="btn-ghost" onclick="resolveCutModal(false)">취소</button>
       <button class="btn btn-primary" onclick="resolveCutModal(true)">이대로 진행</button>
+    </div>
+  </div>
+</div>
+
+<!-- 같은 자료 재분석 확인 모달 (기출 주제 분석 전용 — topic_analysis.js의 topicConfirmReuse가 연다)
+     배경 클릭으로 닫지 않는다. 어느 쪽을 골라도 다음 동작이 갈리므로 두 버튼으로만 답한다.
+     기본(오른쪽)이 '열기'인 이유: 값이 안 드는 쪽이고, 여기까지 온 사람은 대개
+     같은 자료를 실수로 다시 올린 것이다. -->
+<div class="modal-overlay" id="reuse-modal">
+  <div class="modal" style="max-width:560px;">
+    <h3>🔍 같은 자료로 분석한 결과가 이미 있습니다</h3>
+    <div class="modal-sub" id="reuse-modal-sub"></div>
+    <div class="cut-note">
+      <span>※ 보관된 결과를 열면 LLM을 부르지 않아 값이 들지 않습니다.
+        새로 분석하면 같은 값을 한 번 더 냅니다 — 같은 자료라도 결과 문장은 매번 조금씩 다릅니다.</span>
+    </div>
+    <div class="cut-actions">
+      <button class="btn-ghost" onclick="topicResolveReuse(true)">그래도 새로 분석</button>
+      <button class="btn btn-primary" onclick="topicResolveReuse(false)">보관된 결과 열기</button>
     </div>
   </div>
 </div>
