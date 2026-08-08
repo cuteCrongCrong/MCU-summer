@@ -951,6 +951,50 @@ def test_cancel_stops_image_calls():
     check("bytes가 섞여도 조용히 넘어간다", True)
 
 
+def test_topic_default_model():
+    """
+    주제 분석 탭의 기본 모델이 문제 생성 탭과 갈라져 있어야 한다.
+
+    되돌아가도 화면은 멀쩡하다 — 드롭다운에 뜨는 이름이 하나 바뀔 뿐이라 아무도
+    못 알아챈다. 그런데 이 탭은 고른 모델이 프롬프트 전체(강의록+기출, 입력 14만
+    토큰)를 혼자 읽으므로, 기본값이 문제 생성 쪽 값으로 되돌아가면 회차마다 요금이
+    몇 배가 된다. 실측 근거는 providers/jbnu_gateway.py 의 ④.
+
+    화면과 서버가 **같은 규칙**으로 기본값을 고르는지도 함께 본다 — 한쪽만 되돌아가면
+    드롭다운에 보이는 모델과 실제로 도는 모델이 어긋난다.
+    """
+    print("\n[⑯ 주제 분석 기본 모델]")
+
+    from providers.factory import get_provider, list_providers
+    from features.topic_analysis import read_topic_params
+
+    gw = get_provider("jbnu_gateway")
+    check("게이트웨이가 주제 분석용 기본값을 따로 갖는다", bool(gw.topic_default_model))
+    check("문제 생성 기본값과 다른 모델이다",
+          gw.topic_default_model != gw.default_model, f"둘 다 {gw.default_model}")
+
+    infos = {p["name"]: p for p in list_providers()}
+    check("/providers 가 topic_default_model 을 내려보낸다",
+          infos["jbnu_gateway"].get("topic_default_model") == gw.topic_default_model,
+          str(infos["jbnu_gateway"].get("topic_default_model")))
+
+    # 값을 안 정한 제공사는 빈 값 → 화면·서버 양쪽이 default_model 로 떨어진다
+    check("값을 안 정한 제공사는 빈 값이다",
+          get_provider("openai").topic_default_model == "")
+
+    # 서버 폴백 — 폼이 model 을 안 보내는 경우(열어둔 옛날 탭·직접 만든 요청)에
+    # 값을 정하는 곳이 여기다. extract_token 을 주면 파일 검사를 건너뛰므로 PDF 없이 확인된다.
+    import app as app_module
+    with app_module.app.test_request_context(
+            "/analyze-topics", method="POST",
+            data={"api_key": "k", "provider": "jbnu_gateway", "extract_token": "t"}):
+        p = read_topic_params()
+    check("model 을 안 보내면 서버도 주제 분석 기본값을 고른다",
+          p["model"] == gw.topic_default_model, p["model"])
+    check("그림 읽는 모델은 여전히 image_model 이다",
+          p["analysis_model"] == gw.image_model, p["analysis_model"])
+
+
 if __name__ == "__main__":
     try:
         test_image_selection()
@@ -969,6 +1013,7 @@ if __name__ == "__main__":
         test_question_boundary_cut()
         test_upload_spill()
         test_cancel_stops_image_calls()
+        test_topic_default_model()
     finally:
         try:
             pathlib.Path(_tmp.name).unlink()

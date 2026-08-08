@@ -15,12 +15,16 @@ from providers.base import ProviderAuthError, ProviderError, ProviderRateLimitEr
 from providers.openai_compatible import OpenAICompatibleProvider
 
 # ══════════════════════════════════════════════════════════════════
-#  ▼ 자주 바꾸는 값 — 모델을 갈아끼울 땐 여기 네 줄만 고치면 된다 ▼
+#  ▼ 자주 바꾸는 값 — 모델을 갈아끼울 땐 여기 다섯 줄만 고치면 된다 ▼
 #    (고른 근거·실측은 바로 아래 '모델 선택 근거'에 적어 두었다)
 # ══════════════════════════════════════════════════════════════════
 
 # 화면에서 사용자가 고르는 '사용할 모델'의 기본 선택값 (= 문제를 만드는 모델)
 DEFAULT_MODEL        = "gpt-5.6-sol"
+
+# 기출 주제 분석 탭에서만 쓰는 기본 선택값. 사용자가 드롭다운에서 바꿀 수 있다.
+#   (문제 생성 탭은 위 DEFAULT_MODEL 을 그대로 쓴다 — 근거는 아래 ④)
+TOPIC_DEFAULT_MODEL  = "gpt-5.6-terra"
 
 # 기출 주제 분석 탭 — '그림 설명용' 모델. 이미지 호출에만 쓰인다.
 #   (주제↔문항 대조는 사용자가 고른 모델이 그대로 한다)
@@ -58,6 +62,18 @@ IMAGE_FALLBACK_MODEL = "gemini-3.6-flash"
 # ③ IMAGE_FALLBACK_MODEL — 제공사를 일부러 다르게 골랐다. 같은 제공사의 다른 모델은
 #    장애가 같이 나기 쉽다. ①의 실측에서 전사량이 luna와 동률이라 폴백으로 넘어가도
 #    결과가 얇아지지 않는다.
+#
+# ④ TOPIC_DEFAULT_MODEL — 주제 분석 탭만 기본값을 한 단계 내린 근거. 같은 PDF 쌍
+#    (강의록 86쪽 · 기출 152쪽)으로 돌린 topic_analyses id=25 vs id=26:
+#        크레딧    terra 462.22 (이미지 65회 포함) · sol 1,185.29 (이미지 1회 — 캐시 적중)
+#                  → sol은 주제 대조 **한 번**이 terra 실행 전체보다 2.6배 비쌌다
+#        주제·문항 terra 21개·22문항 · sol 25개·32문항
+#    sol이 더 찾는 건 맞다. 그래도 기본값을 내리는 이유는 이 탭의 구조다 — 사용자가
+#    고른 모델이 프롬프트 전체(입력 14만 토큰)를 읽으므로, 기본값 하나가 회차마다
+#    4배 차이를 만든다. sol은 드롭다운에 그대로 있으니 필요하면 고르면 된다.
+#    ⚠️ luna는 이 탭에서 재본 적이 없다(②의 측정은 문제 생성 쪽이다). 더 내리려면
+#       같은 자료로 먼저 잴 것 — 주제 대조는 긴 문맥에서 근거를 찾는 일이라
+#       '옮겨 적기'인 ①의 논리가 통하지 않는다.
 
 GATEWAY_BASE_URL = "https://factchat-cloud.mindlogic.ai/v1/gateway"
 
@@ -89,6 +105,7 @@ class JbnuGatewayProvider(OpenAICompatibleProvider):
     image_model          = IMAGE_MODEL
     analysis_model       = ANALYSIS_MODEL
     image_fallback_model = IMAGE_FALLBACK_MODEL
+    topic_default_model  = TOPIC_DEFAULT_MODEL
 
     key_help_url    = "https://gpt.jbnu.ai/dashboard/developers"
     key_help_steps  = [

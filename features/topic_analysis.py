@@ -328,7 +328,12 @@ def read_topic_params() -> dict:
             raise TopicParamError(
                 f"강의록·기출은 각각 최대 {MAX_FILES_PER_SIDE}개까지 올릴 수 있습니다.")
 
-    model = request.form.get("model", "").strip() or provider.default_model
+    # 폼 값이 비었을 때의 기본값은 화면이 첫 선택으로 쓰는 값과 같아야 한다 —
+    # 이 탭은 제공사가 따로 정한 기본값(topic_default_model)이 있으면 그쪽이 우선이다.
+    # 갈라 둔 이유는 providers/base.py 의 topic_default_model 주석 참고.
+    model = (request.form.get("model", "").strip()
+             or getattr(provider, "topic_default_model", "")
+             or provider.default_model)
     # 이미지 호출 전용 모델 — 기출 그림 설명(IMAGE_DESCRIBE)과 강의록 글자 전사
     # (IMAGE_TRANSCRIBE) 양쪽 다. 주제 대조 자체는 위 model이 한다.
     # 사용자가 고르지 않는다: 제공사가 image_model을 선언했으면(게이트웨이) 그 모델로

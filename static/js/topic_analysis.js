@@ -108,7 +108,7 @@ function topicSelectProvider(name) {
   renderKeyHelp(info, 'topic-key-help');
   topicLoadCredits();
 
-  topicPopulateModels([info.default_model]);
+  topicPopulateModels([topicDefaultModel(info)]);
   topicLoadModels();
 }
 
@@ -143,11 +143,18 @@ async function topicLoadModels() {
   }
 }
 
+// 이 탭의 기본 선택 모델. 제공사가 주제 분석용 기본값을 따로 정해두지 않았으면
+// 제공사 기본값으로 떨어진다. 문제 생성 탭과 갈라 둔 이유는 providers/base.py 의
+// topic_default_model 주석에 있다 (여기서 고른 모델이 프롬프트 전체를 읽는다).
+function topicDefaultModel(info) {
+  return (info && (info.topic_default_model || info.default_model)) || '';
+}
+
 function topicPopulateModels(models) {
   const sel = document.getElementById('topic-model-select');
   const prev = sel.value;
   const info = topicProviders.find(p => p.name === topicCurrentProvider) || {};
-  const defaultModel = info.default_model;
+  const defaultModel = topicDefaultModel(info);
   sel.innerHTML = models.map(m => {
     const label = (m === defaultModel) ? `${m} (기본)` : m;
     return `<option value="${escHtml(m)}">${escHtml(label)}</option>`;
