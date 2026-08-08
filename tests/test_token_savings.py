@@ -26,6 +26,7 @@ LLM 호출 없이 가짜 프로바이더로 돈다. API 키도 요금도 필요 
     python tests/test_token_savings.py
 """
 
+import os
 import pathlib
 import sys
 import tempfile
@@ -419,14 +420,23 @@ def test_image_coverage():
     check("건너뛴 수", cov["skipped"] == 4, str(cov["skipped"]))
     check("건너뛴 쪽 번호(1부터)", cov["skipped_pages"] == [3, 4, 5, 6],
           str(cov["skipped_pages"]))
+    # 렌더 결과는 메모리가 아니라 디스크에 있다 (llm.py의 spill 절) — 경로만 들고 있다.
     check("렌더는 상한까지만 (건너뛴 쪽엔 png 없음)",
-          sum(1 for e in pages if e.get("png")) == 2)
+          sum(1 for e in pages if e.get("png_path")) == 2)
+    check("PNG를 메모리에 들고 있지 않는다",
+          all("png" not in e for e in pages))
+    check("내려둔 PNG 파일이 실제로 있다",
+          all(os.path.exists(e["png_path"]) for e in pages if e.get("png_path")))
+    llm.discard_spills(pages)
+    check("discard_spills가 파일과 경로를 함께 지운다",
+          all("png_path" not in e for e in pages))
 
     # 상한에 안 걸리면 경고가 안 뜬다
     pages2, jobs2 = llm.read_pdf_pages(pdf, "key", llm.IMAGE_DESCRIBE, max_images=99)
     cov2 = llm.image_coverage(pages2, jobs2)
     check("여유가 있으면 건너뛴 쪽 없음", cov2["skipped"] == 0 and cov2["processed"] == 6,
           str(cov2))
+    llm.discard_spills(pages2)
 
     # 이미지 처리를 안 하면 후보 자체가 0 (헛돌지 않는다)
     pages3, jobs3 = llm.read_pdf_pages(pdf, "key", None)
