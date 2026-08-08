@@ -166,8 +166,31 @@ function getQuestions(ns) { return questionsByNs[ns || ''] || []; }
 // 빈칸 표시(____ · □□ · ( ))를 찾는 정규식. 인쇄에서는 이걸 손글씨용 밑줄로 바꾼다.
 const BLANK_MARK_RE = /_{2,}|□{2,}|\(\s*\)/g;
 
+// 선택지 앞머리 기호 (llm.py 의 CHOICE_MARK_RE 와 같은 규칙 — 한쪽만 고치지 말 것)
+const CHOICE_MARK_RE = /^(?:[①-⑩]|\(?[a-jA-J1-9가나다라마바사아자차]\)|[a-jA-J1-9]\.(?=\s))\s*/;
+const CIRCLED_MARKS = '①②③④⑤⑥⑦⑧⑨⑩';
+const MARK_ORDERS = ['abcdefghij', 'ABCDEFGHIJ', '123456789', '가나다라마바사아자차'];
+
+// 앞머리 기호가 몇 번째를 가리키는지 (0-based). 기호가 없으면 -1.
+function choiceMarkIndex(text) {
+  const m = CHOICE_MARK_RE.exec((text || '').trim());
+  if (!m) return -1;
+  const key = m[0].replace(/[().\s]/g, '');
+  if (CIRCLED_MARKS.includes(key)) return CIRCLED_MARKS.indexOf(key);
+  for (const order of MARK_ORDERS) {
+    if (order.includes(key)) return order.indexOf(key);
+  }
+  return -1;
+}
+
 function typeInfoOf(q) {
-  const choices = Array.isArray(q['선택지']) ? q['선택지'] : [];
+  // 선택지는 배열이 원칙이지만, 파서가 'a) b) c)' 표기를 못 알아보던 시절에 저장된
+  // 세트에는 문자열 한 덩어리로 들어가 있다. 그대로 두면 객관식인데 보기가 한 줄도
+  // 안 나오므로 줄 단위로 되살린다. (새로 만드는 세트는 llm.py 에서 이미 배열)
+  const raw = q['선택지'];
+  const choices = Array.isArray(raw)
+    ? raw
+    : String(raw || '').split('\n').map(s => s.trim()).filter(Boolean);
   const rawType = (q['유형'] || '').replace(/\s/g, '');
   const isObjective = (rawType ? rawType.includes('객관') : choices.length > 0);
   const isBlank = rawType.includes('빈칸');
@@ -185,11 +208,15 @@ function blankAnswersOf(q) {
 }
 
 // 객관식 정답이 몇 번째 선택지인지 (0-based). 판별 실패하면 -1.
-// ⚠️ -1 이 나올 수 있다 — '정답'에 기호 외 문자가 섞이면(예: '④ 12번 갈비뼈') 실패한다.
+// ⚠️ -1 이 나올 수 있다 — 기호 없이 본문만 적힌 정답('감염형 프리온은 …')은 못 찾는다.
 //   호출부는 반드시 -1 을 처리해야 한다. 화면 카드는 이 경우 정답 표시가 안 되고,
 //   인쇄 정답지는 선택지 본문 대신 원문을 그대로 싣는다.
 function answerIndexOf(q) {
   const CIRCLED = ['①', '②', '③', '④', '⑤'];
+  // 기호로 시작하면 그것만 믿는다 — '④ 12번 갈비뼈'처럼 뒤에 본문이 붙어도,
+  // 'c) 감염형 프리온은 …'처럼 알파벳 표기로 저장된 세트여도 여기서 걸린다.
+  const head = choiceMarkIndex(q['정답']);
+  if (head !== -1) return head;
   const answerNum = (q['정답'] || '').replace(/[^①②③④⑤\d]/g, '');
   const mark = (answerNum.length === 1 && isNaN(answerNum))
     ? answerNum : CIRCLED[parseInt(answerNum) - 1];

@@ -1199,7 +1199,8 @@ def build_question_generation_prompt(
 ## [4] 공통 생성 규칙
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 - 유형별 형식:
-  · 객관식 → 선택지 ①②③④⑤ 포함
+  · 객관식 → 선택지 ①②③④⑤ 포함. **번호는 반드시 ①②③④⑤ 기호로 쓸 것**
+    (a) b) c) / 1. 2. 3. / 가) 나) 다) 금지), 정답도 그 기호로 답할 것
   · 빈칸채우기 → 문제 문장에 빈칸 '____'를 두고, 선택지 없이 빈칸에 들어갈 답 제시
     (빈칸이 2개 이상이면 각 정답을 문제에 등장하는 빈칸 순서대로 ' | '로 구분해
      한 줄에 나열. 예: 정답: NADH | FADH2  ※빈칸 1개면 구분자 없이 답만)
@@ -1273,6 +1274,52 @@ def build_question_generation_prompt(
 QUESTION_START = "---QUESTION---"
 QUESTION_END   = "---END---"
 
+# 화면·인쇄·오답노트가 모두 전제하는 선택지 기호. 여기 순서가 곧 선택지 순서다.
+CIRCLED_MARKS = "①②③④⑤⑥⑦⑧⑨⑩"
+
+# 선택지 앞머리 기호. 프롬프트는 ①②③④⑤ 를 요구하지만 모델이 'a)' · '1.' · '(가)'
+# 로 쓰는 일이 잦다. 이 기호들을 못 알아보면 그 줄들이 선택지 리스트가 아니라
+# 문자열 한 덩어리로 들어가고, 화면은 Array.isArray 로 걸러내 **객관식인데 보기가
+# 한 줄도 안 나오는** 카드가 된다. (실제로 그렇게 생성된 세트가 있었다)
+# '1.5배 …' 를 기호로 오인하지 않도록 마침표 형식은 뒤에 공백을 요구한다.
+CHOICE_MARK_RE = re.compile(
+    rf"^(?:[{CIRCLED_MARKS}]"                     # ① ②      — 프롬프트가 요구하는 형태
+    r"|\(?[a-jA-J1-9가나다라마바사아자차]\)"       # a) (a) 1) 가)
+    r"|[a-jA-J1-9]\.(?=\s))"                      # a. 1.
+    r"\s*"
+)
+
+# 기호를 순번으로 바꿀 때 쓰는 표기 계열 (CHOICE_MARK_RE 가 잡아낸 글자 하나를 찾는다)
+_MARK_ORDERS = ("abcdefghij", "ABCDEFGHIJ", "123456789", "가나다라마바사아자차")
+
+
+def choice_mark_index(text: str) -> int:
+    """'c)' · '3.' · '(나)' 같은 앞머리 기호가 몇 번째를 가리키는지 (0-based). 없으면 -1."""
+    m = CHOICE_MARK_RE.match((text or "").strip())
+    if not m:
+        return -1
+    key = m.group(0).strip("(). \t")
+    if key in CIRCLED_MARKS:
+        return CIRCLED_MARKS.index(key)
+    for order in _MARK_ORDERS:
+        if key in order:
+            return order.index(key)
+    return -1
+
+
+def normalize_choice_marks(choice_lines: list) -> list:
+    """선택지 앞머리를 ①②③④⑤ 로 통일. 이미 그 기호면 손대지 않는다."""
+    if not choice_lines or all(c[:1] in CIRCLED_MARKS for c in choice_lines):
+        return choice_lines
+    out = []
+    for i, line in enumerate(choice_lines):
+        if i >= len(CIRCLED_MARKS):      # 10개를 넘으면 붙일 기호가 없다 (사실상 없는 경우)
+            out.append(line)
+            continue
+        body = CHOICE_MARK_RE.sub("", line, count=1).strip()
+        out.append(f"{CIRCLED_MARKS[i]} {body}")
+    return out
+
 
 def parse_question_block(block: str) -> dict:
     """구분자를 걷어낸 블록 하나를 문제 dict로 변환. '문제'가 없으면 None."""
@@ -1324,12 +1371,27 @@ def parse_question_block(block: str) -> dict:
             current_key = "함정포인트"
             val = line.replace("함정포인트:", "").strip()
             if val: buffer.append(val)
+        elif current_key == "선택지" and line:
+            # '선택지:' 아래인데 ①②③④⑤ 로 시작하지 않는 줄 ('a)' · '1.' 등).
+            # 위 조건들이 먼저 걸리므로 정답:/해설: 라벨이 여기 들어올 일은 없다.
+            # 기호가 아예 없는 줄은 앞 선택지가 줄바꿈된 것으로 보고 이어 붙인다.
+            if CHOICE_MARK_RE.match(line) or not choice_lines:
+                choice_lines.append(line)
+            else:
+                choice_lines[-1] += " " + line
         else:
             if current_key: buffer.append(line)
 
     flush_buffer(current_key, buffer)
     if choice_lines:
+        choice_lines = normalize_choice_marks(choice_lines)
         q["선택지"] = choice_lines
+        # 선택지 기호를 바꿨으면 정답의 기호도 같이 옮긴다 — 안 그러면
+        # 'c) …' 가 ③ 을 가리키는지 화면이 알 수 없어 정답 표시가 빠진다.
+        k = choice_mark_index(q.get("정답", ""))
+        if 0 <= k < len(choice_lines) and q.get("정답", "")[:1] not in CIRCLED_MARKS:
+            body = CHOICE_MARK_RE.sub("", q["정답"], count=1).strip()
+            q["정답"] = f"{CIRCLED_MARKS[k]} {body}".strip()
     q["유형"] = normalize_question_type(q.get("유형"), choice_lines, q.get("문제", ""))
     return q if q.get("문제") else None
 
