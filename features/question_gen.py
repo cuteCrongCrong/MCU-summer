@@ -18,7 +18,7 @@ from flask import Blueprint, request, jsonify, Response
 import config
 from db import get_conn, json_col, owner_clause, LEGACY_PROVIDER
 from features.auth import current_owner   # (user_id, guest_id) 튜플
-from features import extract_cache
+from features import extract_cache, gen_queue
 from providers.base import (
     ProviderError, ProviderAuthError, ProviderRateLimitError,
 )
@@ -667,6 +667,32 @@ def _batch_targets(type_slots, offset, batch_count) -> dict:
 
 
 def run_generation_events(p: dict):
+    """
+    대기열을 거쳐 파이프라인을 돌린다. 이벤트 종류는 _run_generation_events 참고.
+
+    동시 생성 건수는 gen_queue 가 센다(메모리 보호). 차례를 기다리는 동안에는
+      {"type": "queue", "ahead": n}
+    을 내보내 화면이 '앞에 N명 대기 중'을 띄울 수 있게 한다. 차례가 오면 그대로
+    파이프라인으로 넘어간다 — 상한에 안 걸리면 queue 이벤트는 한 번도 안 나간다.
+
+    ⚠️ 자리 반납(release)은 반드시 finally 에서. 브라우저가 중간에 끊으면
+       GeneratorExit 로 들어오는데, 그때 반납을 안 하면 그 자리가 영영 막힌다.
+    """
+    ticket = gen_queue.take_ticket()
+    try:
+        try:
+            for ahead in gen_queue.wait_for_slot(ticket):
+                yield {"type": "queue", "ahead": ahead}
+        except gen_queue.QueueTimeout:
+            yield {"type": "error", "status": 503,
+                   "message": "지금 생성 요청이 밀려 있습니다. 잠시 뒤 다시 시도해주세요."}
+            return
+        yield from _run_generation_events(p)
+    finally:
+        gen_queue.release(ticket)
+
+
+def _run_generation_events(p: dict):
     """
     문제 생성 파이프라인을 진행 이벤트를 내보내는 제너레이터로 실행.
 
