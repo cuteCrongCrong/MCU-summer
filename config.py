@@ -90,11 +90,18 @@ SERVER_THREADS = _int("SERVER_THREADS", 16)
 MAX_UPLOAD_MB = _int("MAX_UPLOAD_MB", 200)
 
 # Vision으로 읽을 이미지 페이지 상한 — **한쪽(강의록 전체 / 기출 전체) 기준**, 파일당이 아니다.
-#   설정으로 뺀 이유는 메모리다. llm.read_pdf_pages가 렌더한 PNG를 설명이 끝날 때까지
-#   들고 있어서 '상한 × PNG 한 장'이 요청 하나의 상주 메모리가 된다.
+#   ⚠️ 예전에는 이 값이 곧 메모리였다(렌더한 PNG를 설명이 끝날 때까지 다 들고 있었다).
+#      지금은 아니다 — PNG는 디스크에 있고 보내기 직전에만 올라오므로 상주 메모리는
+#      IMAGE_WORKERS × PNG 한 장이다. 상한과 무관하다. (llm.py의 'spill' 절 참고)
+#      실측: e2-micro(RAM 1GB)가 이 기본값 그대로 100/60/8로 돌아도 OOM이 안 난다.
+#   그래서 남는 제약은 셋이다:
+#     시간   — 렌더는 read_pdf_pages 루프 안에서 **한 장씩 직렬**이다. 병렬로 도는 것은
+#              그 뒤의 LLM 호출뿐이라, 공유 vCPU에서는 상한이 곧 대기 시간이 된다.
+#     전송량 — PNG를 base64로 부풀려 요청 본문에 싣는다(providers/openai_compatible.py).
+#              상한을 다 채운 회차가 스캔 기출이면 500MB를 넘길 수 있다. GCP 무료 티어의
+#              월 1GB egress가 여기서 닳는다 — 배포-GCP.md의 '무료 조건' 절 참고.
+#     요금   — 한 쪽이 곧 Vision 호출 한 번. (같은 PDF 재분석은 image_desc_cache로 0회)
 #   (150DPI A4 PNG ≈ 벡터 슬라이드 0.3~0.6MB · 스캔 페이지 2~3MB)
-#   기본값은 RAM 2GB 이상 기준. e2-micro(1GB) 배포는 deploy/gcp/setup.sh가 .env에
-#   낮은 값을 써 둔다 — 서버를 키웠으면 .env의 숫자만 올리면 된다.
 IMAGE_CAP_LECTURE = _int("IMAGE_CAP_LECTURE", 100)   # 강의록: 그림 속 글자 전사
 IMAGE_CAP_EXAM    = _int("IMAGE_CAP_EXAM", 60)       # 기출: 그림 설명
 

@@ -61,11 +61,13 @@ GEN_DOC_MIN_CHARS = GEN_SIDE_CHAR_BUDGET // MAX_FILES_PER_SIDE
 # 이미지/스캔 페이지 → Vision LLM으로 텍스트를 남긴다.
 # 상한은 **한쪽(강의록 전체 / 기출 전체) 기준**이다 — 파일당이 아니다. 양쪽 탭 공통.
 # 값을 정하는 건 컨텍스트가 아니라 세 가지다:
-#   ① 메모리 — 렌더한 PNG를 설명이 끝날 때까지 들고 있어 '상한 × PNG'가 상주 메모리가
-#      된다. 그래서 config에서 읽는다 (RAM 1GB인 e2-micro 배포는 .env로 낮춘다).
-#   ② 글자 예산 — 전사는 쪽당 ~800자라 100쪽이면 8만 자다. 한쪽 몫이 이걸 받아줘야
+#   ① 글자 예산 — 전사는 쪽당 ~800자라 100쪽이면 8만 자다. 한쪽 몫이 이걸 받아줘야
 #      한다. 아니면 돈 주고 뽑은 전사를 truncate가 가운데부터 도로 버린다.
-#   ③ 시간 — 호출 1건이 수 초. 워커 수(IMAGE_WORKERS)와 함께 봐야 체감이 유지된다.
+#   ② 시간 — 호출 1건이 수 초인데, 그 앞의 렌더는 read_pdf_pages 루프에서 **한 장씩
+#      직렬로** 돈다. 워커(IMAGE_WORKERS)가 줄여주는 것은 뒷부분뿐이다.
+#   ③ 전송량 — PNG를 base64로 실어 보낸다. 서버가 무료 티어면 여기서 egress가 닳는다.
+#      (config.IMAGE_CAP_* 주석 참고)
+# 메모리는 이제 여기 안 낀다 — PNG는 디스크에 있고 상주량은 IMAGE_WORKERS × 한 장이다.
 IMAGE_DESC_MAX = config.IMAGE_CAP_EXAM        # 기출: 설명할 이미지 페이지 최대 개수
 LECTURE_IMAGE_MAX = config.IMAGE_CAP_LECTURE  # 강의록: 손글씨·판서가 많아 기출보다 넉넉히
 SPARSE_TEXT_THRESHOLD = 20   # 페이지 텍스트가 이보다 짧으면 이미지 페이지로 간주

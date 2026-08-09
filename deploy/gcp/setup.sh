@@ -196,8 +196,11 @@ MAX_UPLOAD_MB=$DEF_MAX_UPLOAD_MB
 SERVER_THREADS=$DEF_SERVER_THREADS
 
 # Vision으로 읽을 이미지 페이지 상한 — 한쪽(강의록 전체 / 기출 전체) 기준. 파일당이 아니다.
-# 여기가 메모리에 가장 직접적으로 걸린다. 그림이 많은 강의록·스캔 기출을 통째로 읽고
-# 싶으면 서버를 키운 뒤 이 값을 올릴 것 (올린 뒤 sudo systemctl restart mcu).
+# 메모리에는 안 걸린다(PNG는 디스크에 있고 워커 수만큼만 올라온다). 걸리는 것은
+#   시간   — 렌더가 한 장씩 직렬이라 공유 vCPU에서는 상한이 곧 대기 시간이다
+#   전송량 — 그림을 게이트웨이로 올리는 만큼 GCP 무료 egress(월 1GB)가 닳는다.
+#            스캔 기출로 상한을 다 채우면 한 회차에 500MB를 넘길 수 있다.
+# 올린 뒤에는 sudo systemctl restart mcu.
 IMAGE_CAP_LECTURE=$DEF_IMAGE_CAP_LECTURE
 IMAGE_CAP_EXAM=$DEF_IMAGE_CAP_EXAM
 IMAGE_WORKERS=$DEF_IMAGE_WORKERS
