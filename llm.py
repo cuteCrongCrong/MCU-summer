@@ -6,6 +6,7 @@ LLM 도메인 로직 — PDF 텍스트/이미지 추출, 프롬프트 설계, �
 라우트(HTTP)와 분리되어 있어 단위 테스트·재사용이 쉽습니다.
 """
 
+import collections
 import hashlib
 import json
 import os
@@ -13,6 +14,7 @@ import re
 import shutil
 import tempfile
 import time
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import fitz  # pymupdf
 
@@ -65,6 +67,44 @@ GEN_DOC_MIN_CHARS = GEN_SIDE_CHAR_BUDGET // MAX_FILES_PER_SIDE
 IMAGE_DESC_MAX = config.IMAGE_CAP_EXAM        # 기출: 설명할 이미지 페이지 최대 개수
 LECTURE_IMAGE_MAX = config.IMAGE_CAP_LECTURE  # 강의록: 손글씨·판서가 많아 기출보다 넉넉히
 SPARSE_TEXT_THRESHOLD = 20   # 페이지 텍스트가 이보다 짧으면 이미지 페이지로 간주
+
+# 깨진 텍스트 레이어 판정 — ToUnicode CMap이 없는 한글 서브셋 폰트를 만나면 MuPDF가
+# 글리프 번호를 유니코드 값으로 그대로 뱉는다. 그러면 한글이 **일정한 오프셋만큼 밀린
+# 다른 문자**로 나온다 (실제 사고: "C6의 carotid…" → "C6넍carotid…", 전 글자 -5707).
+# 글자 '수'는 멀쩡해서 SPARSE_TEXT_THRESHOLD에 안 걸리고, 그대로 프롬프트에 실려 LLM이
+# 베껴 온다. 그래서 길이가 아니라 '한국어처럼 생겼는가'를 따로 본다.
+#
+# 임계값 근거 — 이 저장소의 한글 문서 34k자를 정상 표본으로, 같은 글을 여러 오프셋으로
+# 밀어 깨진 표본으로 삼아 쟀다 (KS적중 = 한글 음절 중 KS X 1001 2,350자에 드는 비율):
+#                        비한글 글자    KS적중
+#   정상(산문·의학지문·용어나열·한자병기)   0~30%    95~100%
+#   -28 / -56 / -84 / -112              0~4%     74~86%
+#   -0x0100 / -0x0500                   4~6%     31~55%
+#   -0x164B (실제 사고)                   55%       2%
+#   -0x2000                              86%      34%
+#   -0x3000 이상                         100%    (음절 0개)
+# 두 신호가 서로의 사각을 메운다. 오프셋이 작으면 글자가 한글 구간에 그대로 떨어져
+# 비한글 비율이 0%지만(신호 A 통과) 안 쓰는 음절로 흩어져 KS적중이 무너진다. 오프셋이
+# 크면 아예 한자 구간으로 넘어가 셀 음절이 없어지므로 그때는 신호 A만 남는다.
+#
+# 받침 분포(정상 54% 무받침)도 재봤지만 신호로는 쓰지 않는다 — 뼈 이름 나열처럼 받침이
+# 몰린 멀쩡한 쪽(15~25%)을 깨진 것으로 잡고, 28의 배수 오프셋은 받침이 그대로 보존돼
+# 못 잡는다. 양쪽으로 다 틀리는 신호다.
+BROKEN_NON_HANGUL_MAX = 0.40   # 신호 A: 글자 중 한글 아닌 것이 이 비율을 넘으면 깨진 것
+BROKEN_KS_MIN         = 0.92   # 신호 C: KS적중이 이보다 낮으면 한국어가 아니다
+BROKEN_MIN_SYLLABLES  = 20     # 신호 C는 표본이 이만큼은 돼야 믿는다 (짧은 쪽은 요동친다)
+
+# 되살리기 채택 기준 — 밀린 글자는 오프셋 하나만 알아내면 LLM 호출 없이 원문이 그대로
+# 돌아온다. 다만 **틀린 오프셋으로 되살리면 그럴듯한 딴 글이 된다.** 쓰레기 글자는 눈에
+# 띄기라도 하지만 잘못 되살린 글은 아무도 못 알아채므로, 애매하면 포기하고 이미지로 넘긴다.
+#
+# 근거 — 무작위 본문·무작위 오프셋 351회 시험에서 '2등과의 여유'가 결정적이었다:
+#   여유 0     → 38건이 엉뚱한 오프셋을 채택 (28의 배수만큼 떨어진 형제 오프셋이 같은 점수)
+#   여유 0.03↑ → 오답 채택 0건, 구조율 86.6%
+#   여유 0.05  → 오답 채택 0건, 구조율 83.5%   ← 구조율 3%p를 안전에 쓴다
+REPAIR_MIN_LETTERS = 40     # 글자가 이보다 적으면 통계를 안 믿는다
+REPAIR_MIN_KS      = 0.95   # 되살린 결과의 KS적중이 이만큼은 나와야 한다
+REPAIR_MIN_MARGIN  = 0.05   # 2등 오프셋과 이만큼 벌어져야 한다 ← 핵심 안전장치
 
 # 페이지 렌더 해상도 — 모드마다 다르다.
 #   설명(기출): 무엇인지만 알면 되므로 낮춘다. 구세대 모델은 긴 변 1568px에서 서버가
@@ -142,6 +182,119 @@ TYPE_DEFINITIONS = (
 # ──────────────────────────────────────────────
 # LLM / PDF 유틸
 # ──────────────────────────────────────────────
+
+HANGUL_FIRST, HANGUL_LAST = 0xAC00, 0xD7A3   # 한글 음절 구간 (가 … 힣)
+
+# KS X 1001 완성형 한글 2,350자 — '한국어에서 실제로 쓰는 음절'의 표준 목록이다.
+# 유니코드 한글 음절은 11,172자지만 그중 실제 글에 나오는 것은 이 2,350자가 거의 전부라,
+# 멀쩡한 한국어 쪽은 여기 적중률이 95~100%로 나오고 글리프 번호가 새어 나온 쪽은
+# 나머지 8,822자로 흩어져 뚝 떨어진다. 빈도표를 들고 다닐 필요 없이 표준 하나로 끝난다.
+# 만드는 법: EUC-KR 한글 영역은 16~40행(0xB0~0xC8) × 94칸 = 정확히 2,350자다.
+# 코드포인트로 담는다 — 오프셋 탐색이 `코드포인트 + 오프셋 in ...`을 수십만 번 돈다.
+KS_CODEPOINTS = frozenset(ord(bytes((lead, tail)).decode("euc-kr"))
+                          for lead in range(0xB0, 0xC9)
+                          for tail in range(0xA1, 0xFF))
+
+
+def _hangul_letters(text: str):
+    """
+    판정에 쓸 '글자'만 골라낸다. 반환: (글자 목록, 그중 한글 음절 목록)
+
+    글자(유니코드 카테고리 L*)만 세고 기호·숫자·문장부호는 뺀다. 안 빼면 객관식
+    선택지 ①②③④⑤(카테고리 No)와 “ ” · ± ℃ 같은 것들이 전부 '한글이 아닌 문자'로
+    잡혀서, 5지선다가 빽빽한 멀쩡한 기출 쪽이 신호 A에 걸린다.
+    ASCII는 애초에 제외한다 — 영문 병기는 이 판정과 무관하다.
+    """
+    letters = [c for c in text
+               if ord(c) > 0x7F and unicodedata.category(c).startswith("L")]
+    syllables = [c for c in letters if HANGUL_FIRST <= ord(c) <= HANGUL_LAST]
+    return letters, syllables
+
+
+def korean_text_looks_broken(text: str) -> bool:
+    """
+    이 페이지의 텍스트 레이어가 폰트 매핑 고장으로 깨졌는가. (판정 근거는 위 상수 주석)
+
+    깨졌다고 보면 호출부는 그 텍스트를 **버리고** 페이지를 이미지로 다시 읽는다.
+    쓰레기 글자는 없느니만 못하다 — LLM이 그걸 강의록에 있는 표현으로 믿고 베낀다.
+    """
+    letters, syllables = _hangul_letters(text)
+    if not letters:
+        return False        # 영문 전용·표지·빈 쪽 — 판정할 한국어가 없다
+
+    # 신호 A: 한글이어야 할 자리에 다른 문자가 앉았다. 오프셋이 크면 한자 구간으로
+    # 넘어가 아예 한글이 남지 않는다 — 그때는 이 신호만 남는다.
+    if (len(letters) - len(syllables)) / len(letters) > BROKEN_NON_HANGUL_MAX:
+        return True
+
+    # 신호 C: 한글 구간 안에 떨어졌더라도 한국어가 안 쓰는 음절들이다.
+    if len(syllables) >= BROKEN_MIN_SYLLABLES:
+        known = sum(1 for c in syllables if ord(c) in KS_CODEPOINTS)
+        if known / len(syllables) < BROKEN_KS_MIN:
+            return True
+
+    return False
+
+
+def find_hangul_offset(text: str):
+    """
+    깨진 텍스트를 되살릴 오프셋을 찾는다. 문서 전체(깨진 쪽을 이어 붙인 것)를 넘긴다 —
+    오프셋은 폰트 속성이라 문서에 하나뿐이고, 글자가 많을수록 판정이 또렷해진다.
+
+    반환:
+      정수 N (0이 아님) — 이만큼 더하면 원문. repair_hangul에 그대로 넘긴다.
+      0                — 지금 글자가 이미 최선이다. 깨진 게 아니었으니 손대지 않는다
+                         (감지가 헛짚었을 때 여기서 조용히 되돌아온다).
+      None             — 못 찾았다. 호출부는 그 쪽을 이미지로 다시 읽어야 한다.
+
+    후보를 전수로 뒤지지 않는다. 밀린 글자를 **전부** 한글 구간에 넣으려면 오프셋이
+    [가 - 관측최소, 힣 - 관측최대] 안에 있어야 하므로, 보통 수십~수백 개로 좁혀진다.
+    이 창이 비면(관측 폭이 한글 구간보다 넓으면) 한 오프셋으로 설명되지 않는 고장이다 —
+    일부 쪽만 깨졌거나 CMap이 통째로 뒤섞인 경우라 되살리기를 포기한다.
+    """
+    letters, _ = _hangul_letters(text)
+    if len(letters) < REPAIR_MIN_LETTERS:
+        return None
+
+    freq = collections.Counter(ord(c) for c in letters)
+    low, high = min(freq), max(freq)
+    if high - low > HANGUL_LAST - HANGUL_FIRST:
+        return None
+
+    total = len(letters)
+    scored = sorted(
+        ((sum(n for cp, n in freq.items() if cp + off in KS_CODEPOINTS) / total, off)
+         for off in range(HANGUL_FIRST - low, HANGUL_LAST - high + 1)),
+        reverse=True)
+
+    hit, offset = scored[0]
+    if offset == 0:
+        return 0            # 지금 글자가 이미 1등 — 여유를 따질 것 없이 그대로 둔다
+    runner_up = scored[1][0] if len(scored) > 1 else 0.0
+    if hit < REPAIR_MIN_KS or hit - runner_up < REPAIR_MIN_MARGIN:
+        return None
+    return offset
+
+
+def repair_hangul(text: str, offset: int) -> str:
+    """
+    find_hangul_offset이 찾은 오프셋으로 되돌린다.
+
+    되돌렸을 때 **한글 구간에 떨어지는 비ASCII 문자만** 민다. 밀린 한글은 정의상 전부
+    거기로 돌아오고, 안 깨진 것들(ASCII·괄호·①②③·“ ”)은 엉뚱한 데로 가므로 저절로
+    걸러진다 — 실제 사고에서도 "carotid tubercle"과 괄호는 멀쩡했다.
+
+    글자 카테고리(L*)로 거르지 않는 이유: 밀린 한글이 결합 문자 구간에 떨어지는 오프셋이
+    있다 (예: 가 - 28 = U+ABE4, Meetei Mayek 모음 기호). 카테고리로 거르면 그 글자만
+    안 돌아와 되살린 문장에 쓰레기가 한 글자씩 박힌다.
+    """
+    if not offset:
+        return text
+    return "".join(
+        chr(ord(c) + offset)
+        if ord(c) > 0x7F and HANGUL_FIRST <= ord(c) + offset <= HANGUL_LAST else c
+        for c in text)
+
 
 def has_meaningful_image(page, min_area_ratio: float) -> bool:
     """
@@ -352,27 +505,55 @@ def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None,
     min_area = mode.get("min_area_ratio", DESCRIBE_MIN_AREA_RATIO)
     dpi = mode.get("dpi", DESCRIBE_RENDER_DPI)
 
+    # ── 선행 패스: 텍스트 레이어가 깨졌는지 먼저 가린다 ──
+    # ToUnicode CMap이 없는 한글 폰트를 만나면 글리프 번호가 글자인 양 새어 나온다
+    # (korean_text_looks_broken 위 주석). 글자 '수'는 멀쩡해서 아래 후보 판정을 그냥
+    # 통과하므로, 여기서 미리 걸러 두지 않으면 쓰레기가 그대로 프롬프트로 간다.
+    #
+    # 오프셋은 폰트 속성이라 문서에 하나뿐이다. 쪽마다 따로 찾지 않고 깨진 쪽을 전부
+    # 이어 붙여 한 번만 찾는다 — 글자가 적은 쪽도 문서 전체 표본에 얹혀 같이 살아난다.
+    texts = [doc[i].get_text() for i in range(doc.page_count)]
+    broken = [korean_text_looks_broken(t) for t in texts]
+    if any(broken):
+        offset = find_hangul_offset("\n".join(t for t, b in zip(texts, broken) if b))
+        if offset:
+            # 되살렸다 — LLM 호출 없이 원문이 돌아왔으니 이미지로 다시 읽을 이유가 없다
+            texts = [repair_hangul(t, offset) if b else t
+                     for t, b in zip(texts, broken)]
+            broken = [False] * len(texts)
+        elif offset == 0:
+            # 지금 글자가 이미 최선 = 감지가 헛짚었다. 멀쩡한 쪽을 이미지로 보내지 않는다.
+            broken = [False] * len(texts)
+
     pages = []       # {idx, text, png(optional), desc}
     img_jobs = []    # 이미지 처리 대상 페이지 (엔트리 참조)
     for i, page in enumerate(doc):
-        text = page.get_text()
-        entry = {"idx": i, "text": text if text.strip() else "", "desc": None}
+        text = texts[i]
+        # 끝내 못 되살린 쪽의 글자는 **버린다.** 남겨 두면 Vision이 옮겨 적은 글과
+        # 나란히 프롬프트에 실려, LLM이 쓰레기 쪽도 원문으로 믿고 주제·문항을 뽑는다.
+        entry = {"idx": i, "text": "" if broken[i] or not text.strip() else text,
+                 "desc": None}
         # 상한 검사를 후보 판정 '밖'에 둔다 — 안에 두면 상한을 채우는 순간 뒤 페이지는
         # 후보인지조차 안 따져서 전체가 몇 쪽이었는지가 안 남고, 진행률이 15/15로 떠
         # 다 읽은 것처럼 보인다. 세는 것은 로컬 계산이라 공짜이므로 끝까지 세고
         # 렌더·호출만 상한에 건다. (or는 왼쪽부터 끊기므로 비싼 has_vector_ink는 마지막)
         is_candidate = (
             image_mode and api_key
-            and (len(text.strip()) < SPARSE_TEXT_THRESHOLD
+            and (broken[i]
+                 or len(text.strip()) < SPARSE_TEXT_THRESHOLD
                  or has_meaningful_image(page, min_area)
                  or (detect_ink and has_vector_ink(page)))
         )
         if is_candidate:
             if len(img_jobs) < max_pages:
                 try:
+                    # 깨진 쪽은 '글자를 읽어야' 하므로 전사용 해상도로 굽는다. 기출 기본값
+                    # (DESCRIBE_RENDER_DPI=110)은 무엇을 그린 이미지인지만 알면 된다는
+                    # 전제로 잡은 값이라, 문항 번호와 본문을 옮겨 적기에는 낮다.
+                    page_dpi = TRANSCRIBE_RENDER_DPI if broken[i] else dpi
                     # 렌더한 즉시 디스크로 내린다 (위 spill 절 참고). 메모리에 남는 것은
                     # 경로 문자열뿐이고, pixmap은 이 줄을 벗어나면 회수된다.
-                    entry["png_path"] = _spill_png(page.get_pixmap(dpi=dpi))
+                    entry["png_path"] = _spill_png(page.get_pixmap(dpi=page_dpi))
                     img_jobs.append(entry)
                 except Exception:
                     pass
