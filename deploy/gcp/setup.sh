@@ -69,13 +69,17 @@ DEF_MAX_UPLOAD_MB=200
 # 스레드는 낮게 유지한다. 이제 막히는 쪽은 메모리가 아니라 공유 vCPU다 —
 # 요청 하나가 PDF 전 쪽을 훑고(get_text·그림 판별) 페이지를 렌더한다.
 DEF_SERVER_THREADS=4
-# 이미지 상한을 코드 기본값(100/60)보다 낮춰 잡는 이유도 이제 메모리가 아니라 시간이다.
-# 공유 vCPU에서는 렌더가 느리고, 호출 수만큼 대기가 그대로 쌓인다.
+# 이미지 상한을 코드 기본값(300/200)보다 낮춰 잡는 이유는 이제 메모리가 아니라 시간이다.
+# 공유 vCPU에서는 렌더가 느리고(read_pdf_pages 안에서 한 장씩 직렬로 돈다), 요청 하나가
+# 900초를 넘기면 waitress·Caddy가 연결을 끊어 이미지값만 내고 결과를 못 받는다.
 # (PNG는 디스크에 있고, 보내기 직전 워커 수만큼만 메모리로 올라온다)
-DEF_IMAGE_CAP_LECTURE=50
-DEF_IMAGE_CAP_EXAM=30
-# 워커는 코드 기본값(8)보다 낮춰 둔다 — e2-micro는 vCPU가 공유(버스트)라 늘려도 이득이 적다.
-DEF_IMAGE_WORKERS=4
+#
+# 여기 값은 **실측으로 검증된 선**이다 — 운영 중인 e2-micro(RAM 1GB)가 100/60/8로
+# 커널 OOM 없이 돈다. 코드 기본값(300/200/12)은 글자 예산 기준으로 잡은 값이라
+# 900초 안에 드는지는 서버마다 다르다. 첫 회차 소요 시간을 재보고 올릴 것.
+DEF_IMAGE_CAP_LECTURE=100
+DEF_IMAGE_CAP_EXAM=60
+DEF_IMAGE_WORKERS=8
 
 # 문제 생성이 실제로 되는지는 이 게이트웨이에 닿느냐에 달려 있다. (llm.py의 GATEWAY_BASE_URL)
 GATEWAY_HOST=factchat-cloud.mindlogic.ai

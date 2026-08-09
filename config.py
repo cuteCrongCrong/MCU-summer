@@ -102,13 +102,27 @@ MAX_UPLOAD_MB = _int("MAX_UPLOAD_MB", 200)
 #              월 1GB egress가 여기서 닳는다 — 배포-GCP.md의 '무료 조건' 절 참고.
 #     요금   — 한 쪽이 곧 Vision 호출 한 번. (같은 PDF 재분석은 image_desc_cache로 0회)
 #   (150DPI A4 PNG ≈ 벡터 슬라이드 0.3~0.6MB · 스캔 페이지 2~3MB)
-IMAGE_CAP_LECTURE = _int("IMAGE_CAP_LECTURE", 100)   # 강의록: 그림 속 글자 전사
-IMAGE_CAP_EXAM    = _int("IMAGE_CAP_EXAM", 60)       # 기출: 그림 설명
+#
+# 값을 정한 근거 (100/60 → 300/200, 2026-08) — 천장은 **글자 예산**이다.
+#   전사는 쪽당 약 800자다(providers/jbnu_gateway.py ①의 실측 776~806).
+#   주제 분석 한쪽 몫이 45만 자(llm.TOPIC_SIDE_CHAR_BUDGET)이므로
+#     강의록 300쪽 → 24만 자 = 몫의 53%. 나머지 21만 자가 본문에 남는다.
+#     560쪽쯤에서 전사만으로 몫을 다 먹는다 — 그 위로는 올려봐야 truncate가 도로 버린다.
+#   ⚠️ 검증 안 된 벽이 하나 남아 있다: 요청 전체가 **900초**를 넘으면 waitress와 Caddy가
+#      연결을 끊는다(serve.py channel_timeout · deploy/gcp/Caddyfile). 넘기면 이미지값은
+#      다 낸 채로 결과를 못 받는다. 렌더가 직렬이라 상한을 올릴수록 여기에 가까워지므로,
+#      공유 vCPU 서버(e2-micro 등)에서는 첫 회차의 총 소요 시간을 꼭 확인할 것.
+IMAGE_CAP_LECTURE = _int("IMAGE_CAP_LECTURE", 300)   # 강의록: 그림 속 글자 전사
+IMAGE_CAP_EXAM    = _int("IMAGE_CAP_EXAM", 200)      # 기출: 그림 설명
 
 # 이미지 호출 동시 실행 수. 네트워크 대기가 대부분이라 CPU보다 상한·지연에 걸린다.
 #   상한을 올리면 이 값도 같이 올려야 체감이 유지된다 (상한 ÷ 워커 = 대기 라운드 수).
-#   메모리는 크게 안 는다 — 늘어나는 건 동시에 뜨는 pixmap(장당 ~6.5MB)과 rate limit 압력.
-IMAGE_WORKERS = _int("IMAGE_WORKERS", 8)
+#   상한을 100/60 → 300/200 으로 올리면서 8 → 12 로 맞췄다. 900초 벽이 있어서
+#   대기 라운드가 그만큼 늘면 안 된다 (500쪽 ÷ 8 = 63라운드 → ÷12 = 42라운드).
+#   메모리는 이 값에만 걸린다 — 동시에 뜨는 pixmap(장당 ~6.5MB) + base64 사본.
+#   12개면 100~150MB 남짓이라 RAM 1GB에서도 견딘다. 더 올리려면 SERVER_THREADS와
+#   곱해서 봐야 한다 (동시 요청 수 × 워커 수가 실제 동시 장수다).
+IMAGE_WORKERS = _int("IMAGE_WORKERS", 12)
 
 # DB 파일 경로. 배포 시 반드시 영구 디스크 경로를 지정할 것 (예: /var/data/sessions.db).
 # 비워두면 프로젝트 폴더의 sessions.db 를 쓴다(로컬 개발 기본값).
