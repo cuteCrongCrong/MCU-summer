@@ -102,6 +102,11 @@ apt-get install -y \
     python3 python3-venv python3-pip git curl ca-certificates cron sqlite3 \
     debian-keyring debian-archive-keyring apt-transport-https
 
+# 시간대를 한국으로. 클라우드 VM은 기본이 UTC인데, 앱이 시각을 datetime.now()로
+# 찍어 그대로 DB에 넣기 때문에(features/question_gen.py) 그대로 두면 보관함의
+# 생성 시각이 9시간 이르게 표시된다. 로그(journalctl) 시각도 같이 맞춰진다.
+timedatectl set-timezone Asia/Seoul
+
 # ──────────────────────────────────────────────
 say "2/8  swap 2GB 생성 (e2-micro는 RAM 1GB뿐)"
 # ──────────────────────────────────────────────

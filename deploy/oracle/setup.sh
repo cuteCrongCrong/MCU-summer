@@ -61,6 +61,10 @@ apt-get install -y \
     debian-keyring debian-archive-keyring apt-transport-https \
     iptables-persistent
 
+# 시간대를 한국으로 (GCP판과 같은 이유 — 자세한 설명은 deploy/gcp/setup.sh 참고).
+# 두면 보관함의 생성 시각이 9시간 이르게 표시된다.
+timedatectl set-timezone Asia/Seoul
+
 # ──────────────────────────────────────────────
 say "2/7  Caddy 설치 (HTTPS 인증서 자동 발급·갱신)"
 # ──────────────────────────────────────────────

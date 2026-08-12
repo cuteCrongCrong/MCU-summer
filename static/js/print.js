@@ -1,6 +1,6 @@
 // ══════════════════════════════════════════════
 // print.js — 시험지 인쇄 / PDF 저장
-//   common.js 이후 로드. escHtml / typeInfoOf / answerIndexOf / blankAnswersOf 재사용.
+//   common.js 이후 로드. escHtml / typeInfoOf / answerIndexesOf / blankAnswersOf 재사용.
 //
 // ⚠️ 이 파일의 가장 중요한 성질:
 //   buildPrintDoc 은 **화면 DOM을 한 번도 읽지 않는다** — 인자로 받은 문제 배열만 쓴다.
@@ -82,9 +82,10 @@ function buildQuestionSheet(questions, meta) {
 function answerText(q) {
   const t = typeInfoOf(q);
   if (t.isObjective) {
-    const k = answerIndexOf(q);
-    // -1 = 판별 실패(정답에 기호 외 문자가 섞인 경우). 원문을 그대로 싣는다.
-    if (k >= 0 && k < t.choices.length) return escMath(t.choices[k]);
+    // '모두 고르시오'는 정답이 여럿이라 전부 싣는다. 빈 배열 = 판별 실패
+    // (정답에 기호 외 문자만 있는 경우) → 그때는 원문을 그대로 싣는다.
+    const ks = answerIndexesOf(q).filter(k => k >= 0 && k < t.choices.length);
+    if (ks.length) return ks.map(k => escMath(t.choices[k])).join('<br>');
     return escMath(q['정답'] || '-');
   }
   if (t.isBlank) {

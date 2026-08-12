@@ -266,6 +266,37 @@ function answerIndexOf(q) {
   return CIRCLED.indexOf(mark);
 }
 
+// 정답이 여러 개인 문제('모두 고르시오')를 위해 **모든** 정답 번호를 0-based로.
+// 판별 실패하면 빈 배열 — 호출부는 그 경우를 처리해야 한다(위 answerIndexOf 주석 참고).
+//
+// 실제로 쌓인 표기가 제각각이라 기호를 전부 훑는다:
+//   '①, ②, ③' · '③,④' · '① ③' · '①②③④' · '①, ②, ⑦'
+function answerIndexesOf(q) {
+  const ans = (q['정답'] || '').trim();
+  // ① 기호가 하나라도 있으면 그것만 본다 — 본문에 섞인 숫자에 안 속는다
+  const marks = [...ans].filter(ch => CIRCLED_MARKS.includes(ch));
+  if (marks.length) {
+    return [...new Set(marks.map(m => CIRCLED_MARKS.indexOf(m)))];
+  }
+  // ② 숫자만 나열한 경우('2, 4'). 전체가 숫자 나열일 때만 인정한다 —
+  //    '3.6개이다' 같은 답에서 숫자를 주워오지 않도록.
+  if (/^\d+(?:\s*[,·/및]+\s*\d+)+$/.test(ans)) {
+    return [...new Set(ans.match(/\d+/g).map(n => parseInt(n) - 1))].filter(i => i >= 0);
+  }
+  // ③ 정답이 하나인 평범한 경우 — 기존 규칙 그대로
+  const one = answerIndexOf(q);
+  return one === -1 ? [] : [one];
+}
+
+// 답을 여러 개 고를 수 있는 문제인가.
+//   ① 정답에 번호가 둘 이상 — '①, ③'
+//   ② 문제가 '모두 고르시오'라고 말함 — 정답이 하나여도 여러 개를 고를 수 있어야 한다.
+//      (고르라고 해놓고 하나만 켜지면 사용자는 화면이 고장난 줄 안다)
+function isMultiAnswer(q) {
+  if (answerIndexesOf(q).length >= 2) return true;
+  return /모두\s*(?:고르|골라|선택)/.test(q['문제'] || '');
+}
+
 function renderQuestions(questions, raw, viewOpts) {
   viewOpts = viewOpts || {};
   const folder = viewOpts.folder || null;
@@ -357,16 +388,16 @@ function buildQuestionCard(q, idx, folder, ns) {
       </div>`;
 
     if (isObjective) {
-      const answerIdx = answerIndexOf(q);   // 판별 실패 시 -1 (정답 표시가 안 된다)
+      // 정답 번호는 채점할 때 문제 dict에서 다시 읽는다 (여러 개일 수 있어 배열이다)
       const choiceHtml = choices.map((c, i) =>
-        `<li data-idx="${i}" onclick="selectChoice(this, '${ns}', ${idx}, ${answerIdx})">${escMath(c)}</li>`
+        `<li data-idx="${i}" onclick="selectChoice(this, '${ns}', ${idx})">${escMath(c)}</li>`
       ).join('');
       card.innerHTML = `
         ${headerHtml}
         ${imageHtml}
         <div class="q-text">${escMath(q['문제'] || '')}</div>
         <ul class="choices" id="${ns}choices-${idx}">${choiceHtml}</ul>
-        <button class="check-btn" onclick="checkAnswer('${ns}', ${idx}, ${answerIdx})">정답 확인</button>
+        <button class="check-btn" onclick="checkAnswer('${ns}', ${idx})">정답 확인</button>
         ${answerBlock}
       `;
     } else if (useBlankInputs) {
@@ -399,7 +430,13 @@ function buildQuestionCard(q, idx, folder, ns) {
 
 // 아래 채점 함수들은 카드가 속한 컨테이너를 ns로 받는다.
 // (ns 없이 id만 쓰면 다른 탭에 남아 있는 같은 번호의 카드를 집는다)
-function selectChoice(el, ns, qIdx, answerIdx) {
+function selectChoice(el, ns, qIdx) {
+  const q = getQuestions(ns)[qIdx] || {};
+  // '모두 고르시오'는 여러 개를 켤 수 있어야 한다 — 누를 때마다 켜고 끈다.
+  if (isMultiAnswer(q)) {
+    el.classList.toggle('selected');
+    return;
+  }
   const list = document.getElementById(`${ns}choices-${qIdx}`);
   list.querySelectorAll('li').forEach(li => li.classList.remove('selected'));
   el.classList.add('selected');
@@ -427,18 +464,18 @@ function checkBlanks(ns, qIdx) {
   document.getElementById(`${ns}ans-${qIdx}`).style.display = 'block';
 }
 
-function checkAnswer(ns, qIdx, answerIdx) {
+function checkAnswer(ns, qIdx) {
   const list = document.getElementById(`${ns}choices-${qIdx}`);
   const items = list.querySelectorAll('li');
-  const selected = list.querySelector('li.selected');
+  // 정답이 여럿일 수 있다('모두 고르시오'). 빈 배열이면 판별 실패 → 정답 표시가 안 된다.
+  const correct = answerIndexesOf(getQuestions(ns)[qIdx] || {});
 
   items.forEach((li, i) => {
     li.onclick = null; // 클릭 잠금
-    if (i === answerIdx) li.classList.add('correct');
+    if (correct.includes(i)) li.classList.add('correct');
+    // 고른 것 중 정답이 아닌 것만 오답 표시 (안 고른 정답은 correct 로만 보여준다)
+    else if (li.classList.contains('selected')) li.classList.add('wrong');
   });
-  if (selected && parseInt(selected.dataset.idx) !== answerIdx) {
-    selected.classList.add('wrong');
-  }
 
   document.getElementById(`${ns}ans-${qIdx}`).style.display = 'block';
 }
