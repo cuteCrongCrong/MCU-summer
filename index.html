@@ -600,20 +600,22 @@
           <span id="bone-click-scope-label" style="font-size:0.82rem;color:#2f5c50;font-weight:700;"></span>
         </div>
 
-        <div style="text-align:center;margin:8px 0 16px;">
-          <img id="bone-click-image" alt="골학 번호 그림"
-               style="max-width:100%;max-height:560px;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;" />
+        <div class="bone-sticky-img">
+          <div style="text-align:center;margin:8px 0 16px;">
+            <img id="bone-click-image" alt="골학 번호 그림"
+                 style="max-width:100%;max-height:340px;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;" />
+          </div>
+
+          <div style="margin-bottom:12px;">
+            <button type="button" id="bone-click-original-btn" onclick="boneClickShowOriginal()"
+                    style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">🖼️ 원본 보기</button>
+          </div>
+
+          <div id="bone-click-extra"></div>
+
+          <div style="font-size:0.78rem;font-weight:700;color:#64748b;margin:0 0 6px;">📚 단어은행</div>
+          <div class="bone-chip-bank" id="bone-click-bank"></div>
         </div>
-
-        <div style="margin-bottom:12px;">
-          <button type="button" id="bone-click-original-btn" onclick="boneClickShowOriginal()"
-                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">🖼️ 원본 보기</button>
-        </div>
-
-        <div id="bone-click-extra"></div>
-
-        <div style="font-size:0.78rem;font-weight:700;color:#64748b;margin:0 0 6px;">📚 단어은행</div>
-        <div class="bone-chip-bank" id="bone-click-bank"></div>
 
         <div style="font-size:0.82rem;color:#64748b;margin:14px 0 6px;">번호를 클릭한 뒤, 위 단어은행에서 알맞은 단어를 클릭해 채우세요.</div>
         <div class="bone-slot-list" id="bone-click-slots"></div>
@@ -634,14 +636,16 @@
           <span id="bone-write-scope-label" style="font-size:0.82rem;color:#2f5c50;font-weight:700;"></span>
         </div>
 
-        <div style="text-align:center;margin:8px 0 16px;">
-          <img id="bone-write-image" alt="골학 번호 그림"
-               style="max-width:100%;max-height:560px;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;" />
-        </div>
+        <div class="bone-sticky-img">
+          <div style="text-align:center;margin:8px 0 16px;">
+            <img id="bone-write-image" alt="골학 번호 그림"
+                 style="max-width:100%;max-height:420px;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;" />
+          </div>
 
-        <div style="margin-bottom:12px;">
-          <button type="button" id="bone-write-original-btn" onclick="boneWriteShowOriginal()"
-                  style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">🖼️ 원본 보기</button>
+          <div style="margin-bottom:12px;">
+            <button type="button" id="bone-write-original-btn" onclick="boneWriteShowOriginal()"
+                    style="font-size:0.8rem;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;color:#475569;">🖼️ 원본 보기</button>
+          </div>
         </div>
 
         <div style="font-size:0.82rem;color:#64748b;margin-bottom:6px;">번호마다 이름을 채운 뒤 한 번에 채점하세요. (Enter로 다음 칸 이동)</div>

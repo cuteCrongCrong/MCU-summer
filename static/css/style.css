@@ -468,6 +468,20 @@ input:focus { outline: none; border-color: var(--primary); }
   border-color: var(--primary); background: #eaf1ed; transform: translateY(-2px);
 }
 
+/* 클릭형 매칭 / 빈칸 쓰기 — 문항이 많아 이미지와 정답 영역을 계속 스크롤로
+   오가는 게 불편해서, 이미지(+원본 보기 버튼, 클릭형은 단어은행까지)는
+   화면 위에 붙여두고 정답 영역(번호 슬롯/입력칸)만 스크롤되게 한다.
+   max-height + overflow: 단어은행이 유난히 긴 이미지(부위 30~40개)에서도
+   고정 영역이 화면을 다 잡아먹지 않고 자체적으로 스크롤되게 하는 안전장치. */
+.bone-sticky-img {
+  position: sticky; top: 0; z-index: 3;
+  background: var(--surface);
+  padding-top: 8px;
+  box-shadow: 0 6px 8px -8px rgba(0, 0, 0, 0.18);
+  max-height: 66vh;
+  overflow-y: auto; scrollbar-width: thin;
+}
+
 /* 클릭형 매칭 — 번호 슬롯 목록 */
 .bone-slot-list {
   display: flex; flex-direction: column; gap: 6px;
