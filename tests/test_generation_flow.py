@@ -416,11 +416,55 @@ def test_analysis_model_pinned():
           "user-picked" not in (pinned["analysis_model"], free["analysis_model"]))
 
 
+def test_vignette_not_forced():
+    """
+    증례(환자 사례)를 **모든 문항에** 강제하지 않는다.
+
+    예전 동작 — [2] 형식 키워드의 '증례제시' 줄이 '해당없음'이 아니면 출력 형식의
+    '문제:' 칸을 "[증례 포함 문제 전체]"로 못박았다. 그런데 그 줄을 쓰는
+    analyze_format은 기출 전문이 아니라 대표문제 몇 개만 본다. 표본에 증례 문항이
+    하나만 끼어도 '증례 있음'이 되고, 실제로는 소수인 기출에서 생성 문항 전부가
+    증례로 시작했다.
+
+    화면에는 멀쩡한 문제가 나오므로 사용자가 신고하기 전엔 안 보인다. 그래서 고정한다.
+    양방향을 다 건다 — 증례가 아예 없는 기출에서 '지어내지 마라'까지 사라지면
+    반대쪽으로 틀린 것이다.
+    """
+    print("\n[증례 — 일부 기출이 전량 증례가 되지 않는다]")
+    import llm
+
+    concepts = {"핵심질환": ["대퇴골 골절"], "핵심개념": ["몸쪽 끝"],
+                "중요수치": [], "진단포인트": [], "치료원칙": []}
+
+    def build(format_analysis):
+        prefix, _ = llm.build_question_generation_prompt(
+            concepts, "[유형: 객관식]\n1. 예시", format_analysis,
+            4, {}, [], 5, {"객관식": 4},
+        )
+        return prefix
+
+    # 대표문제 일부에만 증례가 있던 경우 — analyze_format은 비율 없이 이 줄을 쓴다
+    some = build("문제유형: 객관식\n증례제시: 나이, 성별, 검사소견")
+    check("출력 형식이 증례를 못박지 않는다", "증례 포함" not in some,
+          some[-300:])
+    check("'문제:' 칸은 중립", "문제: [문제 전체]" in some)
+    check("증례가 있는 기출에 '만들지 마라'는 붙지 않는다",
+          "증례 지문을 새로 만들지" not in some)
+
+    # 증례가 아예 없는 기출 — 여기서만 못박는다 (예시에 증례가 없어 few-shot이
+    # '만들지 마라'까지는 말해주지 못한다)
+    none = build("문제유형: 객관식\n증례제시: 해당없음")
+    check("증례가 없는 기출에서는 지어내지 말라고 못박는다",
+          "증례 지문을 새로 만들지" in none)
+    check("그 경우에도 출력 형식은 그대로 중립", "증례 포함" not in none)
+
+
 if __name__ == "__main__":
     test_flow()
     test_upload_flow()
     test_truncation_confirm_flow()
     test_analysis_model_pinned()
+    test_vignette_not_forced()
     print()
     if _failures:
         print(f"실패 {len(_failures)}건: " + ", ".join(_failures))
