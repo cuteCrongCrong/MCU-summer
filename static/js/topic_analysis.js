@@ -1,7 +1,7 @@
 // ══════════════════════════════════════════════
 // topic_analysis.js — 기출 주제 분석 탭
 //   "강의록 몇 페이지의 주제가 어떤 기출 몇 번 문제로 나왔는가" 를 정리해 보여준다.
-//   common.js 이후 로드. escHtml/setStep 과 진행 상태 도구(createProgress·sseEvents)는
+//   common.js 이후 로드. escHtml/setStep 과 진행 상태 도구(createProgress·postSSE)는
 //   common.js 것을 재사용한다 — 진행률 계산·SSE 파싱이 문제 생성 탭과 같은 규칙이다.
 //   이름 충돌을 막기 위해 전역·함수 모두 topic 접두사 사용. (CONTRIBUTING.md 5번)
 //   문제 생성기와 제공사/키/모델 입력을 공유하지 않고 각자 들고 있다 — 탭끼리 독립시켜
@@ -146,6 +146,8 @@ const TOPIC_STEP_ICONS = { extract: '📄', topics: '📚', finish: '🔗' };
 const topicProgress = createProgress({
   barId: 'topic-overall-bar', pctId: 'topic-overall-pct', stepPrefix: 'topic-step-',
   weights: { extract: 55, topics: 40, finish: 5 },
+  // 'PDF 읽는 중' 칸은 세는 단위가 도중에 바뀐다(업로드 바이트 → 그림 장수).
+  percentNotes: ['extract'],
 });
 
 function topicResetSteps() {
@@ -304,19 +306,26 @@ function topicCancelAnalyze() {
 async function topicRunAnalysis(form, signal) {
   if (!canReadStream()) return topicFallbackAnalyze(form, signal);
 
-  const resp = await fetch('/analyze-topics/stream',
-                           { method: 'POST', body: form, signal });
+  // fetch 가 아니라 XHR 인 이유는 업로드 진행률 하나다 (common.js 의 postSSE).
+  const res = await postSSE('/analyze-topics/stream', form, {
+    signal,
+    onUploadProgress: (loaded, total) => {
+      // 업로드 구간은 서버가 아직 아무것도 안 한 때다. 그래도 첫 칸을 켜서 퍼센트를
+      // 띄운다 — 안 그러면 큰 파일을 올리는 동안 화면이 굳어 보인다.
+      setStep('topic-step-extract', 'active');
+      topicProgress.setStageNote('extract', `업로드 ${Math.round(loaded / total * 100)}%`);
+    },
+  });
 
   // 스트림이 시작되기 전 오류(키 누락 등)는 평범한 JSON으로 온다
-  if (!resp.ok) {
-    topicShowError(await describeHttpError(resp, '/analyze-topics/stream'));
+  if (!res.ok) {
+    topicShowError(await describeHttpError(res.response, '/analyze-topics/stream'));
     return;
   }
 
   let finished = false;     // done/error 없이 스트림이 끊겼는지 판별
 
-  // 프레임 끊기는 common.js 의 sseEvents 가 한다 (문제 생성 탭과 공용)
-  for await (const ev of sseEvents(resp)) {
+  for await (const ev of res.events) {
     if (ev.type === 'stage') {
       setStep('topic-step-' + ev.key, ev.status);
       if (ev.status === 'active') {

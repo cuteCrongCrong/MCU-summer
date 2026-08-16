@@ -199,6 +199,9 @@ const STEP_ICONS = { extract: '📄', concepts: '🧠', format: '🔍', generate
 const genProgress = createProgress({
   barId: 'overall-bar', pctId: 'overall-pct', stepPrefix: 'step-',
   weights: { extract: 15, concepts: 20, format: 20, generate: 45 },
+  // 'PDF 읽는 중' 칸은 세는 단위가 도중에 바뀐다(업로드 바이트 → 그림 장수).
+  // 숫자를 그대로 두면 되감긴 것처럼 보여서 퍼센트로 통일한다.
+  percentNotes: ['extract'],
 });
 
 function resetSteps(useSession) {
@@ -307,18 +310,27 @@ async function renameCurrentResult() {
 async function streamGenerate(form, signal) {
   if (!canReadStream()) return fallbackGenerate(form, signal);
 
-  const resp = await fetch('/generate/stream', { method: 'POST', body: form, signal });
+  // fetch 가 아니라 XHR 인 이유는 업로드 진행률 하나다 (common.js 의 postSSE).
+  const res = await postSSE('/generate/stream', form, {
+    signal,
+    onUploadProgress: (loaded, total) => {
+      // 업로드가 끝나기 전에는 서버가 아직 아무것도 안 했다. 그래도 'PDF 읽는 중'
+      // 칸을 미리 켜서 그 자리에 퍼센트를 띄운다 — 500MB 를 올리는 몇 분 동안
+      // 화면이 0% 로 굳어 있으면 사용자는 고장으로 보고 새로고침한다.
+      setStep('step-extract', 'active');
+      genProgress.setStageNote('extract', `업로드 ${Math.round(loaded / total * 100)}%`);
+    },
+  });
 
   // 스트림이 시작되기 전 오류(키 누락 등)는 평범한 JSON으로 온다
-  if (!resp.ok) {
-    showError(await describeHttpError(resp, '/generate/stream'));
+  if (!res.ok) {
+    showError(await describeHttpError(res.response, '/generate/stream'));
     return;
   }
 
   let finished = false;     // done/error 없이 스트림이 끊겼는지 판별
 
-  // 프레임 끊기는 common.js 의 sseEvents 가 한다 (기출 주제 분석 탭과 공용)
-  for await (const ev of sseEvents(resp)) {
+  for await (const ev of res.events) {
     if (ev.type === 'stage') {
       setStep('step-' + ev.key, ev.status);
       if (ev.status === 'active') {
