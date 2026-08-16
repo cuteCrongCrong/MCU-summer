@@ -26,7 +26,8 @@ from providers.factory import (
     DEFAULT_PROVIDER, UnknownProviderError, get_provider, list_providers,
 )
 from providers.usage import (
-    UsageCollector, credits_for_history, credits_result, credits_snapshot,
+    PhaseTimer, UsageCollector, credits_for_history, credits_result,
+    credits_snapshot,
 )
 from llm import (
     QUESTION_TYPES, StreamingQuestionParser, IMAGE_DESCRIBE, IMAGE_TRANSCRIBE,
@@ -694,6 +695,11 @@ def run_generation_events(p: dict):
     # 사용량은 알려줘야 하므로 try 바깥에 둔다 (except 절에서도 참조).
     usage = UsageCollector()
 
+    # 추출 단계의 두 구간(렌더 / 이미지 LLM 호출)을 따로 잰다. 지금은 렌더가 전부
+    # 끝난 뒤에 호출이 시작돼서 두 시간이 그대로 더해지는데, SSE stage 키가
+    # 'extract' 하나뿐이라 어느 쪽이 긴지 로그로도 안 갈린다. (providers/usage.py)
+    timing = PhaseTimer()
+
     # 크레딧으로 과금하는 제공사는 생성 전 잔액을 먼저 찍어둔다 (LLM 호출 이전이어야
     # 이번 생성분만 차이로 잡힌다). 지원하지 않는 제공사는 None.
     credits_before = credits_snapshot(provider, api_key)
@@ -748,24 +754,34 @@ def run_generation_events(p: dict):
                 # 여기까지는 LLM 호출이 없다 (페이지 선정만) — 진행률 총계를 먼저 알아야
                 # 하므로 양쪽을 모두 읽어 대상 페이지를 센 뒤에 Vision 호출을 시작한다.
                 # 이미지 상한은 **한쪽 전체**에 걸린다 (파일당이 아니다).
-                lec_parts  = read_labeled_pdfs(p["lecture_files"], "강의자료",
-                                               api_key, IMAGE_TRANSCRIBE)
-                exam_parts = read_labeled_pdfs(p["exam_files"], "기출",
-                                               api_key, IMAGE_DESCRIBE)
+                # 렌더 구간 — 양쪽을 한 span에 담는다. 강의자료·기출을 나눠 재도
+                # 고칠 대상(직렬 렌더 루프)이 같아서 합계가 곧 판단 근거다.
+                with timing.span("render"):
+                    lec_parts  = read_labeled_pdfs(p["lecture_files"], "강의자료",
+                                                   api_key, IMAGE_TRANSCRIBE,
+                                                   timing=timing)
+                    exam_parts = read_labeled_pdfs(p["exam_files"], "기출",
+                                                   api_key, IMAGE_DESCRIBE,
+                                                   timing=timing)
                 rendered_parts += lec_parts + exam_parts
 
                 total_imgs = sum(len(x["img_jobs"]) for x in lec_parts + exam_parts)
                 yield {"type": "progress", "key": "extract", "done": 0, "total": total_imgs}
                 done_imgs = 0
-                for parts, mode in ((lec_parts, IMAGE_TRANSCRIBE),
-                                    (exam_parts, IMAGE_DESCRIBE)):
-                    for x in parts:
-                        for d in describe_images_progressively(x["img_jobs"], api_key,
-                                                               analysis_model,
-                                                               provider, usage, mode):
-                            yield {"type": "progress", "key": "extract",
-                                   "done": done_imgs + d, "total": total_imgs}
-                        done_imgs += len(x["img_jobs"])
+                # 이미지 LLM 호출 구간 — 이 span의 벽시계와 위 렌더 span의 벽시계를
+                # 견주면 '겹치면 얼마나 줄어드는지'가 바로 나온다 (짧은 쪽이 절감 상한).
+                # yield가 안에 있어 진행률을 흘려보내는 시간도 포함되는데, 그게 맞다 —
+                # 사용자가 기다리는 것은 이 구간 전체지 호출만이 아니다.
+                with timing.span("image_call"):
+                    for parts, mode in ((lec_parts, IMAGE_TRANSCRIBE),
+                                        (exam_parts, IMAGE_DESCRIBE)):
+                        for x in parts:
+                            for d in describe_images_progressively(
+                                    x["img_jobs"], api_key, analysis_model,
+                                    provider, usage, mode, timing=timing):
+                                yield {"type": "progress", "key": "extract",
+                                       "done": done_imgs + d, "total": total_imgs}
+                            done_imgs += len(x["img_jobs"])
 
                 lecture_text, lecture_src, lecture_cuts = _join_side(
                     lec_parts, IMAGE_TRANSCRIBE)
@@ -779,6 +795,13 @@ def run_generation_events(p: dict):
                     "exam":    exam_src,
                 }
                 session_base = _session_base(p)
+
+                # 추출(렌더 + 이미지 호출)이 끝난 **바로 여기서** 찍는다. 아래 경고
+                # 확인 경로는 return으로 빠지는데, 분량이 큰 회차일수록 그쪽을 타므로
+                # 뒤에 두면 정작 재고 싶은 회차의 계측만 사라진다. (확인 후 재개하면
+                # 추출을 건너뛰므로 그때는 잰 것이 아예 없다)
+                for line in timing.report_lines(f"gen extract model={analysis_model}"):
+                    print(line, flush=True)
 
                 # 상한을 넘겨 일부가 버려지는 파일이 있으면 진행 전에 물어본다.
                 # 추출 결과를 잠시 보관하고 토큰만 내려보낸다 — 재추출하면 Vision 재과금.
@@ -798,6 +821,7 @@ def run_generation_events(p: dict):
                     yield {"type": "needs_confirm", "payload": {
                         "extract_token": token,
                         "warnings": warnings,
+                        "timing": timing.summary(),   # 이 경로도 추출은 이미 다 했다
                         "usage": usage.summary(),
                         "credits": credits_result(
                             credits_before, credits_snapshot(provider, api_key)),
@@ -805,7 +829,8 @@ def run_generation_events(p: dict):
                     return
 
             yield {"type": "stage", "key": "extract", "status": "done",
-                   "source_info": source_info}
+                   "source_info": source_info,
+                   "timing": timing.summary()}
 
             usage.set_stage("concepts")
             yield {"type": "stage", "key": "concepts", "status": "active"}
@@ -942,6 +967,9 @@ def run_generation_events(p: dict):
             "usage":            gen_usage,           # 이번 생성에 쓴 토큰
             # 크레딧 과금 제공사만 채워진다. 있으면 화면이 토큰 대신 이걸 보여준다.
             "credits":          gen_credits,
+            # 추출 단계 구간별 소요 시간. 세션 재사용(경로 A)이면 phases가 빈 목록이다.
+            # 화면에는 안 쓰고 브라우저 개발자도구·서버 로그로 확인하는 용도다.
+            "timing":           timing.summary(),
         }}
 
     # 스트리밍은 HTTP 상태를 이미 보낸 뒤라 오류도 이벤트로 흘려보내야 한다

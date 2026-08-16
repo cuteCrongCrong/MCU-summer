@@ -20,7 +20,10 @@ ThreadPoolExecutor에서 병렬로 돌기 때문에, 누적은 Lock으로 보호
 (0으로 합쳐버리면 실제로 쓴 토큰을 안 쓴 것처럼 보여주게 된다)
 """
 
+import statistics
 import threading
+import time
+from contextlib import contextmanager
 
 # 화면에 보여줄 단계 이름 — 키는 SSE stage 키와 같은 값을 쓴다.
 # 표시 순서도 이 순서를 따른다. 문제 생성과 주제 분석이 한 표를 공유하는데,
@@ -133,6 +136,210 @@ class UsageCollector:
             "by_stage":         by_stage,
             "by_model":         by_model,
         }
+
+
+# ──────────────────────────────────────────────
+# 구간 시간 계측 — "추출 단계 15분 중 렌더가 몇 초인가"
+#
+#   추출 단계는 성격이 다른 두 구간이 붙어 있는데(llm.read_pdf_pages의 렌더 →
+#   llm.describe_images_progressively의 LLM 호출) SSE stage 키가 'extract' 하나라
+#   로그로도 안 갈린다. 어느 쪽을 고쳐야 빨라지는지 알려면 따로 재야 한다.
+# ──────────────────────────────────────────────
+
+# 계측 구간 이름 → 로그·응답에 쓸 라벨. 표시 순서도 이 순서를 따른다.
+TIMING_LABELS = {
+    "text_layer":  "텍스트 레이어 추출",   # fitz get_text (LLM 없음, CPU)
+    "render":      "PDF 렌더",             # get_pixmap + PNG 인코딩 (CPU, 직렬)
+    "cache_probe": "캐시 키 계산",         # PNG 재읽기 + 해싱 (CPU·디스크, 직렬)
+    "image_call":  "이미지 LLM 호출",      # Vision 호출 (네트워크, 병렬)
+}
+
+# 개별 작업 시간을 몇 개까지 들고 중앙값을 낼지. 한쪽 상한이 300쪽이라
+# (config.IMAGE_CAP_LECTURE) 실사용에서는 안 닿지만, 상한을 크게 올린 배포에서
+# 표본이 무한정 쌓이지 않게 막아둔다. 넘긴 만큼은 개수만 세고 버린다.
+MAX_TIMING_SAMPLES = 4000
+
+
+class PhaseTimer:
+    """
+    한 번의 작업 안에서 어느 구간에 시간이 갔는지 모은다.
+
+    두 가지를 **따로** 재는 것이 요점이다:
+      wall — 구간 전체의 벽시계 시간          (span)
+      busy — 그 안 개별 작업 시간의 합        (measure / mark)
+
+    렌더는 한 장씩 직렬이라 wall ≈ busy 다. 이미지 LLM 호출은 IMAGE_WORKERS개가
+    병렬로 도니 busy > wall 이고, 그 비(busy/wall)가 곧 **실효 동시성**이다.
+    워커를 12로 잡았는데 이 값이 3이면 워커가 아니라 다른 데서 막히고 있다는 뜻이라,
+    워커를 더 올려도 소용없다는 것을 숫자 하나로 알 수 있다.
+
+    wall과 busy의 차이도 정보다 — 렌더 구간에서 그 차이는 렌더가 아닌 일
+    (텍스트 레이어 추출·후보 판정·파일 입출력)에 간 시간이다.
+
+    스레드 안전 — mark()는 이미지 워커들이 동시에 부른다.
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._wall = {}       # 구간 → 누적 벽시계 (span이 여러 번 불릴 수 있다)
+        self._ops = {}        # 구간 → [개별 소요시간]
+        self._dropped = {}    # 구간 → 표본 상한을 넘겨 버린 개수
+        self._counts = {}     # 이름 → 순수 카운터 (시간 없는 값: 캐시 적중 등)
+
+    @contextmanager
+    def span(self, name: str):
+        """구간 전체를 감싼다. 같은 이름으로 여러 번 감싸면 더해진다.
+
+        (강의자료·기출을 따로 읽으므로 렌더 구간은 실제로 두 번 열린다)
+        제너레이터를 감싼 채로 중지되면 GeneratorExit이 지나가는데, finally라
+        그때까지의 시간은 남는다.
+        """
+        t0 = time.perf_counter()
+        try:
+            yield
+        finally:
+            dt = time.perf_counter() - t0
+            with self._lock:
+                self._wall[name] = self._wall.get(name, 0.0) + dt
+
+    @contextmanager
+    def measure(self, name: str):
+        """개별 작업 하나를 감싼다. 예외가 나도 그때까지 쓴 시간은 기록한다
+        (실패한 LLM 호출도 시간은 실제로 썼다)."""
+        t0 = time.perf_counter()
+        try:
+            yield
+        finally:
+            self.mark(name, time.perf_counter() - t0)
+
+    def mark(self, name: str, seconds: float):
+        with self._lock:
+            samples = self._ops.setdefault(name, [])
+            if len(samples) < MAX_TIMING_SAMPLES:
+                samples.append(seconds)
+            else:
+                self._dropped[name] = self._dropped.get(name, 0) + 1
+
+    def count(self, name: str, n: int = 1):
+        """시간이 없는 값 — 캐시 적중처럼 '일어난 횟수'만 의미 있는 것."""
+        with self._lock:
+            self._counts[name] = self._counts.get(name, 0) + n
+
+    def summary(self) -> dict:
+        """로그·응답에 실을 형태로 집계. 잰 게 없으면 phases가 빈 목록."""
+        with self._lock:
+            wall = dict(self._wall)
+            ops = {k: list(v) for k, v in self._ops.items()}
+            dropped = dict(self._dropped)
+            counts = dict(self._counts)
+
+        keys = set(wall) | set(ops)
+        ordered = [k for k in TIMING_LABELS if k in keys]
+        ordered += sorted(k for k in keys if k not in TIMING_LABELS)
+
+        phases = []
+        for k in ordered:
+            s = ops.get(k, [])
+            w = wall.get(k)
+            busy = sum(s)
+            row = {
+                "key":     k,
+                "label":   TIMING_LABELS.get(k, k),
+                "wall":    round(w, 3) if w is not None else None,
+                "busy":    round(busy, 3),
+                # count는 실제 작업 수, sampled는 그중 시간을 들고 있는 수
+                "count":   len(s) + dropped.get(k, 0),
+                "sampled": len(s),
+            }
+            if s:
+                row["median_ms"] = round(statistics.median(s) * 1000, 1)
+                row["min_ms"]    = round(min(s) * 1000, 1)
+                row["max_ms"]    = round(max(s) * 1000, 1)
+            if w and w > 0:
+                row["concurrency"] = round(busy / w, 2)
+            phases.append(row)
+
+        return {
+            "phases":   phases,
+            "counts":   counts,
+            # 렌더와 LLM 호출을 겹쳤을 때 줄어드는 시간 = 둘 중 짧은 쪽.
+            # 지금은 렌더가 **전부** 끝난 뒤에 호출이 시작되므로 두 벽시계가 그대로
+            # 더해진다(features/question_gen.py의 추출 단계). 겹치면 max(둘)만 남는다.
+            "overlap_saving": _overlap_saving(wall),
+        }
+
+    def report_lines(self, prefix: str = "") -> list:
+        """서버 로그에 찍을 줄. systemd 배포에서는 journalctl로 보인다."""
+        s = self.summary()
+        head = f"[timing]{(' ' + prefix) if prefix else ''}"
+        lines = []
+        for p in s["phases"]:
+            bits = [f"wall={_fmt_s(p['wall'])}", f"busy={_fmt_s(p['busy'])}",
+                    f"n={p['count']}"]
+            if "median_ms" in p:
+                bits.append(f"median={p['median_ms']:.0f}ms")
+            if "concurrency" in p:
+                bits.append(f"conc={p['concurrency']:.2f}")
+            lines.append(f"{head} {p['label']:<16s} " + " ".join(bits))
+        for name, n in sorted(s["counts"].items()):
+            lines.append(f"{head} {name}={n}")
+        save = s["overlap_saving"]
+        if save:
+            lines.append(
+                f"{head} 렌더·호출을 겹치면 최대 {_fmt_s(save['seconds'])} 절감 "
+                f"({_fmt_s(save['now'])} → {_fmt_s(save['overlapped'])})"
+            )
+        return lines
+
+
+def _fmt_s(v) -> str:
+    if v is None:
+        return "-"
+    return f"{v:.1f}s" if v < 60 else f"{v/60:.1f}m"
+
+
+def _overlap_saving(wall: dict):
+    """렌더 구간과 이미지 호출 구간을 파이프라인으로 겹쳤을 때의 절감 추정.
+
+    두 구간이 지금은 순차라 `렌더 + 호출`이지만, 한 장 렌더할 때마다 바로 호출 큐에
+    넣으면 `max(렌더, 호출)`에 수렴한다. 그래서 절감 상한이 곧 **짧은 쪽 전체**다.
+    상한인 이유 — 첫 장 렌더는 어차피 앞에 와야 하고, 렌더가 CPU를 잡는 동안
+    호출 쪽 처리도 조금 느려지므로 실제 절감은 이보다 작다.
+    """
+    r = wall.get("render")
+    c = wall.get("image_call")
+    if not r or not c:
+        return None
+    return {
+        "seconds":    round(min(r, c), 3),
+        "now":        round(r + c, 3),
+        "overlapped": round(max(r, c), 3),
+    }
+
+
+class _NullTimer:
+    """계측기를 안 넘긴 호출부(테스트·주제 분석)에서 쓰는 무동작 타이머.
+
+    호출부마다 `if timing:` 을 두지 않으려고 둔다 — 계측 코드가 본 로직 사이에
+    끼면 읽기 나빠지는데, 이 계측은 어디까지나 곁다리다.
+    """
+
+    @contextmanager
+    def span(self, name: str):
+        yield
+
+    @contextmanager
+    def measure(self, name: str):
+        yield
+
+    def mark(self, name: str, seconds: float):
+        pass
+
+    def count(self, name: str, n: int = 1):
+        pass
+
+
+NO_TIMING = _NullTimer()
 
 
 # ──────────────────────────────────────────────

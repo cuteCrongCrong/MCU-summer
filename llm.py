@@ -23,6 +23,7 @@ from db import get_cached_image_desc, put_cached_image_desc
 from providers.base import (ProviderAuthError, ProviderError,
                             IMAGE_DESC_PROMPT, IMAGE_TEXT_PROMPT)
 from providers.factory import get_provider
+from providers.usage import NO_TIMING
 
 # ──────────────────────────────────────────────
 # 설정 상수
@@ -483,7 +484,7 @@ def discard_upload_spills(files):
 
 
 def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None,
-                   max_images: int = None):
+                   max_images: int = None, timing=None):
     """
     PDF에서 텍스트 레이어를 뽑고, 이미지 처리가 필요한 페이지를 고른다. (LLM 호출 없음)
 
@@ -491,8 +492,11 @@ def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None,
                 IMAGE_DESCRIBE(기출) / IMAGE_TRANSCRIBE(강의록) 중 하나를 넘긴다.
     max_images: 이 PDF에서 처리할 페이지 수 상한. 생략하면 모드의 max_pages.
                 호출부가 여러 PDF에 예산을 나눠 쓸 때(주제 분석) 그 몫을 넘긴다.
+    timing:     providers.usage.PhaseTimer. 넘기면 렌더 한 장씩의 시간을 남긴다.
+                생략하면 무동작(NO_TIMING).
     반환: (pages, img_jobs) — img_jobs는 pages 안 엔트리를 그대로 참조한다.
     """
+    timing = timing or NO_TIMING
     # 경로 / 업로드 객체(FileStorage) / bytes 를 모두 받는다.
     #   경로: 스트리밍 경로가 쓰는 방식이다(spill_upload). MuPDF가 디스크에서 필요한
     #         만큼만 읽어가므로 파일 전체가 메모리에 올라오지 않는다.
@@ -516,7 +520,8 @@ def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None,
     #
     # 오프셋은 폰트 속성이라 문서에 하나뿐이다. 쪽마다 따로 찾지 않고 깨진 쪽을 전부
     # 이어 붙여 한 번만 찾는다 — 글자가 적은 쪽도 문서 전체 표본에 얹혀 같이 살아난다.
-    texts = [doc[i].get_text() for i in range(doc.page_count)]
+    with timing.measure("text_layer"):
+        texts = [doc[i].get_text() for i in range(doc.page_count)]
     broken = [korean_text_looks_broken(t) for t in texts]
     if any(broken):
         offset = find_hangul_offset("\n".join(t for t, b in zip(texts, broken) if b))
@@ -557,7 +562,10 @@ def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None,
                     page_dpi = TRANSCRIBE_RENDER_DPI if broken[i] else dpi
                     # 렌더한 즉시 디스크로 내린다 (위 spill 절 참고). 메모리에 남는 것은
                     # 경로 문자열뿐이고, pixmap은 이 줄을 벗어나면 회수된다.
-                    entry["png_path"] = _spill_png(page.get_pixmap(dpi=page_dpi))
+                    # 계측은 PNG 인코딩·디스크 기록까지 포함한다 — 병렬화를 검토할 때
+                    # 옮겨야 하는 일 전체가 이 한 덩이라서 쪼개 재면 오히려 오해를 부른다.
+                    with timing.measure("render"):
+                        entry["png_path"] = _spill_png(page.get_pixmap(dpi=page_dpi))
                     img_jobs.append(entry)
                 except Exception:
                     pass
@@ -632,19 +640,23 @@ def _describe_one(prov, png_bytes: bytes, api_key: str, model: str, fallback: st
 
 
 def _describe_spilled(prov, entry, api_key: str, model: str, fallback: str,
-                      usage, prompt: str, max_output: int):
+                      usage, prompt: str, max_output: int, timing=NO_TIMING):
     """내려둔 PNG를 **워커 안에서** 읽어 _describe_one에 넘긴다.
 
     읽기를 제출 시점이 아니라 워커 안에서 하는 것이 요점이다 — 제출할 때 읽으면
     pending 전체가 한꺼번에 메모리에 떠서 디스크로 내린 의미가 사라진다.
     워커 수(IMAGE_WORKERS)가 곧 동시에 메모리에 뜨는 장수가 된다.
+
+    계측이 워커 **안**에 있어야 호출 하나하나의 시간이 남는다. 바깥(as_completed)에서
+    재면 앞 호출을 기다린 시간까지 얹혀서 뒤로 갈수록 부풀어 오른다.
     """
-    return _describe_one(prov, _read_spill(entry), api_key, model, fallback,
-                         usage, prompt, max_output)
+    with timing.measure("image_call"):
+        return _describe_one(prov, _read_spill(entry), api_key, model, fallback,
+                             usage, prompt, max_output)
 
 
 def describe_images_progressively(img_jobs, api_key: str, model: str, provider=None,
-                                  usage=None, image_mode: dict = None):
+                                  usage=None, image_mode: dict = None, timing=None):
     """
     이미지 페이지를 병렬로 텍스트화하되, 하나 끝날 때마다 완료 개수를 yield한다.
     (진행률 표시용 — 호출부가 제너레이터를 돌리면서 이벤트를 낼 수 있게)
@@ -652,9 +664,14 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
     image_mode를 생략하면 IMAGE_DESCRIBE(그림 설명). 한 장이 실패하면 프로바이더가
     선언한 폴백 모델로 한 번 더 시도하고, 그것마저 실패하면 폴백 문구를 채운다.
     캐시(image_desc_cache)를 먼저 뒤지며, 캐시에서 나온 항목도 완료 개수에 포함한다.
+
+    timing: providers.usage.PhaseTimer (선택). 캐시 적중은 LLM을 안 부르므로 시간이
+            아니라 **개수**로 따로 센다 — 적중이 많은 회차를 '호출이 빨랐다'로
+            읽으면 계측 전체가 뒤집힌다.
     """
     if not img_jobs:
         return
+    timing = timing or NO_TIMING
     prov = provider or _default_provider
     prov_name = getattr(prov, "name", "") or ""
     # 폴백 모델은 프로바이더가 선언한다 (providers/base.py 참고). 선언이 없으면 폴백 없음.
@@ -670,15 +687,22 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
     for e in img_jobs:
         # 키는 PNG 바이트 전체를 해싱하므로 한 장씩 읽어 계산하고 곧바로 놓는다.
         # 여기는 순차라 동시에 뜨는 것은 한 장이다.
-        e["cache_key"] = image_cache_key(prompt, _read_spill(e), max_output)
-        cached = get_cached_image_desc(e["cache_key"], prov_name, model)
-        if not cached and fallback:
-            # 지난 회차에 폴백이 만들어둔 결과도 받아준다. 이 조회가 없으면 본 모델이
-            # 죽어 있는 동안 매 회차 실패 호출이 한 번씩 더 난다.
-            cached = get_cached_image_desc(e["cache_key"], prov_name, fallback)
+        #
+        # 계측을 따로 두는 이유 — 이 패스는 LLM을 안 부르는데도 호출 구간 **안**에서
+        # 돈다. 한 장마다 PNG 전체를 디스크에서 읽어 해싱하므로 장수와 파일 크기에
+        # 비례해 커진다(상한을 다 채우면 수백 MB를 읽는다). 묶어서 재면 이 시간이
+        # 네트워크 지연으로 둔갑해 '모델이 느리다'는 엉뚱한 결론이 나온다.
+        with timing.measure("cache_probe"):
+            e["cache_key"] = image_cache_key(prompt, _read_spill(e), max_output)
+            cached = get_cached_image_desc(e["cache_key"], prov_name, model)
+            if not cached and fallback:
+                # 지난 회차에 폴백이 만들어둔 결과도 받아준다. 이 조회가 없으면 본 모델이
+                # 죽어 있는 동안 매 회차 실패 호출이 한 번씩 더 난다.
+                cached = get_cached_image_desc(e["cache_key"], prov_name, fallback)
         if cached:
             e["desc"] = cached
             _drop_spill(e)          # 캐시에서 나왔으니 이 그림은 더 볼 일이 없다
+            timing.count("image_cache_hit")
             done += 1
             yield done
         else:
@@ -691,7 +715,7 @@ def describe_images_progressively(img_jobs, api_key: str, model: str, provider=N
     ex = ThreadPoolExecutor(max_workers=config.IMAGE_WORKERS)
     try:
         futs = {ex.submit(_describe_spilled, prov, e, api_key, model, fallback,
-                          usage, prompt, max_output): e
+                          usage, prompt, max_output, timing): e
                 for e in pending}
         for fut in as_completed(futs):
             entry = futs[fut]
@@ -1821,7 +1845,8 @@ def remaining_char_budget(docs: list) -> int:
 
 
 def read_labeled_pdfs(files, label_prefix: str, api_key: str = None,
-                      image_mode: dict = None, img_budget: int = None) -> list:
+                      image_mode: dict = None, img_budget: int = None,
+                      timing=None) -> list:
     """
     PDF 를 페이지 단위로 읽어만 둔다 — 여기까지는 LLM 호출이 없다.
 
@@ -1835,6 +1860,8 @@ def read_labeled_pdfs(files, label_prefix: str, api_key: str = None,
            (spill_upload 주석).
     img_budget: 이미지 처리 상한 — **파일당이 아니라 이쪽 전체 기준**. 생략하면 모드의
            max_pages. '남은 예산 ÷ 남은 파일 수'로 배정한다(next_image_quota).
+    timing: providers.usage.PhaseTimer (선택). 파일 여러 개를 읽어도 같은 계측기에
+           누적되므로 한쪽(강의자료/기출) 전체의 렌더 시간이 한 값으로 모인다.
     반환: [{label, name, pages, img_jobs, quota}] (img_jobs 는 pages 안 엔트리를 참조한다)
           quota는 assemble_pdf_text가 '몇 개까지만 처리됨'을 적을 때 쓴다 —
           모드의 max_pages가 아니라 이 파일에 실제로 적용된 상한이어야 한다.
@@ -1847,7 +1874,8 @@ def read_labeled_pdfs(files, label_prefix: str, api_key: str = None,
         quota = next_image_quota(remaining_imgs, len(files) - i + 1)
         try:
             # quota가 0이어도 image_mode는 그대로 넘긴다 (next_image_quota 주석 참고)
-            pages, img_jobs = read_pdf_pages(pdf, api_key, image_mode, max_images=quota)
+            pages, img_jobs = read_pdf_pages(pdf, api_key, image_mode,
+                                             max_images=quota, timing=timing)
         except Exception as e:
             # 앞 파일들이 이미 내려둔 PNG를 두고 나가지 않는다 (여러 개 중 하나만
             # 손상된 경우 — 청소 주기를 기다릴 것 없이 여기서 바로 치운다).

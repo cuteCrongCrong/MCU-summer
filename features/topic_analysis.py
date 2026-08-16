@@ -26,7 +26,8 @@ from providers.base import (
 )
 from providers.factory import UnknownProviderError, get_provider
 from providers.usage import (
-    UsageCollector, credits_for_history, credits_result, credits_snapshot,
+    PhaseTimer, UsageCollector, credits_for_history, credits_result,
+    credits_snapshot,
 )
 from llm import (
     IMAGE_DESCRIBE, IMAGE_TRANSCRIBE, MAX_FILES_PER_SIDE,
@@ -439,6 +440,12 @@ def run_topic_analysis_events(p: dict):
     # 이번 분석에 쓴 토큰을 단계별로 모은다. 오류로 끝나도 그 시점까지의 사용량은
     # 알려줘야 하므로 try 바깥에 둔다 (except 절에서도 참조).
     usage = UsageCollector()
+
+    # 추출 단계의 렌더/이미지 호출을 갈라 잰다 (문제 생성 탭과 같은 계측 —
+    # providers/usage.py). 이 탭은 이미지 상한이 같은 값을 쓰므로 두 탭의 숫자를
+    # 그대로 견줄 수 있다. 뒤의 주제 대조는 LLM 호출 한 번이라 쪼갤 것이 없다.
+    timing = PhaseTimer()
+
     # 크레딧 과금 제공사(전북대 게이트웨이)의 분석 전 잔액. LLM 호출 이전에 찍어야
     # 이번 분석분만 차이로 잡힌다.
     credits_before = None
@@ -503,10 +510,13 @@ def run_topic_analysis_events(p: dict):
 
             # 여기까지는 LLM 호출이 없다 (페이지 선정만) — 진행률 총계를 먼저 알아야 하므로
             # 강의록·기출을 모두 읽어 그림 수를 센 뒤에 Vision 호출을 시작한다.
-            lec_parts  = read_labeled_pdfs(p["lecture_files"], "강의록",
-                                           api_key, IMAGE_TRANSCRIBE)
-            exam_parts = read_labeled_pdfs(p["exam_files"], "기출",
-                                           api_key, IMAGE_DESCRIBE)
+            with timing.span("render"):
+                lec_parts  = read_labeled_pdfs(p["lecture_files"], "강의록",
+                                               api_key, IMAGE_TRANSCRIBE,
+                                               timing=timing)
+                exam_parts = read_labeled_pdfs(p["exam_files"], "기출",
+                                               api_key, IMAGE_DESCRIBE,
+                                               timing=timing)
             rendered_parts += lec_parts + exam_parts
 
             total_imgs = sum(len(x["img_jobs"]) for x in lec_parts + exam_parts)
@@ -516,15 +526,22 @@ def run_topic_analysis_events(p: dict):
             #   주제 이름은 '강의록에 있는 단어'만 써야 하는데, 설명을 시키면 LLM이 지어낸
             #   문장까지 '강의록에 있는 것'이 되어 용어 규칙이 무력해진다.
             # 기출: 그림 문제(부위 이름 쓰기 등)를 놓치지 않도록 그림 해설 포함.
-            for parts, mode in ((lec_parts, IMAGE_TRANSCRIBE), (exam_parts, IMAGE_DESCRIBE)):
-                for x in parts:
-                    # 이미지 호출만 analysis_model로 간다 (주제 대조는 아래에서 model이 한다)
-                    for d in describe_images_progressively(x["img_jobs"], api_key,
-                                                           analysis_model,
-                                                           provider, usage, mode):
-                        yield {"type": "progress", "key": "extract",
-                               "done": done_imgs + d, "total": total_imgs}
-                    done_imgs += len(x["img_jobs"])
+            with timing.span("image_call"):
+                for parts, mode in ((lec_parts, IMAGE_TRANSCRIBE), (exam_parts, IMAGE_DESCRIBE)):
+                    for x in parts:
+                        # 이미지 호출만 analysis_model로 간다 (주제 대조는 아래에서 model이 한다)
+                        for d in describe_images_progressively(
+                                x["img_jobs"], api_key, analysis_model,
+                                provider, usage, mode, timing=timing):
+                            yield {"type": "progress", "key": "extract",
+                                   "done": done_imgs + d, "total": total_imgs}
+                        done_imgs += len(x["img_jobs"])
+
+            # 추출(렌더 + 이미지 호출)이 끝난 자리에서 바로 찍는다. 아래로는 빠져나가는
+            # 길이 셋이나 된다 — 텍스트 추출 실패 2건과 분량 초과 확인. 뒤에 두면 그
+            # 경로를 탄 회차의 계측만 사라지는데, 분량이 큰 회차일수록 그쪽을 탄다.
+            for line in timing.report_lines(f"topic extract model={analysis_model}"):
+                print(line, flush=True)
 
             lecture_docs = finish_labeled_docs(lec_parts, image_mode=IMAGE_TRANSCRIBE)
             # 기출은 강의록이 쓰고 남긴 몫까지 받는다 (근거는 llm.TOPIC_TOTAL_CHAR_BUDGET).
@@ -566,11 +583,14 @@ def run_topic_analysis_events(p: dict):
                 yield {"type": "needs_confirm", "payload": {
                     "extract_token": token,
                     "warnings": warnings,
+                    "timing": timing.summary(),   # 이 경로도 추출은 이미 다 했다
                     **spend(),        # 여기까지(추출) 쓴 양도 알려준다
                 }}
                 return
 
-        yield {"type": "stage", "key": "extract", "status": "done"}
+        # 추출을 재사용한 경로(cached)에서는 잰 것이 없어 phases가 빈 목록이다
+        yield {"type": "stage", "key": "extract", "status": "done",
+               "timing": timing.summary()}
 
         # 주제 대응표는 LLM 호출 한 번이라 안을 쪼갤 수 없다 — 0 → 1 로만 움직인다
         usage.set_stage("topics")
