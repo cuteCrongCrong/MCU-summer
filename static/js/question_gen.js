@@ -3,37 +3,9 @@
 //   common.js 이후 로드. escHtml/renderQuestions/TYPE_BADGE 등은 common.js 것을 재사용.
 // ══════════════════════════════════════════════
 
-// ── 파일 드래그앤드롭 UX (여러 개 지원) ──
-function setupDrop(dropId, inputId, nameId) {
-  const drop = document.getElementById(dropId);
-  const input = document.getElementById(inputId);
-  const nameEl = document.getElementById(nameId);
-
-  const show = () => {
-    const files = Array.from(input.files || []);
-    if (!files.length) { nameEl.textContent = ''; return; }
-    nameEl.textContent = `✅ ${files.length}개${totalSizeLabel(files)} — `
-                       + files.map(f => f.name).join(', ');
-    // 상한을 넘으면 빨갛게 — 생성 버튼을 누르기 전에 알아채도록.
-    // 용량은 여기서 색을 바꾸지 않는다. 상한이 양쪽 합계 기준이라 한쪽만 보고는 못 정한다.
-    nameEl.style.color = files.length > uploadMaxFiles ? '#dc2626' : '';
-  };
-
-  input.addEventListener('change', show);
-  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag-over'); });
-  drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
-  drop.addEventListener('drop', e => {
-    e.preventDefault(); drop.classList.remove('drag-over');
-    const pdfs = Array.from(e.dataTransfer.files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
-    if (!pdfs.length) return;
-    const dt = new DataTransfer();
-    pdfs.forEach(f => dt.items.add(f));
-    input.files = dt.files;
-    show();
-  });
-}
-setupDrop('drop-lecture', 'lecture-file', 'lecture-name');
-setupDrop('drop-exam',    'exam-file',    'exam-name');
+// ── 파일 선택 ── (드래그앤드롭·목록·개별 삭제는 common.js 의 setupFileDrop)
+setupFileDrop('drop-lecture', 'lecture-file', 'lecture-name');
+setupFileDrop('drop-exam',    'exam-file',    'exam-name');
 
 // ── 기출 반영 강도 슬라이더 ──
 function updateWeight() {
@@ -227,6 +199,9 @@ const STEP_ICONS = { extract: '📄', concepts: '🧠', format: '🔍', generate
 const genProgress = createProgress({
   barId: 'overall-bar', pctId: 'overall-pct', stepPrefix: 'step-',
   weights: { extract: 15, concepts: 20, format: 20, generate: 45 },
+  // 'PDF 읽는 중' 칸은 세는 단위가 도중에 바뀐다(업로드 바이트 → 그림 장수).
+  // 숫자를 그대로 두면 되감긴 것처럼 보여서 퍼센트로 통일한다.
+  percentNotes: ['extract'],
 });
 
 function resetSteps(useSession) {
@@ -335,18 +310,27 @@ async function renameCurrentResult() {
 async function streamGenerate(form, signal) {
   if (!canReadStream()) return fallbackGenerate(form, signal);
 
-  const resp = await fetch('/generate/stream', { method: 'POST', body: form, signal });
+  // fetch 가 아니라 XHR 인 이유는 업로드 진행률 하나다 (common.js 의 postSSE).
+  const res = await postSSE('/generate/stream', form, {
+    signal,
+    onUploadProgress: (loaded, total) => {
+      // 업로드가 끝나기 전에는 서버가 아직 아무것도 안 했다. 그래도 'PDF 읽는 중'
+      // 칸을 미리 켜서 그 자리에 퍼센트를 띄운다 — 500MB 를 올리는 몇 분 동안
+      // 화면이 0% 로 굳어 있으면 사용자는 고장으로 보고 새로고침한다.
+      setStep('step-extract', 'active');
+      genProgress.setStageNote('extract', `업로드 ${Math.round(loaded / total * 100)}%`);
+    },
+  });
 
   // 스트림이 시작되기 전 오류(키 누락 등)는 평범한 JSON으로 온다
-  if (!resp.ok) {
-    showError(await describeHttpError(resp, '/generate/stream'));
+  if (!res.ok) {
+    showError(await describeHttpError(res.response, '/generate/stream'));
     return;
   }
 
   let finished = false;     // done/error 없이 스트림이 끊겼는지 판별
 
-  // 프레임 끊기는 common.js 의 sseEvents 가 한다 (기출 주제 분석 탭과 공용)
-  for await (const ev of sseEvents(resp)) {
+  for await (const ev of res.events) {
     if (ev.type === 'stage') {
       setStep('step-' + ev.key, ev.status);
       if (ev.status === 'active') {

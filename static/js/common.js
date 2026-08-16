@@ -57,6 +57,112 @@ function totalSizeLabel(files) {
   return total ? ` (${(total / 1024 / 1024).toFixed(1)}MB)` : '';
 }
 
+// ══════════════════════════════════════════════
+// 파일 선택 (드래그앤드롭 + 목록 + 개별 삭제) — 두 탭 공용
+//   문제 생성·주제 분석이 같은 모양의 업로드 칸을 쓴다. 예전에는 두 파일에 거의 같은
+//   함수가 복사돼 있었다(setupDrop / topicSetupDrop).
+// ══════════════════════════════════════════════
+
+// 고른 파일은 input.files 에 그대로 써 넣는다. 제출부가 여전히
+// document.getElementById('lecture-file').files 를 읽기 때문이다 — 별도 배열을
+// 진짜 소유자로 삼으면 그 둘이 어긋나는 순간을 아무도 눈치채지 못한다.
+function writeFiles(input, files) {
+  const dt = new DataTransfer();
+  files.forEach(f => dt.items.add(f));
+  input.files = dt.files;
+}
+
+// 같은 파일인가 — 이름과 크기가 모두 같으면 같은 것으로 본다.
+// 드롭을 '추가'로 바꾸면서 필요해졌다. 같은 파일을 두 번 끌어다 놓는 것은 실수이지
+// 의도가 아니고, 그대로 두면 업로드 용량만 두 배가 된다.
+function sameFile(a, b) {
+  return a.name === b.name && a.size === b.size;
+}
+
+/**
+ * dropId  — 점선 테두리 영역 (.file-drop)
+ * inputId — 그 안의 <input type="file" multiple>
+ * listId  — 고른 파일 목록을 그릴 곳. **드롭 영역 밖**이어야 한다.
+ *           안에 두면 파일 입력(inset:0 · opacity:0)이 목록을 덮어서, 삭제 버튼을
+ *           누르는 순간 파일 선택창이 열린다.
+ */
+function setupFileDrop(dropId, inputId, listId) {
+  const drop  = document.getElementById(dropId);
+  const input = document.getElementById(inputId);
+  const listEl = document.getElementById(listId);
+  if (!drop || !input || !listEl) return;
+
+  function render() {
+    const files = Array.from(input.files || []);
+    if (!files.length) { listEl.innerHTML = ''; return; }
+    const over = files.length > uploadMaxFiles;
+    const rows = files.map((f, i) => `
+      <li class="file-row">
+        <span class="file-row-name" title="${escHtml(f.name)}">${escHtml(f.name)}</span>
+        <span class="file-row-size">${(f.size / 1024 / 1024).toFixed(1)}MB</span>
+        <button type="button" class="file-row-del" aria-label="${escHtml(f.name)} 빼기"
+                onclick="removeChosenFile('${inputId}', ${i})">×</button>
+      </li>`).join('');
+    listEl.innerHTML =
+      `<div class="file-list-head${over ? ' over' : ''}">`
+      + `✅ ${files.length}개${totalSizeLabel(files)}`
+      + (over ? ` — 최대 ${uploadMaxFiles}개까지입니다` : '')
+      + `</div><ul class="file-list">${rows}</ul>`;
+  }
+  FILE_DROP_RENDERERS[inputId] = render;
+
+  // 파일 선택창으로 고른 것도 **더한다**. 드롭과 동작이 달라지면 "왜 어떤 건 지워지고
+  // 어떤 건 남지?"가 되고, 잘못 고른 것은 이제 × 로 뺄 수 있어서 덮어쓸 이유가 없다.
+  input.addEventListener('change', () => {
+    const picked = Array.from(input.files || []);
+    addChosenFiles(inputId, picked, { fromPicker: true });
+  });
+
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag-over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
+  drop.addEventListener('drop', e => {
+    e.preventDefault(); drop.classList.remove('drag-over');
+    const pdfs = Array.from(e.dataTransfer.files || [])
+      .filter(f => f.name.toLowerCase().endsWith('.pdf'));
+    if (pdfs.length) addChosenFiles(inputId, pdfs);
+  });
+
+  render();
+}
+
+// inputId → 그 칸을 다시 그리는 함수. 삭제·추가가 전역 핸들러(onclick)에서 오므로
+// 클로저 밖에서도 다시 그릴 수 있어야 한다.
+const FILE_DROP_RENDERERS = {};
+// 직전 목록. change 이벤트는 브라우저가 input.files 를 이미 갈아치운 뒤에 오기 때문에,
+// '고르기 전에 무엇이 있었는지'를 여기서 따로 들고 있어야 더할 수 있다.
+const FILE_DROP_PREV = {};
+
+function addChosenFiles(inputId, incoming, opts) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  // 선택창에서 온 경우 input.files 는 '이번에 고른 것'으로 이미 바뀌어 있다.
+  const base = (opts && opts.fromPicker)
+    ? (FILE_DROP_PREV[inputId] || [])
+    : Array.from(input.files || []);
+  const merged = base.slice();
+  incoming.forEach(f => { if (!merged.some(g => sameFile(g, f))) merged.push(f); });
+  writeFiles(input, merged);
+  FILE_DROP_PREV[inputId] = merged;
+  const render = FILE_DROP_RENDERERS[inputId];
+  if (render) render();
+}
+
+function removeChosenFile(inputId, index) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const files = Array.from(input.files || []);
+  files.splice(index, 1);
+  writeFiles(input, files);
+  FILE_DROP_PREV[inputId] = files;
+  const render = FILE_DROP_RENDERERS[inputId];
+  if (render) render();
+}
+
 // ── 공용 유틸 ──
 function escHtml(str) {
   return String(str)
@@ -575,10 +681,14 @@ function goPage(key, n) {
 function createProgress(opts) {
   const weights    = opts.weights;
   const stepPrefix = opts.stepPrefix || 'step-';
+  // 이 단계들은 '3 / 14' 대신 퍼센트로 표시한다. 'PDF 읽는 중' 칸이 그렇다 —
+  // 그 안에서 세는 단위가 도중에 바뀌기 때문이다(업로드는 바이트, 그다음은 그림 장수).
+  // 숫자를 그대로 보여주면 14/14 뒤에 0/160 이 나와 되감긴 것처럼 보인다.
+  const percentKeys = opts.percentNotes || [];
   let progress = {};      // key → 0~1
   let active   = [];      // 이번 실행에서 실제로 도는 단계
 
-  // 단계 줄 오른쪽의 '3 / 14' · '완료' 표시
+  // 단계 줄 오른쪽의 '3 / 14' · '43%' · '완료' 표시
   function setNote(key, text) {
     const el = document.getElementById(stepPrefix + key);
     if (!el) return;
@@ -616,9 +726,20 @@ function createProgress(opts) {
 
     setStageProgress(key, done, total) {
       if (!(key in weights)) return;
-      progress[key] = total > 0 ? Math.min(1, done / total) : 0;
-      setNote(key, total > 0 ? `${done} / ${total}` : '진행 중…');
+      const ratio = total > 0 ? Math.min(1, done / total) : 0;
+      progress[key] = ratio;
+      setNote(key, total <= 0 ? '진행 중…'
+                 : percentKeys.includes(key) ? `${Math.round(ratio * 100)}%`
+                 : `${done} / ${total}`);
       render();
+    },
+
+    // 진행률과 무관한 문구를 그 칸에 띄운다 (업로드 퍼센트 등).
+    // 막대는 건드리지 않는다 — 업로드는 서버가 아직 아무 일도 안 한 구간이라
+    // 전체 진행률에 넣으면 실제보다 앞서 간 것처럼 보인다.
+    setStageNote(key, text) {
+      if (!(key in weights)) return;
+      setNote(key, text);
     },
 
     completeStage(key) {
@@ -639,26 +760,107 @@ function canReadStream() {
   return typeof ReadableStream !== 'undefined' && 'body' in Response.prototype;
 }
 
-// SSE 본문을 이벤트 객체 하나씩으로 바꿔 주는 async 이터레이터.
-//   for await (const ev of sseEvents(resp)) { ... }
-// 도중에 빠져나가야 하면(분량 초과 확인 등) 그냥 break/return 하면 된다.
-// 이벤트 해석은 탭마다 다르므로 여기서는 프레임을 끊어 주기만 한다.
-async function* sseEvents(resp) {
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    // SSE는 빈 줄로 이벤트를 구분한다
-    let sep;
-    while ((sep = buffer.indexOf('\n\n')) !== -1) {
-      const frame = buffer.slice(0, sep).trim();
-      buffer = buffer.slice(sep + 2);
-      if (frame.startsWith('data: ')) yield JSON.parse(frame.slice(6));
+// ══════════════════════════════════════════════
+// 업로드 진행률이 붙은 SSE POST — fetch 대신 XMLHttpRequest 를 쓰는 유일한 이유
+//   fetch 는 **업로드** 진행률을 알려주지 않는다. 상한이 500MB 라 회선에 따라
+//   업로드에만 몇 분이 걸리는데, 그동안 화면이 0% 로 굳어 있으면 사용자는 고장으로
+//   보고 새로고침한다 — 그러면 처음부터 다시다.
+//   (서버 쪽 침묵은 heartbeat 로 이미 없앴다. 이건 요청이 서버에 닿기 '전' 구간이다)
+//
+// fetch 와 같은 모양으로 쓰도록 맞췄다:
+//   const res = await postSSE(url, form, { signal, onUploadProgress });
+//   if (!res.ok) showError(await describeHttpError(res.response, url));
+//   else for await (const ev of res.events) { ... }
+// ══════════════════════════════════════════════
+function postSSE(url, form, opts) {
+  opts = opts || {};
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+
+    if (opts.onUploadProgress) {
+      xhr.upload.addEventListener('progress', e => {
+        // lengthComputable 이 false 면 총량을 모른다 — 그때는 아무것도 그리지 않는다.
+        // 엉뚱한 퍼센트를 보여주느니 직전 표시를 두는 편이 낫다.
+        if (e.lengthComputable) opts.onUploadProgress(e.loaded, e.total);
+      });
     }
-  }
+    if (opts.signal) {
+      if (opts.signal.aborted) xhr.abort();
+      else opts.signal.addEventListener('abort', () => xhr.abort());
+    }
+
+    // ── 응답을 이벤트로 쪼개는 부분 ──
+    // XHR 은 스트림을 주지 않고 responseText 를 계속 이어 붙여 준다. 그래서 '어디까지
+    // 파싱했는지'를 들고 매번 그 뒤만 새로 읽는다. 매번 전체를 다시 훑으면 응답이
+    // 길어질수록 느려진다(문제 100개면 수백 KB다).
+    let parsedUpTo = 0, buffer = '';
+    const pending = [];        // 아직 소비되지 않은 이벤트
+    let notify = null;         // 소비자가 기다리는 중이면 그 resolve
+    let ended = false, failure = null;
+    let headersSeen = false, isOk = false;
+
+    function wake() { if (notify) { const n = notify; notify = null; n(); } }
+
+    function drain() {
+      const text = xhr.responseText;
+      if (text.length === parsedUpTo) return;
+      buffer += text.slice(parsedUpTo);
+      parsedUpTo = text.length;
+      let sep;
+      while ((sep = buffer.indexOf('\n\n')) !== -1) {   // SSE 는 빈 줄로 이벤트를 나눈다
+        const frame = buffer.slice(0, sep).trim();
+        buffer = buffer.slice(sep + 2);
+        if (frame.startsWith('data: ')) {
+          try { pending.push(JSON.parse(frame.slice(6))); }
+          catch (e) { /* 깨진 프레임 하나 때문에 회차 전체를 죽이지 않는다 */ }
+        }
+      }
+      wake();
+    }
+
+    function finish(err) {
+      if (ended) return;
+      ended = true; failure = err || null;
+      wake();
+    }
+
+    async function* events() {
+      while (true) {
+        while (pending.length) yield pending.shift();
+        if (ended) { if (failure) throw failure; return; }
+        await new Promise(r => { notify = r; });
+      }
+    }
+
+    xhr.onreadystatechange = () => {
+      // HEADERS_RECEIVED — fetch 가 resolve 되는 시점과 같은 자리다.
+      if (xhr.readyState === 2 && !headersSeen) {
+        headersSeen = true;
+        isOk = xhr.status >= 200 && xhr.status < 300;
+        // 오류면 본문을 끝까지 받아야 안내 문구를 만들 수 있으므로 onload 에서 resolve 한다
+        if (isOk) resolve({ ok: true, events: events() });
+      }
+    };
+    xhr.onprogress = () => { if (isOk) drain(); };
+    xhr.onload = () => {
+      if (isOk) { drain(); finish(null); return; }
+      // describeHttpError 가 Response 를 받으므로 그 모양으로 싸서 넘긴다
+      resolve({ ok: false, response: new Response(xhr.responseText,
+                { status: xhr.status, statusText: xhr.statusText }) });
+    };
+    xhr.onerror = () => {
+      const err = new Error('서버와의 연결이 끊겼습니다.');
+      if (headersSeen) finish(err); else reject(err);
+    };
+    xhr.onabort = () => {
+      // 호출부가 취소를 fetch 와 같은 방식(AbortError)으로 알아채게 한다
+      const err = new DOMException('Aborted', 'AbortError');
+      if (headersSeen) finish(err); else reject(err);
+    };
+
+    xhr.send(form);
+  });
 }
 
 // HTTP 오류를 '알 수 없는 오류'로 뭉개지 않고 원인을 알려준다.
