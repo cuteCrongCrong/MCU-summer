@@ -31,7 +31,8 @@ from providers.usage import (
 )
 from llm import (
     IMAGE_DESCRIBE, IMAGE_TRANSCRIBE, MAX_FILES_PER_SIDE,
-    describe_images_progressively, finish_labeled_docs, read_labeled_pdfs,
+    describe_images_progressively, finish_labeled_docs,
+    read_labeled_pdfs_progressively,
     remaining_char_budget, run_topic_analysis, topic_input_key,
     spill_upload, discard_upload_spills, discard_spills,
 )
@@ -416,6 +417,22 @@ def read_topic_params() -> dict:
     }
 
 
+def _forward_heartbeat(gen):
+    """
+    렌더 제너레이터를 heartbeat 이벤트로 바꿔 흘려보낸다.
+    (짝: features/question_gen.py의 같은 이름 함수 — 두 탭이 같은 이벤트를 쓴다)
+
+    화면은 이 이벤트를 그냥 버린다. 보내는 이유는 연결을 살아 있는 것으로 만들기
+    위해서다 (waitress channel_timeout은 무통신 시간을 잰다 — serve.py).
+    """
+    while True:
+        try:
+            done = next(gen)
+        except StopIteration as stop:
+            return stop.value
+        yield {"type": "heartbeat", "key": "render", "done": done}
+
+
 def run_topic_analysis_events(p: dict):
     """
     주제 분석을 실행하면서 진행 상황을 이벤트로 흘려보내는 제너레이터.
@@ -501,7 +518,9 @@ def run_topic_analysis_events(p: dict):
             # 1단계에서 만든 지문 — 이 경로는 파일이 없어 다시 만들 수 없다.
             # .get: 이 값을 안 넣던 시절에 만들어진 토큰이 살아 있을 수 있다(TTL 20분).
             input_key      = cached.get("input_key") or ""
-            # 추출은 이미 끝났으므로 진행률을 100%로 채워 보낸다 (바가 0%로 되돌아가지 않게)
+            # 추출은 이미 끝났으므로 진행률을 100%로 채워 보낸다 (바가 0%로 되돌아가지 않게).
+            # 렌더 단계는 이 경로에서 아예 돌지 않으니 완료로 찍어준다 — 안 그러면
+            # 그 칸이 '대기'로 남아 막대가 100%에 못 닿는다.
             imgs = cached["img_count"]
             yield {"type": "progress", "key": "extract", "done": imgs, "total": imgs}
         else:
@@ -510,13 +529,17 @@ def run_topic_analysis_events(p: dict):
 
             # 여기까지는 LLM 호출이 없다 (페이지 선정만) — 진행률 총계를 먼저 알아야 하므로
             # 강의록·기출을 모두 읽어 그림 수를 센 뒤에 Vision 호출을 시작한다.
+            # 렌더 중에도 heartbeat를 흘려보낸다 — 이 구간이 침묵하면 waitress가
+            # 무통신으로 보고 연결을 끊는다(serve.py channel_timeout). 화면에는 아무것도
+            # 그리지 않는다. 자세한 배경은 features/question_gen.py의 같은 자리 주석.
+            sides = []
             with timing.span("render"):
-                lec_parts  = read_labeled_pdfs(p["lecture_files"], "강의록",
-                                               api_key, IMAGE_TRANSCRIBE,
-                                               timing=timing)
-                exam_parts = read_labeled_pdfs(p["exam_files"], "기출",
-                                               api_key, IMAGE_DESCRIBE,
-                                               timing=timing)
+                for files, label, mode in ((p["lecture_files"], "강의록", IMAGE_TRANSCRIBE),
+                                           (p["exam_files"],    "기출",   IMAGE_DESCRIBE)):
+                    gen = read_labeled_pdfs_progressively(files, label, api_key,
+                                                          mode, timing=timing)
+                    sides.append((yield from _forward_heartbeat(gen)))
+            lec_parts, exam_parts = sides
             rendered_parts += lec_parts + exam_parts
 
             total_imgs = sum(len(x["img_jobs"]) for x in lec_parts + exam_parts)

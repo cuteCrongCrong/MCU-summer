@@ -165,12 +165,25 @@ IMAGE_DESCRIBE = {
     "detect_ink": False,
     "dpi": DESCRIBE_RENDER_DPI, "min_area_ratio": DESCRIBE_MIN_AREA_RATIO,
     "max_output": DESCRIBE_MAX_OUTPUT,
+    # 여기도 색을 뺀다 — 무료 티어의 월 1GB egress를 아끼는 쪽을 택했다.
+    # ⚠️ 전사(아래)와 달리 이쪽은 대가가 있다. '그림이 무엇인지'를 묻는 자리라
+    #    동맥·정맥 구분, 색으로만 갈리는 범례처럼 **색 자체가 답인 그림**이 있다.
+    #    그런 문항의 설명이 얇아질 수 있다.
+    #    되돌리려면 이 줄만 False 로 두면 된다 (다른 코드는 안 건드려도 된다).
+    "gray": True,
 }
 IMAGE_TRANSCRIBE = {
     "prompt": IMAGE_TEXT_PROMPT, "label": "그림 속 글자", "max_pages": LECTURE_IMAGE_MAX,
     "detect_ink": True,
     "dpi": TRANSCRIBE_RENDER_DPI, "min_area_ratio": TRANSCRIBE_MIN_AREA_RATIO,
     "max_output": TRANSCRIBE_MAX_OUTPUT,
+    # 색을 빼고 굽는다. 이쪽이 하는 일은 '그림 속 글자를 옮겨 적기'라(IMAGE_TEXT_PROMPT)
+    # 색이 답에 안 들어간다 — 손글씨가 빨간 펜이어도 읽는 것은 글자다.
+    #   실측(A4 벡터 슬라이드, base64 포함 전송량): 컬러 PNG 332KB → 흑백 PNG 57KB.
+    #   회차당 egress가 1/5 아래로 내려간다. 무료 티어의 월 1GB가 여기서 닳는다
+    #   (배포-GCP.md '무료 조건').
+    # 설명 쪽(IMAGE_DESCRIBE)과 달리 여기는 잃는 것이 없다 — 그쪽 주석 참고.
+    "gray": True,
 }
 
 # 문제 유형 4분류 (집계·few-shot·생성에서 공통 사용)
@@ -485,8 +498,25 @@ def discard_upload_spills(files):
 
 def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None,
                    max_images: int = None, timing=None):
+    """read_pdf_pages_progressively 를 끝까지 돌린 결과만 준다 (진행률이 필요 없는 호출부용)."""
+    gen = read_pdf_pages_progressively(pdf, api_key, image_mode, max_images, timing)
+    while True:
+        try:
+            next(gen)
+        except StopIteration as done:
+            return done.value
+
+
+def read_pdf_pages_progressively(pdf, api_key: str = None, image_mode: dict = None,
+                                 max_images: int = None, timing=None):
     """
     PDF에서 텍스트 레이어를 뽑고, 이미지 처리가 필요한 페이지를 고른다. (LLM 호출 없음)
+
+    **한 쪽을 렌더할 때마다 누적 렌더 장수를 yield한다.** 렌더는 이 회차에서 이벤트가
+    한 건도 안 나가던 유일한 구간이었다 — waitress의 channel_timeout(serve.py)은 총
+    소요가 아니라 **무통신** 시간을 재므로, 여기가 길어지면 그 침묵만으로 연결이 끊긴다.
+    사용자에게도 멈춘 것처럼 보이던 자리다.
+    (결과는 return 으로 준다 — 호출부: `r = yield from read_pdf_pages_progressively(...)`)
 
     image_mode: None이면 이미지 페이지를 건너뛴다 (텍스트 레이어만).
                 IMAGE_DESCRIBE(기출) / IMAGE_TRANSCRIBE(강의록) 중 하나를 넘긴다.
@@ -512,6 +542,7 @@ def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None,
     detect_ink = mode.get("detect_ink", False)
     min_area = mode.get("min_area_ratio", DESCRIBE_MIN_AREA_RATIO)
     dpi = mode.get("dpi", DESCRIBE_RENDER_DPI)
+    gray = mode.get("gray", False)      # 전사(강의록)만 켠다 — IMAGE_TRANSCRIBE 주석
 
     # ── 선행 패스: 텍스트 레이어가 깨졌는지 먼저 가린다 ──
     # ToUnicode CMap이 없는 한글 폰트를 만나면 글리프 번호가 글자인 양 새어 나온다
@@ -536,6 +567,7 @@ def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None,
 
     pages = []       # {idx, text, png(optional), desc}
     img_jobs = []    # 이미지 처리 대상 페이지 (엔트리 참조)
+    rendered = 0     # 이 PDF에서 실제로 구운 장수 (진행률로 내보낸다)
     for i, page in enumerate(doc):
         text = texts[i]
         # 끝내 못 되살린 쪽의 글자는 **버린다.** 남겨 두면 Vision이 옮겨 적은 글과
@@ -560,15 +592,26 @@ def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None,
                     # (DESCRIBE_RENDER_DPI=110)은 무엇을 그린 이미지인지만 알면 된다는
                     # 전제로 잡은 값이라, 문항 번호와 본문을 옮겨 적기에는 낮다.
                     page_dpi = TRANSCRIBE_RENDER_DPI if broken[i] else dpi
+                    # 깨진 쪽은 색도 뺀다 — 위와 같은 이유다. 글자를 읽으러 가는 것이라
+                    # 색이 답에 안 들어가고, 전송량만 다섯 배가 된다.
+                    page_gray = broken[i] or gray
                     # 렌더한 즉시 디스크로 내린다 (위 spill 절 참고). 메모리에 남는 것은
                     # 경로 문자열뿐이고, pixmap은 이 줄을 벗어나면 회수된다.
                     # 계측은 PNG 인코딩·디스크 기록까지 포함한다 — 병렬화를 검토할 때
                     # 옮겨야 하는 일 전체가 이 한 덩이라서 쪼개 재면 오히려 오해를 부른다.
                     with timing.measure("render"):
-                        entry["png_path"] = _spill_png(page.get_pixmap(dpi=page_dpi))
+                        pix = (page.get_pixmap(dpi=page_dpi, colorspace=fitz.csGRAY)
+                               if page_gray else page.get_pixmap(dpi=page_dpi))
+                        entry["png_path"] = _spill_png(pix)
                     img_jobs.append(entry)
                 except Exception:
                     pass
+                else:
+                    # yield를 try 밖에 두는 이유 — 안에 두면 호출부가 제너레이터로
+                    # 던진 예외까지 위 `except Exception: pass`가 삼켜서, 중지 요청이
+                    # 조용히 무시되고 렌더가 끝까지 돈다.
+                    rendered += 1
+                    yield rendered
             else:
                 # 상한을 넘겨 못 읽는 쪽. image_coverage()가 이걸 세어 경고로 만든다.
                 entry["img_skipped"] = True
@@ -1847,6 +1890,19 @@ def remaining_char_budget(docs: list) -> int:
 def read_labeled_pdfs(files, label_prefix: str, api_key: str = None,
                       image_mode: dict = None, img_budget: int = None,
                       timing=None) -> list:
+    """진행률이 필요 없는 호출부용 — 아래 제너레이터를 끝까지 돌린 결과만 준다."""
+    gen = read_labeled_pdfs_progressively(files, label_prefix, api_key,
+                                          image_mode, img_budget, timing)
+    while True:
+        try:
+            next(gen)
+        except StopIteration as done:
+            return done.value
+
+
+def read_labeled_pdfs_progressively(files, label_prefix: str, api_key: str = None,
+                                    image_mode: dict = None, img_budget: int = None,
+                                    timing=None):
     """
     PDF 를 페이지 단위로 읽어만 둔다 — 여기까지는 LLM 호출이 없다.
 
@@ -1869,13 +1925,25 @@ def read_labeled_pdfs(files, label_prefix: str, api_key: str = None,
     files = list(files or [])
     remaining_imgs = side_image_budget(image_mode, img_budget)
     parts = []
+    rendered_total = 0      # 이쪽(강의자료/기출) 전체에서 지금까지 구운 장수
     for i, (name, pdf) in enumerate(files, start=1):
         name = name or f"{label_prefix}{i}"
         quota = next_image_quota(remaining_imgs, len(files) - i + 1)
         try:
             # quota가 0이어도 image_mode는 그대로 넘긴다 (next_image_quota 주석 참고)
-            pages, img_jobs = read_pdf_pages(pdf, api_key, image_mode,
-                                             max_images=quota, timing=timing)
+            #
+            # 진행률은 **이쪽 전체 누적**으로 센다 — 파일마다 0부터 다시 세면
+            # 막대가 파일 수만큼 되감긴다. 앞 파일들이 구운 장수를 더해서 내보낸다.
+            sub = read_pdf_pages_progressively(pdf, api_key, image_mode,
+                                               max_images=quota, timing=timing)
+            while True:
+                try:
+                    n = next(sub)
+                except StopIteration as done:
+                    pages, img_jobs = done.value
+                    break
+                yield rendered_total + n
+            rendered_total += len(img_jobs)
         except Exception as e:
             # 앞 파일들이 이미 내려둔 PNG를 두고 나가지 않는다 (여러 개 중 하나만
             # 손상된 경우 — 청소 주기를 기다릴 것 없이 여기서 바로 치운다).
