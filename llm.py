@@ -485,8 +485,25 @@ def discard_upload_spills(files):
 
 def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None,
                    max_images: int = None, timing=None):
+    """read_pdf_pages_progressively 를 끝까지 돌린 결과만 준다 (진행률이 필요 없는 호출부용)."""
+    gen = read_pdf_pages_progressively(pdf, api_key, image_mode, max_images, timing)
+    while True:
+        try:
+            next(gen)
+        except StopIteration as done:
+            return done.value
+
+
+def read_pdf_pages_progressively(pdf, api_key: str = None, image_mode: dict = None,
+                                 max_images: int = None, timing=None):
     """
     PDF에서 텍스트 레이어를 뽑고, 이미지 처리가 필요한 페이지를 고른다. (LLM 호출 없음)
+
+    **한 쪽을 렌더할 때마다 누적 렌더 장수를 yield한다.** 렌더는 이 회차에서 이벤트가
+    한 건도 안 나가던 유일한 구간이었다 — waitress의 channel_timeout(serve.py)은 총
+    소요가 아니라 **무통신** 시간을 재므로, 여기가 길어지면 그 침묵만으로 연결이 끊긴다.
+    사용자에게도 멈춘 것처럼 보이던 자리다.
+    (결과는 return 으로 준다 — 호출부: `r = yield from read_pdf_pages_progressively(...)`)
 
     image_mode: None이면 이미지 페이지를 건너뛴다 (텍스트 레이어만).
                 IMAGE_DESCRIBE(기출) / IMAGE_TRANSCRIBE(강의록) 중 하나를 넘긴다.
@@ -536,6 +553,7 @@ def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None,
 
     pages = []       # {idx, text, png(optional), desc}
     img_jobs = []    # 이미지 처리 대상 페이지 (엔트리 참조)
+    rendered = 0     # 이 PDF에서 실제로 구운 장수 (진행률로 내보낸다)
     for i, page in enumerate(doc):
         text = texts[i]
         # 끝내 못 되살린 쪽의 글자는 **버린다.** 남겨 두면 Vision이 옮겨 적은 글과
@@ -569,6 +587,12 @@ def read_pdf_pages(pdf, api_key: str = None, image_mode: dict = None,
                     img_jobs.append(entry)
                 except Exception:
                     pass
+                else:
+                    # yield를 try 밖에 두는 이유 — 안에 두면 호출부가 제너레이터로
+                    # 던진 예외까지 위 `except Exception: pass`가 삼켜서, 중지 요청이
+                    # 조용히 무시되고 렌더가 끝까지 돈다.
+                    rendered += 1
+                    yield rendered
             else:
                 # 상한을 넘겨 못 읽는 쪽. image_coverage()가 이걸 세어 경고로 만든다.
                 entry["img_skipped"] = True
@@ -1847,6 +1871,19 @@ def remaining_char_budget(docs: list) -> int:
 def read_labeled_pdfs(files, label_prefix: str, api_key: str = None,
                       image_mode: dict = None, img_budget: int = None,
                       timing=None) -> list:
+    """진행률이 필요 없는 호출부용 — 아래 제너레이터를 끝까지 돌린 결과만 준다."""
+    gen = read_labeled_pdfs_progressively(files, label_prefix, api_key,
+                                          image_mode, img_budget, timing)
+    while True:
+        try:
+            next(gen)
+        except StopIteration as done:
+            return done.value
+
+
+def read_labeled_pdfs_progressively(files, label_prefix: str, api_key: str = None,
+                                    image_mode: dict = None, img_budget: int = None,
+                                    timing=None):
     """
     PDF 를 페이지 단위로 읽어만 둔다 — 여기까지는 LLM 호출이 없다.
 
@@ -1869,13 +1906,25 @@ def read_labeled_pdfs(files, label_prefix: str, api_key: str = None,
     files = list(files or [])
     remaining_imgs = side_image_budget(image_mode, img_budget)
     parts = []
+    rendered_total = 0      # 이쪽(강의자료/기출) 전체에서 지금까지 구운 장수
     for i, (name, pdf) in enumerate(files, start=1):
         name = name or f"{label_prefix}{i}"
         quota = next_image_quota(remaining_imgs, len(files) - i + 1)
         try:
             # quota가 0이어도 image_mode는 그대로 넘긴다 (next_image_quota 주석 참고)
-            pages, img_jobs = read_pdf_pages(pdf, api_key, image_mode,
-                                             max_images=quota, timing=timing)
+            #
+            # 진행률은 **이쪽 전체 누적**으로 센다 — 파일마다 0부터 다시 세면
+            # 막대가 파일 수만큼 되감긴다. 앞 파일들이 구운 장수를 더해서 내보낸다.
+            sub = read_pdf_pages_progressively(pdf, api_key, image_mode,
+                                               max_images=quota, timing=timing)
+            while True:
+                try:
+                    n = next(sub)
+                except StopIteration as done:
+                    pages, img_jobs = done.value
+                    break
+                yield rendered_total + n
+            rendered_total += len(img_jobs)
         except Exception as e:
             # 앞 파일들이 이미 내려둔 PNG를 두고 나가지 않는다 (여러 개 중 하나만
             # 손상된 경우 — 청소 주기를 기다릴 것 없이 여기서 바로 치운다).

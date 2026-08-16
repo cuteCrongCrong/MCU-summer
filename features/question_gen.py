@@ -33,7 +33,7 @@ from llm import (
     QUESTION_TYPES, StreamingQuestionParser, IMAGE_DESCRIBE, IMAGE_TRANSCRIBE,
     MAX_FILES_PER_SIDE, GEN_SIDE_CHAR_BUDGET, GEN_DOC_MIN_CHARS,
     remaining_gen_budget,
-    read_labeled_pdfs, describe_images_progressively, assemble_pdf_text,
+    read_labeled_pdfs_progressively, describe_images_progressively, assemble_pdf_text,
     image_coverage, spill_upload, discard_upload_spills, discard_spills,
     truncate, truncation_report, build_source_info,
     analyze_concepts_progressively, analyze_format_progressively,
@@ -604,6 +604,24 @@ def _forward_progress(gen, key: str, total: int):
         yield {"type": "progress", "key": key, "done": done, "total": total}
 
 
+def _forward_heartbeat(gen):
+    """
+    렌더 제너레이터를 heartbeat 이벤트로 바꿔 흘려보낸다. (짝: features/topic_analysis.py)
+
+    화면은 이 이벤트를 그냥 버린다 — 프런트의 이벤트 분기 어디에도 안 걸린다.
+    보내는 이유는 오직 하나, 연결을 살아 있는 것으로 만들기 위해서다
+    (waitress channel_timeout은 무통신 시간을 잰다 — serve.py).
+    done 값을 같이 싣는 것은 디버깅용이다. 브라우저 개발자도구에서 렌더가 실제로
+    돌고 있는지 보이면 '멈춘 건지 느린 건지'를 로그 없이 가릴 수 있다.
+    """
+    while True:
+        try:
+            done = next(gen)
+        except StopIteration as stop:
+            return stop.value
+        yield {"type": "heartbeat", "key": "render", "done": done}
+
+
 def _session_base(p: dict) -> str:
     """세션 이름의 앞부분 — 첫 강의자료 파일명(확장자 제거) + 나머지 개수."""
     base = p["lecture_name"].rsplit(".", 1)[0]
@@ -745,7 +763,9 @@ def run_generation_events(p: dict):
                 session_base   = cached["session_base"]
                 usage          = cached["usage"]        # 1단계에서 쓴 몫까지 이어서 센다
                 credits_before = cached["credits_before"]
-                # 추출은 이미 끝났으므로 진행률은 100%로 채워 보낸다
+                # 추출은 이미 끝났으므로 진행률은 100%로 채워 보낸다.
+                # 렌더 단계도 마찬가지다 — 이 경로에서는 아예 돌지 않으므로 완료로
+                # 찍어주지 않으면 그 칸이 '대기'로 남아 막대가 100%에 못 닿는다.
                 imgs = cached["img_count"]
                 yield {"type": "progress", "key": "extract", "done": imgs, "total": imgs}
             else:
@@ -754,15 +774,23 @@ def run_generation_events(p: dict):
                 # 여기까지는 LLM 호출이 없다 (페이지 선정만) — 진행률 총계를 먼저 알아야
                 # 하므로 양쪽을 모두 읽어 대상 페이지를 센 뒤에 Vision 호출을 시작한다.
                 # 이미지 상한은 **한쪽 전체**에 걸린다 (파일당이 아니다).
-                # 렌더 구간 — 양쪽을 한 span에 담는다. 강의자료·기출을 나눠 재도
-                # 고칠 대상(직렬 렌더 루프)이 같아서 합계가 곧 판단 근거다.
+                # ── 렌더 구간 ──
+                # 여기는 이벤트가 한 건도 안 나가던 자리였다. waitress는 총 소요가
+                # 아니라 **무통신** 시간으로 연결을 끊으므로(serve.py channel_timeout),
+                # 긴 PDF에서는 이 침묵만으로 끊길 수 있었다.
+                #
+                # 그래서 한 장 구울 때마다 heartbeat를 흘려보낸다. 화면에는 아무것도
+                # 그리지 않는다 — 여기는 'PDF 읽는 중' 한 칸 안이라 따로 보여줄 것이
+                # 없고, 렌더는 쪽수로 세는데 뒤의 그림 읽기는 장수로 세서 한 칸에
+                # 두 숫자를 얹으면 막대가 되감긴다. 목적은 연결을 살려두는 것뿐이다.
+                sides = []
                 with timing.span("render"):
-                    lec_parts  = read_labeled_pdfs(p["lecture_files"], "강의자료",
-                                                   api_key, IMAGE_TRANSCRIBE,
-                                                   timing=timing)
-                    exam_parts = read_labeled_pdfs(p["exam_files"], "기출",
-                                                   api_key, IMAGE_DESCRIBE,
-                                                   timing=timing)
+                    for files, label, mode in ((p["lecture_files"], "강의자료", IMAGE_TRANSCRIBE),
+                                               (p["exam_files"],    "기출",     IMAGE_DESCRIBE)):
+                        gen = read_labeled_pdfs_progressively(files, label, api_key,
+                                                              mode, timing=timing)
+                        sides.append((yield from _forward_heartbeat(gen)))
+                lec_parts, exam_parts = sides
                 rendered_parts += lec_parts + exam_parts
 
                 total_imgs = sum(len(x["img_jobs"]) for x in lec_parts + exam_parts)
