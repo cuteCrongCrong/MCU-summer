@@ -65,21 +65,26 @@ SWAP_SIZE=2G
 # (llm.spill_upload / llm._spill_png). 남는 제약은 스필 디렉터리가 쓰는 디스크와
 # 추출에 걸리는 시간이다. 디스크가 빠듯한 서버라면 이 값을 도로 낮춰야 한다 —
 # 요청 하나가 '업로드 크기 + 이미지 상한 × PNG 한 장'만큼 디스크를 잡는다.
-DEF_MAX_UPLOAD_MB=200
+DEF_MAX_UPLOAD_MB=500
 # 스레드는 낮게 유지한다. 이제 막히는 쪽은 메모리가 아니라 공유 vCPU다 —
 # 요청 하나가 PDF 전 쪽을 훑고(get_text·그림 판별) 페이지를 렌더한다.
 DEF_SERVER_THREADS=4
-# 이미지 상한을 코드 기본값(300/200)보다 낮춰 잡는 이유는 이제 메모리가 아니라 시간이다.
-# 공유 vCPU에서는 렌더가 느리고(read_pdf_pages 안에서 한 장씩 직렬로 돈다), 요청 하나가
-# 900초를 넘기면 waitress·Caddy가 연결을 끊어 이미지값만 내고 결과를 못 받는다.
+# 이미지 상한 — 코드 기본값(config.py)과 같은 값을 쓴다.
 # (PNG는 디스크에 있고, 보내기 직전 워커 수만큼만 메모리로 올라온다)
 #
-# 여기 값은 **실측으로 검증된 선**이다 — 운영 중인 e2-micro(RAM 1GB)가 100/60/8로
-# 커널 OOM 없이 돈다. 코드 기본값(300/200/12)은 글자 예산 기준으로 잡은 값이라
-# 900초 안에 드는지는 서버마다 다르다. 첫 회차 소요 시간을 재보고 올릴 것.
-DEF_IMAGE_CAP_LECTURE=100
-DEF_IMAGE_CAP_EXAM=60
-DEF_IMAGE_WORKERS=8
+# 100/60/8 → 300/200/12 (2026-08). **운영 중인 e2-micro가 이 값으로 돌고 있다** —
+# 300/200/12 · SERVER_THREADS=4 로 생성이 끊긴 적이 없다는 것이 근거다.
+# 그 사이 두 제약도 풀렸다:
+#   ① 900초 벽이 사라졌다. waitress가 재는 것은 총 소요가 아니라 무통신 시간인데,
+#      침묵하던 유일한 구간(렌더)에도 이제 heartbeat가 나간다.
+#   ② 그림을 흑백으로 굽기 시작해 장당 전송량이 1/3~1/5로 줄었다 (332KB → 57KB).
+#
+# 여기가 천장인 이유는 서버가 아니라 **글자 예산**이다 — 전사가 쪽당 약 800자라
+# 강의록 300쪽이면 24만 자다. 더 올려도 truncate가 도로 버리고 Vision 요금만 더 낸다.
+# (한 쪽 = Vision 호출 한 번이라, 상한이 곧 회차당 최대 요금이기도 하다)
+DEF_IMAGE_CAP_LECTURE=300
+DEF_IMAGE_CAP_EXAM=200
+DEF_IMAGE_WORKERS=12
 
 # 문제 생성이 실제로 되는지는 이 게이트웨이에 닿느냐에 달려 있다. (llm.py의 GATEWAY_BASE_URL)
 GATEWAY_HOST=factchat-cloud.mindlogic.ai
@@ -198,7 +203,7 @@ TRUSTED_PROXY=127.0.0.1
 # ── e2-micro(RAM 1GB · 공유 vCPU) 대응 ──
 # 업로드 PDF도 렌더한 PNG도 디스크로 내려가므로(llm.spill_upload / _spill_png)
 # 업로드 상한은 메모리가 아니라 디스크 여유에 걸린다. 요청 하나가 잡는 디스크는
-# 대략 '업로드 크기 + 이미지 상한 × PNG 한 장(0.3~3MB)'이다.
+# 대략 '업로드 크기 + 이미지 상한 × PNG 한 장(흑백이라 40~60KB)'이다.
 #   → df -h / 로 여유를 보고 정할 것. 빠듯하면 이 값을 낮춘다.
 # 스레드는 공유 vCPU 때문에 낮게 둔다 (기본 16이면 추출이 서로를 굶긴다).
 MAX_UPLOAD_MB=$DEF_MAX_UPLOAD_MB
@@ -208,7 +213,9 @@ SERVER_THREADS=$DEF_SERVER_THREADS
 # 메모리에는 안 걸린다(PNG는 디스크에 있고 워커 수만큼만 올라온다). 걸리는 것은
 #   시간   — 렌더가 한 장씩 직렬이라 공유 vCPU에서는 상한이 곧 대기 시간이다
 #   전송량 — 그림을 게이트웨이로 올리는 만큼 GCP 무료 egress(월 1GB)가 닳는다.
-#            스캔 기출로 상한을 다 채우면 한 회차에 500MB를 넘길 수 있다.
+#            흑백으로 굽기 시작한 뒤로는 장당 40~60KB라, 상한을 다 채운 회차가
+#            20MB 안팎이다 (예전 컬러 기준으로는 300MB를 넘겼다).
+#   요금   — 한 쪽이 곧 Vision 호출 한 번. 상한이 곧 회차당 최대 요금이다.
 # 올린 뒤에는 sudo systemctl restart mcu.
 IMAGE_CAP_LECTURE=$DEF_IMAGE_CAP_LECTURE
 IMAGE_CAP_EXAM=$DEF_IMAGE_CAP_EXAM
