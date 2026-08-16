@@ -33,7 +33,7 @@ if hasattr(sys.stdout, "reconfigure"):
 import httpx
 from openai import APIStatusError
 
-from providers.usage import UsageCollector
+from providers.usage import NO_TIMING, PhaseTimer, UsageCollector
 from providers.openai_provider import OpenAIProvider
 from providers.anthropic_provider import AnthropicProvider
 
@@ -321,11 +321,78 @@ def test_credits():
     check("미지원 제공사 get_credits는 NotImplementedError", raised)
 
 
+def test_phase_timer():
+    """
+    구간 계측(PhaseTimer) — 추출 단계의 렌더/호출을 갈라 재는 쪽.
+
+    여기서 고정하는 것은 '시간이 얼마나 걸리는가'가 아니라(기계마다 다르다)
+    **숫자의 의미**다. busy/wall 이 동시성이라는 것, 캐시 적중은 시간이 아니라
+    개수로 센다는 것, 겹침 절감이 짧은 쪽이라는 것 — 이 셋이 뒤집히면 계측을
+    보고 엉뚱한 곳을 고치게 된다.
+    """
+    print("\n[구간 계측]")
+    t = PhaseTimer()
+
+    # 직렬 구간 — 개별 작업 시간의 합이 벽시계와 비슷하다
+    with t.span("render"):
+        for _ in range(4):
+            t.mark("render", 0.10)
+    s = t.summary()
+    render = {p["key"]: p for p in s["phases"]}["render"]
+    check("직렬 구간 개수", render["count"] == 4, render["count"])
+    check("busy는 개별 작업의 합", abs(render["busy"] - 0.40) < 0.01, render["busy"])
+    check("중앙값이 ms로 나온다", abs(render["median_ms"] - 100) < 1, render["median_ms"])
+
+    # 병렬 구간 — 워커 4개가 동시에 0.2초씩 쓴 상황을 흉내낸다
+    t2 = PhaseTimer()
+    with t2.span("image_call"):
+        threads = [threading.Thread(target=t2.mark, args=("image_call", 0.2))
+                   for _ in range(4)]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join()
+    call = {p["key"]: p for p in t2.summary()["phases"]}["image_call"]
+    check("병렬 기록이 유실되지 않는다 (Lock)", call["count"] == 4, call["count"])
+    check("busy > wall 이면 동시성 > 1", call["concurrency"] > 1, call["concurrency"])
+
+    # 캐시 적중은 시간이 아니라 개수 — 섞이면 '호출이 빨랐다'로 오독된다
+    t3 = PhaseTimer()
+    t3.count("image_cache_hit", 3)
+    t3.count("image_cache_hit")
+    summ3 = t3.summary()
+    check("적중은 counts로만", summ3["counts"] == {"image_cache_hit": 4}, summ3["counts"])
+    check("적중이 구간을 만들지 않는다", summ3["phases"] == [], summ3["phases"])
+
+    # 겹침 절감 = 짧은 쪽 전체 (지금은 순차라 두 벽시계가 더해진다)
+    t4 = PhaseTimer()
+    with t4.span("render"):
+        pass
+    t4._wall["render"] = 30.0          # 벽시계를 직접 세워 계산만 검증한다
+    t4._wall["image_call"] = 12.0
+    save = t4.summary()["overlap_saving"]
+    check("절감은 짧은 쪽", save["seconds"] == 12.0, save)
+    check("지금은 두 구간의 합", save["now"] == 42.0, save)
+    check("겹치면 긴 쪽만 남는다", save["overlapped"] == 30.0, save)
+
+    # 한쪽만 잰 회차(세션 재사용 등)에서는 절감을 말할 수 없다
+    t5 = PhaseTimer()
+    t5._wall["render"] = 5.0
+    check("한쪽만 있으면 절감 없음", t5.summary()["overlap_saving"] is None)
+
+    # 계측기를 안 넘긴 호출부가 쓰는 무동작 타이머
+    with NO_TIMING.span("render"), NO_TIMING.measure("render"):
+        NO_TIMING.mark("render", 1.0)
+        NO_TIMING.count("image_cache_hit")
+    check("NO_TIMING은 아무것도 안 하고 예외도 안 낸다", True)
+
+
 if __name__ == "__main__":
     test_collector()
     test_openai_compatible()
     test_anthropic()
     test_credits()
+    test_phase_timer()
     print()
     if _failures:
         print(f"실패 {len(_failures)}건: " + ", ".join(_failures))
