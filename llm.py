@@ -165,12 +165,25 @@ IMAGE_DESCRIBE = {
     "detect_ink": False,
     "dpi": DESCRIBE_RENDER_DPI, "min_area_ratio": DESCRIBE_MIN_AREA_RATIO,
     "max_output": DESCRIBE_MAX_OUTPUT,
+    # 여기도 색을 뺀다 — 무료 티어의 월 1GB egress를 아끼는 쪽을 택했다.
+    # ⚠️ 전사(아래)와 달리 이쪽은 대가가 있다. '그림이 무엇인지'를 묻는 자리라
+    #    동맥·정맥 구분, 색으로만 갈리는 범례처럼 **색 자체가 답인 그림**이 있다.
+    #    그런 문항의 설명이 얇아질 수 있다.
+    #    되돌리려면 이 줄만 False 로 두면 된다 (다른 코드는 안 건드려도 된다).
+    "gray": True,
 }
 IMAGE_TRANSCRIBE = {
     "prompt": IMAGE_TEXT_PROMPT, "label": "그림 속 글자", "max_pages": LECTURE_IMAGE_MAX,
     "detect_ink": True,
     "dpi": TRANSCRIBE_RENDER_DPI, "min_area_ratio": TRANSCRIBE_MIN_AREA_RATIO,
     "max_output": TRANSCRIBE_MAX_OUTPUT,
+    # 색을 빼고 굽는다. 이쪽이 하는 일은 '그림 속 글자를 옮겨 적기'라(IMAGE_TEXT_PROMPT)
+    # 색이 답에 안 들어간다 — 손글씨가 빨간 펜이어도 읽는 것은 글자다.
+    #   실측(A4 벡터 슬라이드, base64 포함 전송량): 컬러 PNG 332KB → 흑백 PNG 57KB.
+    #   회차당 egress가 1/5 아래로 내려간다. 무료 티어의 월 1GB가 여기서 닳는다
+    #   (배포-GCP.md '무료 조건').
+    # 설명 쪽(IMAGE_DESCRIBE)과 달리 여기는 잃는 것이 없다 — 그쪽 주석 참고.
+    "gray": True,
 }
 
 # 문제 유형 4분류 (집계·few-shot·생성에서 공통 사용)
@@ -529,6 +542,7 @@ def read_pdf_pages_progressively(pdf, api_key: str = None, image_mode: dict = No
     detect_ink = mode.get("detect_ink", False)
     min_area = mode.get("min_area_ratio", DESCRIBE_MIN_AREA_RATIO)
     dpi = mode.get("dpi", DESCRIBE_RENDER_DPI)
+    gray = mode.get("gray", False)      # 전사(강의록)만 켠다 — IMAGE_TRANSCRIBE 주석
 
     # ── 선행 패스: 텍스트 레이어가 깨졌는지 먼저 가린다 ──
     # ToUnicode CMap이 없는 한글 폰트를 만나면 글리프 번호가 글자인 양 새어 나온다
@@ -578,12 +592,17 @@ def read_pdf_pages_progressively(pdf, api_key: str = None, image_mode: dict = No
                     # (DESCRIBE_RENDER_DPI=110)은 무엇을 그린 이미지인지만 알면 된다는
                     # 전제로 잡은 값이라, 문항 번호와 본문을 옮겨 적기에는 낮다.
                     page_dpi = TRANSCRIBE_RENDER_DPI if broken[i] else dpi
+                    # 깨진 쪽은 색도 뺀다 — 위와 같은 이유다. 글자를 읽으러 가는 것이라
+                    # 색이 답에 안 들어가고, 전송량만 다섯 배가 된다.
+                    page_gray = broken[i] or gray
                     # 렌더한 즉시 디스크로 내린다 (위 spill 절 참고). 메모리에 남는 것은
                     # 경로 문자열뿐이고, pixmap은 이 줄을 벗어나면 회수된다.
                     # 계측은 PNG 인코딩·디스크 기록까지 포함한다 — 병렬화를 검토할 때
                     # 옮겨야 하는 일 전체가 이 한 덩이라서 쪼개 재면 오히려 오해를 부른다.
                     with timing.measure("render"):
-                        entry["png_path"] = _spill_png(page.get_pixmap(dpi=page_dpi))
+                        pix = (page.get_pixmap(dpi=page_dpi, colorspace=fitz.csGRAY)
+                               if page_gray else page.get_pixmap(dpi=page_dpi))
+                        entry["png_path"] = _spill_png(pix)
                     img_jobs.append(entry)
                 except Exception:
                     pass
