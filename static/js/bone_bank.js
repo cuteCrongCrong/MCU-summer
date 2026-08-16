@@ -54,7 +54,7 @@ let boneActiveCategory = null;     // 현재 열어본 카테고리 객체 (subc
 let boneScopeLabel = '전체 범위';   // 현재 출제 범위 표시용 문구
 let boneScopeEntries = [];         // 현재 선택된 범위에 속한 entries (큐 재섞기용)
 let bonePendingScope = null;       // 모드를 고르기 전 임시로 들고 있는 {entries, label}
-let boneMode = 'classic';          // 진행 중인 모드: 'classic'(한 문제씩) | 'click'(단어은행 매칭) | 'write'(빈칸 한번에 쓰기)
+let boneMode = 'classic';          // 진행 중인 모드: 'classic'(한 문제씩) | 'click'(보기 매칭) | 'write'(빈칸 한번에 쓰기)
 let boneEntryQueue = [];           // click/write 모드용: 남은 이미지 큐 (엔트리 자체, 섞인 순서)
 let boneRoundState = null;         // click/write 모드의 현재 라운드(이미지 1장) 상태
 
@@ -479,14 +479,14 @@ function boneRoundWrongQuestion(entry, num, answers) {
   };
 }
 
-// ── 클릭형 매칭: 단어은행에서 골라 빈칸(번호)에 채우기 ──
+// ── 클릭형 매칭: 보기에서 골라 빈칸(번호)에 채우기 ──
 
-// 부위 하나를 대표하는 단어(단어은행 카드에 표시할 문구) — 정답 배열의 첫 항목을 쓴다
+// 부위 하나를 대표하는 단어(보기 카드에 표시할 문구) — 정답 배열의 첫 항목을 쓴다
 function boneCanonicalTerm(answers) {
   return (answers && answers[0]) || '';
 }
 
-// "방향" 문제 단어은행 — 이미지마다 다르게 뽑지 않고, 자주 나오는 방향 전부를 고정 세트로 보여준다.
+// "방향" 문제 보기 — 이미지마다 다르게 뽑지 않고, 자주 나오는 방향 전부를 고정 세트로 보여준다.
 // tibia_fibula_transverse/skull_transverse_superior처럼 횡단면은 "view"가 아니라 "section"이 정확한 용어라 함께 넣는다.
 const BONE_VIEW_BANK_TERMS = [
   'anterior view', 'posterior view', 'lateral view', 'medial view',
@@ -537,7 +537,7 @@ function renderBoneClickRound(entry) {
   const bank = boneShuffle(entry.parts.map(p => ({
     text: boneCanonicalTerm(p.answers), sourceNum: p.num, used: false,
   })));
-  // 구조/방향 문제는 부위 단어은행과 섞이면 헷갈리므로 각각 자기만의 단어은행을 따로 둔다
+  // 구조/방향 문제는 부위 보기와 섞이면 헷갈리므로 각각 자기만의 보기를 따로 둔다
   // (구조: 같은 카테고리의 다른 구조물 이름들과 섞임 / 방향: 자주 나오는 방향 고정 세트).
   const extra = boneBuildExtraQuestions(entry).map(q => {
     const bankTerms = q.kind === 'structure'
@@ -562,7 +562,7 @@ function renderBoneClickRound(entry) {
   renderBoneClickBoard();
 }
 
-// 구조/방향 문제 블록 — 슬롯 1개 + 전용 단어은행 1개짜리 미니 문제를 카드로 그린다
+// 구조/방향 문제 블록 — 슬롯 1개 + 전용 보기 1개짜리 미니 문제를 카드로 그린다
 function renderBoneClickExtra() {
   const st = boneRoundState;
   document.getElementById('bone-click-extra').innerHTML = (st.extra || []).map((ex, i) => {
@@ -589,7 +589,7 @@ function renderBoneClickExtra() {
   }).join('');
 }
 
-// 구조/방향 슬롯 클릭 — 채워져 있으면 단어은행으로 되돌린다 (슬롯이 하나뿐이라 '대상 선택' 개념이 필요 없음)
+// 구조/방향 슬롯 클릭 — 채워져 있으면 보기로 되돌린다 (슬롯이 하나뿐이라 '대상 선택' 개념이 필요 없음)
 function boneClickExtraSlot(idx) {
   const st = boneRoundState;
   if (st.graded) return;
@@ -601,7 +601,7 @@ function boneClickExtraSlot(idx) {
   renderBoneClickBoard();
 }
 
-// 구조/방향 단어은행 카드 클릭 — 이미 채워져 있으면 무시(먼저 슬롯을 비우게)
+// 구조/방향 보기 카드 클릭 — 이미 채워져 있으면 무시(먼저 슬롯을 비우게)
 function boneClickExtraChip(exIdx, chipIdx) {
   const st = boneRoundState;
   if (st.graded) return;
@@ -662,7 +662,7 @@ function boneClickSlot(num) {
   renderBoneClickBoard();
 }
 
-// 단어은행 카드 클릭 — 선택된 슬롯(없으면 첫 빈 슬롯)에 채운다
+// 보기 카드 클릭 — 선택된 슬롯(없으면 첫 빈 슬롯)에 채운다
 function boneClickChip(idx) {
   const st = boneRoundState;
   if (st.graded) return;

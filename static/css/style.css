@@ -500,9 +500,9 @@ input:focus { outline: none; border-color: var(--primary); }
 }
 
 /* 클릭형 매칭 / 빈칸 쓰기 — 문항이 많아 이미지와 정답 영역을 계속 스크롤로
-   오가는 게 불편해서, 이미지(+원본 보기 버튼, 클릭형은 단어은행까지)는
+   오가는 게 불편해서, 이미지(+원본 보기 버튼, 클릭형은 보기까지)는
    화면 위에 붙여두고 정답 영역(번호 슬롯/입력칸)만 스크롤되게 한다.
-   max-height + overflow: 단어은행이 유난히 긴 이미지(부위 30~40개)에서도
+   max-height + overflow: 보기가 유난히 긴 이미지(부위 30~40개)에서도
    고정 영역이 화면을 다 잡아먹지 않고 자체적으로 스크롤되게 하는 안전장치. */
 .bone-sticky-img {
   position: sticky; top: 0; z-index: 3;
@@ -546,7 +546,7 @@ input:focus { outline: none; border-color: var(--primary); }
   font-size: 0.8rem; color: var(--danger);
 }
 
-/* 클릭형 매칭 — 단어은행 */
+/* 클릭형 매칭 — 보기 */
 .bone-chip-bank {
   display: flex; flex-wrap: wrap; gap: 8px;
   min-height: 36px;
