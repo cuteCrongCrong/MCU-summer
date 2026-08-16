@@ -203,6 +203,37 @@ label {
   font-size: 0.85rem; color: var(--success); font-weight: 600; margin-top: 6px;
 }
 
+/* ── 고른 파일 목록 (드롭 영역 '밖') ──
+   드롭 영역 안에 두면 안 된다 — .file-drop input[type=file] 이 inset:0 · opacity:0 으로
+   영역 전체를 덮고 있어서, 안에 있는 삭제 버튼을 누르면 파일 선택창이 열린다. */
+.file-picks { margin-top: 8px; }
+.file-list-head {
+  font-size: 0.85rem; color: var(--success); font-weight: 600; margin-bottom: 6px;
+}
+.file-list-head.over { color: #dc2626; }
+.file-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.file-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px 6px 10px;
+  background: var(--primary-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  font-size: 0.83rem;
+}
+/* 이름이 길어도 줄을 밀어내지 않게 — 넘치면 말줄임. 전체 이름은 title 로 보여준다. */
+.file-row-name {
+  flex: 1; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.file-row-size { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.file-row-del {
+  flex: none; width: 22px; height: 22px; line-height: 1;
+  border: none; border-radius: 6px; cursor: pointer;
+  background: transparent; color: var(--text-muted);
+  font-size: 1.05rem;
+}
+.file-row-del:hover { background: #fee2e2; color: #dc2626; }
+
 /* ── 드롭다운 (LLM 제공사 / 모델 공용) ── */
 /* ── 입력 글자 크기는 16px 아래로 내리지 않는다 ──
    iOS Safari 는 16px 미만인 입력 요소에 포커스가 가면 화면을 자동으로 확대하고,

@@ -8,37 +8,9 @@
 //   한쪽 수정이 다른 쪽을 깨지 않게 하기 위함. (그래서 상태 이름이 전부 따로다)
 // ══════════════════════════════════════════════
 
-// ── 파일 드래그앤드롭 (여러 개 지원) ──
-function topicSetupDrop(dropId, inputId, nameId) {
-  const drop = document.getElementById(dropId);
-  const input = document.getElementById(inputId);
-  const nameEl = document.getElementById(nameId);
-
-  const show = () => {
-    const files = Array.from(input.files || []);
-    if (!files.length) { nameEl.textContent = ''; return; }
-    const names = files.map(f => f.name).join(', ');
-    nameEl.textContent = `✅ ${files.length}개${totalSizeLabel(files)} — ${names}`;
-    // 용량은 색을 바꾸지 않는다 — 상한이 양쪽 합계 기준이라 한쪽만 보고는 못 정한다
-    nameEl.style.color = files.length > uploadMaxFiles ? '#dc2626' : '';
-  };
-
-  input.addEventListener('change', show);
-  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag-over'); });
-  drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
-  drop.addEventListener('drop', e => {
-    e.preventDefault(); drop.classList.remove('drag-over');
-    const pdfs = Array.from(e.dataTransfer.files || [])
-      .filter(f => f.name.toLowerCase().endsWith('.pdf'));
-    if (!pdfs.length) return;
-    const dt = new DataTransfer();
-    pdfs.forEach(f => dt.items.add(f));
-    input.files = dt.files;
-    show();
-  });
-}
-topicSetupDrop('topic-drop-lecture', 'topic-lecture-file', 'topic-lecture-name');
-topicSetupDrop('topic-drop-exam',    'topic-exam-file',    'topic-exam-name');
+// ── 파일 선택 ── (드래그앤드롭·목록·개별 삭제는 common.js 의 setupFileDrop)
+setupFileDrop('topic-drop-lecture', 'topic-lecture-file', 'topic-lecture-name');
+setupFileDrop('topic-drop-exam',    'topic-exam-file',    'topic-exam-name');
 
 // ── 설정 화면 / 결과 화면 전환 ──
 function topicShowResult() {

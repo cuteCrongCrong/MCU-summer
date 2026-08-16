@@ -57,6 +57,112 @@ function totalSizeLabel(files) {
   return total ? ` (${(total / 1024 / 1024).toFixed(1)}MB)` : '';
 }
 
+// ══════════════════════════════════════════════
+// 파일 선택 (드래그앤드롭 + 목록 + 개별 삭제) — 두 탭 공용
+//   문제 생성·주제 분석이 같은 모양의 업로드 칸을 쓴다. 예전에는 두 파일에 거의 같은
+//   함수가 복사돼 있었다(setupDrop / topicSetupDrop).
+// ══════════════════════════════════════════════
+
+// 고른 파일은 input.files 에 그대로 써 넣는다. 제출부가 여전히
+// document.getElementById('lecture-file').files 를 읽기 때문이다 — 별도 배열을
+// 진짜 소유자로 삼으면 그 둘이 어긋나는 순간을 아무도 눈치채지 못한다.
+function writeFiles(input, files) {
+  const dt = new DataTransfer();
+  files.forEach(f => dt.items.add(f));
+  input.files = dt.files;
+}
+
+// 같은 파일인가 — 이름과 크기가 모두 같으면 같은 것으로 본다.
+// 드롭을 '추가'로 바꾸면서 필요해졌다. 같은 파일을 두 번 끌어다 놓는 것은 실수이지
+// 의도가 아니고, 그대로 두면 업로드 용량만 두 배가 된다.
+function sameFile(a, b) {
+  return a.name === b.name && a.size === b.size;
+}
+
+/**
+ * dropId  — 점선 테두리 영역 (.file-drop)
+ * inputId — 그 안의 <input type="file" multiple>
+ * listId  — 고른 파일 목록을 그릴 곳. **드롭 영역 밖**이어야 한다.
+ *           안에 두면 파일 입력(inset:0 · opacity:0)이 목록을 덮어서, 삭제 버튼을
+ *           누르는 순간 파일 선택창이 열린다.
+ */
+function setupFileDrop(dropId, inputId, listId) {
+  const drop  = document.getElementById(dropId);
+  const input = document.getElementById(inputId);
+  const listEl = document.getElementById(listId);
+  if (!drop || !input || !listEl) return;
+
+  function render() {
+    const files = Array.from(input.files || []);
+    if (!files.length) { listEl.innerHTML = ''; return; }
+    const over = files.length > uploadMaxFiles;
+    const rows = files.map((f, i) => `
+      <li class="file-row">
+        <span class="file-row-name" title="${escHtml(f.name)}">${escHtml(f.name)}</span>
+        <span class="file-row-size">${(f.size / 1024 / 1024).toFixed(1)}MB</span>
+        <button type="button" class="file-row-del" aria-label="${escHtml(f.name)} 빼기"
+                onclick="removeChosenFile('${inputId}', ${i})">×</button>
+      </li>`).join('');
+    listEl.innerHTML =
+      `<div class="file-list-head${over ? ' over' : ''}">`
+      + `✅ ${files.length}개${totalSizeLabel(files)}`
+      + (over ? ` — 최대 ${uploadMaxFiles}개까지입니다` : '')
+      + `</div><ul class="file-list">${rows}</ul>`;
+  }
+  FILE_DROP_RENDERERS[inputId] = render;
+
+  // 파일 선택창으로 고른 것도 **더한다**. 드롭과 동작이 달라지면 "왜 어떤 건 지워지고
+  // 어떤 건 남지?"가 되고, 잘못 고른 것은 이제 × 로 뺄 수 있어서 덮어쓸 이유가 없다.
+  input.addEventListener('change', () => {
+    const picked = Array.from(input.files || []);
+    addChosenFiles(inputId, picked, { fromPicker: true });
+  });
+
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag-over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
+  drop.addEventListener('drop', e => {
+    e.preventDefault(); drop.classList.remove('drag-over');
+    const pdfs = Array.from(e.dataTransfer.files || [])
+      .filter(f => f.name.toLowerCase().endsWith('.pdf'));
+    if (pdfs.length) addChosenFiles(inputId, pdfs);
+  });
+
+  render();
+}
+
+// inputId → 그 칸을 다시 그리는 함수. 삭제·추가가 전역 핸들러(onclick)에서 오므로
+// 클로저 밖에서도 다시 그릴 수 있어야 한다.
+const FILE_DROP_RENDERERS = {};
+// 직전 목록. change 이벤트는 브라우저가 input.files 를 이미 갈아치운 뒤에 오기 때문에,
+// '고르기 전에 무엇이 있었는지'를 여기서 따로 들고 있어야 더할 수 있다.
+const FILE_DROP_PREV = {};
+
+function addChosenFiles(inputId, incoming, opts) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  // 선택창에서 온 경우 input.files 는 '이번에 고른 것'으로 이미 바뀌어 있다.
+  const base = (opts && opts.fromPicker)
+    ? (FILE_DROP_PREV[inputId] || [])
+    : Array.from(input.files || []);
+  const merged = base.slice();
+  incoming.forEach(f => { if (!merged.some(g => sameFile(g, f))) merged.push(f); });
+  writeFiles(input, merged);
+  FILE_DROP_PREV[inputId] = merged;
+  const render = FILE_DROP_RENDERERS[inputId];
+  if (render) render();
+}
+
+function removeChosenFile(inputId, index) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const files = Array.from(input.files || []);
+  files.splice(index, 1);
+  writeFiles(input, files);
+  FILE_DROP_PREV[inputId] = files;
+  const render = FILE_DROP_RENDERERS[inputId];
+  if (render) render();
+}
+
 // ── 공용 유틸 ──
 function escHtml(str) {
   return String(str)
