@@ -64,6 +64,17 @@ def index():
     return send_from_directory(".", "index.html")
 
 
+@app.route("/guide")
+def guide():
+    """사용 가이드 — 정적 HTML 한 장.
+
+    index.html 안의 탭이 아니라 별도 페이지인 이유: 가이드를 보지 않는 사람도
+    첫 접속에 통째로 내려받게 되고(index.html 이 그만큼 커진다), 탭 전환 로직과도
+    얽힌다. 파일로 떼어 두면 누른 사람만 받고, 앱 코드와 닿는 곳이 없다.
+    """
+    return send_from_directory("static", "guide.html")
+
+
 @app.route("/healthz")
 def healthz():
     """배포 플랫폼의 헬스체크용 (LLM/DB를 건드리지 않는 가벼운 응답)."""

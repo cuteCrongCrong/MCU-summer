@@ -107,6 +107,18 @@
       </section>
     </div>
 
+    <!-- 사용법 안내 — 내용은 별도 페이지(/guide, static/guide.html)에 있다.
+         여기에 링크만 두는 이유: index.html 에 넣으면 가이드를 보지 않는 사람도
+         첫 접속에 44KB를 함께 받게 된다. (app.py 의 guide() 주석 참고) -->
+    <p style="text-align:center;margin:4px 0 18px;">
+      <!-- ⚠️ 새 탭으로 연다. 같은 탭에서 이동하면 돌고 있던 문제 생성이 끊긴다
+           (생성은 이 탭의 연결에 매여 있다 — question_gen.js 의 streamGenerate). -->
+      <a href="/guide" target="_blank" rel="noopener"
+         style="display:inline-flex;align-items:center;gap:6px;font-size:0.83rem;font-weight:700;color:#2f5c50;text-decoration:none;padding:7px 15px;border:1px solid #cfe0d5;border-radius:999px;background:#fff;">
+        📖 처음이신가요? 사용법 보기
+      </a>
+    </p>
+
     <!-- 이어서 하기 (세션이 있을 때만) -->
     <div class="card resume-card hidden" id="resume-card">
       <div class="resume-label">문제 생성 이어서 하기</div>
@@ -935,6 +947,8 @@
 <script src="/static/js/topic_archive.js"></script>
 <!-- print.js 는 common.js의 escHtml/typeInfoOf/answerIndexOf 를 쓴다 -->
 <script src="/static/js/print.js"></script>
+<!-- 하단 「처음 방문하셨나요?」 안내 띠. 다른 파일에 의존하지 않으므로 순서는 상관없다 -->
+<script src="/static/js/guide_toast.js"></script>
 
 </body>
 </html>
