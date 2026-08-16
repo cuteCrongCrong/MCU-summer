@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>사용 가이드 · MCU 학습 플랫폼</title>
+<title>이용가이드 · MCU 학습 플랫폼</title>
 <!-- index.html 과 같은 글꼴. CDN 이 막혀도 style 안의 폴백(system-ui)이 살아난다. -->
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
@@ -11,8 +11,6 @@
 /* ══════════════════════════════════════════════════════════
    팔레트·글꼴은 사이트(static/css/style.css)의 값을 그대로 쓴다 —
    본문 배경 #f0f4f8, 카드 흰색, 강조색 세이지그린 #2f5c50.
-   기능별 색(hsl 252/206/36/346/168)도 홈 화면 카드 5장과 같은 값이라,
-   이 문서의 색 블록이 화면에서 눌러야 할 카드와 1:1로 맞는다.
 
    ⚠️ 다크 모드는 일부러 두지 않는다 — 사이트가 밝은 화면 하나로만 되어 있어서,
       안내서만 어두워지면 같은 서비스로 안 보인다. 그래서 모든 색을 여기서
@@ -32,7 +30,6 @@
   --sage-deep:    #244b40;   /* --primary-dark */
   --sage-wash:    #eaf1ed;   /* --primary-soft */
   --on-sage:      #ffffff;
-  --tag-bg:       rgba(255,255,255,0.6);
 
   /* 안내 상자 3종도 사이트에서 쓰는 조합 그대로 —
      초록: 현재 세션 바 · 노랑: 업로드 경고 · 연녹: 주제 분석 설명 상자 */
@@ -42,15 +39,6 @@
   --care-bg:      #fffbeb;
   --care-line:    #fcd34d;
   --care-ink:     #92400e;
-  --tip-bg:       #eaf1ed;
-  --tip-line:     #cfe0d5;
-  --tip-ink:      #1f4438;
-
-  --gen-bg:     hsl(252 65% 95%); --gen-ink:     hsl(252 45% 32%);
-  --topic-bg:   hsl(206 70% 94%); --topic-ink:   hsl(206 55% 28%);
-  --archive-bg: hsl(36 75% 90%);  --archive-ink: hsl(28 60% 28%);
-  --wrong-bg:   hsl(346 65% 95%); --wrong-ink:   hsl(346 50% 36%);
-  --bone-bg:    hsl(168 45% 90%); --bone-ink:    hsl(168 45% 22%);
 
   --shadow-sm: 0 1px 3px rgba(15,23,42,0.05);   /* style.css --shadow-sm */
   --shadow-md: 0 4px 24px rgba(0,0,0,0.08);     /* --shadow */
@@ -59,37 +47,23 @@
           'Apple SD Gothic Neo', sans-serif;
 }
 
-html { scroll-behavior: smooth; }
+/* 남은 움직임은 FAQ 펼침뿐이다 (details.q). 「동작 줄이기」에서는 그것도 끈다. */
 @media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
   * { animation: none !important; transition: none !important; }
 }
 
-/* ── 스크롤에 따라 밀려 올라오는 등장 효과 ──────────────
-   ⚠️ .js-reveal 로 한 번 감싸는 것이 핵심이다. 이 클래스는 스크립트가 직접 붙이므로,
-      자바스크립트가 막혔거나 IntersectionObserver 가 없거나 「동작 줄이기」가 켜진
-      기기에서는 아래 규칙이 아예 적용되지 않는다 → 내용이 처음부터 그냥 다 보인다.
-      (opacity:0 을 무조건 걸어두면 그런 환경에서 백지가 된다)
-   되돌아오는 순간 살짝 넘쳤다 제자리를 찾도록 cubic-bezier 끝값을 1보다 크게 준다. */
-.js-reveal .reveal {
-  opacity: 0;
-  transform: translateY(22px) scale(0.985);
-  transition:
-    opacity 0.42s ease,
-    transform 0.62s cubic-bezier(0.2, 1.28, 0.34, 1);
-  will-change: opacity, transform;
-}
-.js-reveal .reveal.in {
-  opacity: 1;
-  transform: none;
-}
+/* 브라우저 기본 여백을 없앤다 — 간격은 flex 의 gap 과 아래 규칙들이 정한다.
+   ⚠️ 이게 없으면 .feature-body(flex) 안에서 문단과 목록 사이가 크게 벌어진다.
+      flex 컨테이너에서는 자식 margin 이 상쇄되지 않아 그대로 더해지기 때문이다:
+      <p> 아래 1em(15px) + gap 11px + <ul> 위 1em(15px) = 41px. */
+h1, h2, h3, p, ul, ol { margin: 0; }
 
 body {
   background: var(--paper);
   color: var(--ink);
   font-family: var(--sans);
   font-size: 15.5px;
-  line-height: 1.72;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   word-break: keep-all;
 }
@@ -100,182 +74,64 @@ body {
   padding: 0 22px 72px;
 }
 
-/* ── 표지 ─────────────────────────────────────── */
-.cover {
-  padding: 50px 0 30px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.eyebrow {
-  font-size: 0.73rem;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  color: var(--sage);
-  text-transform: uppercase;
-}
-.cover h1 {
-  font-size: clamp(1.72rem, 5.4vw, 2.35rem);
-  line-height: 1.32;
+/* ── 페이지 제목 ──────────────────────────────── */
+/* .wrap 의 padding-top 이 0 이라(back-bar 와 붙는 것을 막으려고) 여백은 여기서 준다.
+   아래 첫 섹션의 padding-top 26px 이 제목과 본문 사이 간격이 된다. */
+.page-title {
+  padding-top: 20px;
+  font-size: clamp(1.44rem, 4.4vw, 1.8rem);
   font-weight: 800;
   letter-spacing: -0.022em;
   text-wrap: balance;
 }
-.cover h1 em {
-  font-style: normal;
-  color: var(--sage);
-  box-shadow: inset 0 -0.32em 0 var(--sage-wash);
-}
-.cover .lede {
-  font-size: 1rem;
-  color: var(--ink-soft);
-  max-width: 36em;
-}
-.cover-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  padding-top: 4px;
-}
-.pill {
-  font-size: 0.77rem;
-  font-weight: 600;
-  padding: 4px 12px;
-  border-radius: 999px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  color: var(--ink-soft);
-}
-
-/* ── 3단계 시작 ───────────────────────────────── */
-.start {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 15px;
-  padding: 23px 21px;
-  box-shadow: var(--shadow-md);
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-.start h2 { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.01em; }
-.start-steps {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
-.start-step {
-  display: grid;
-  grid-template-columns: 27px 1fr;
-  gap: 13px;
-  align-items: start;
-}
-.start-num {
-  width: 27px; height: 27px;
-  display: grid; place-items: center;
-  border-radius: 50%;
-  background: var(--sage);
-  color: var(--on-sage);
-  font-size: 0.8rem;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  margin-top: 3px;
-}
-.start-step b { display: block; font-weight: 700; }
-.start-step p { color: var(--ink-soft); font-size: 0.93rem; }
 
 /* ── 섹션 ─────────────────────────────────────── */
-section { padding-top: 44px; }
+section { padding-top: 26px; }
 section > h2 {
-  font-size: clamp(1.24rem, 3.2vw, 1.44rem);
+  font-size: clamp(1.2rem, 3.2vw, 1.36rem);
   font-weight: 800;
   letter-spacing: -0.018em;
-  margin-bottom: 4px;
+  margin-bottom: 9px;
   text-wrap: balance;
 }
 section > .sub {
   color: var(--ink-faint);
   font-size: 0.9rem;
-  margin-bottom: 20px;
+  margin: -5px 0 12px;
 }
 .rule {
   height: 1px;
   background: var(--line);
   border: 0;
-  margin-top: 44px;
+  margin-top: 26px;
 }
 
 /* ── 기능 안내 블록 ───────────────────────────── */
+/* ⚠️ 섹션 하나에 블록 하나. 접지도, 소제목 바로 쪼개지도 않는다 —
+      눌러서 펼치거나 제목 바가 늘어날수록 스크롤만 길어진다.
+      접는 건 FAQ(details.q)에만 쓴다. */
 .feature {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 15px;
   overflow: hidden;
   box-shadow: var(--shadow-sm);
-  margin-bottom: 17px;
 }
-.feature-head {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 13px 19px;
-  cursor: pointer;
-  list-style: none;                 /* summary 기본 삼각형 제거 */
-  -webkit-tap-highlight-color: transparent;
-}
-.feature-head::-webkit-details-marker { display: none; }
-.feature-head:focus-visible { outline: 3px solid var(--sage); outline-offset: -3px; }
-.feature-head .emoji { font-size: 1.25rem; }
-.feature-head h3 { font-size: 1.02rem; font-weight: 800; letter-spacing: -0.01em; }
-.feature-head .tag {
-  margin-left: auto;
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: var(--tag-bg);
-  white-space: nowrap;
-}
-/* 펼침 표시 — 제목 줄 오른쪽 끝. tag 가 없는 블록에서도 오른쪽에 붙게 auto 여백을 둔다 */
-.feature-head::after {
-  content: '';
-  margin-left: 10px;
-  width: 9px; height: 9px;
-  border-right: 2.2px solid currentColor;
-  border-bottom: 2.2px solid currentColor;
-  border-radius: 1px;
-  transform: rotate(45deg) translate(-2px, -2px);
-  opacity: 0.55;
-  flex-shrink: 0;
-  transition: transform 0.22s ease;
-}
-.feature-head:not(:has(.tag))::after { margin-left: auto; }
-details.feature[open] > .feature-head::after {
-  transform: rotate(225deg) translate(-2px, -2px);
-}
-
-/* 펼칠 때 아래로 밀려 내려오는 움직임.
+/* FAQ 를 펼칠 때 아래로 밀려 내려오는 움직임.
    ::details-content 를 모르는 브라우저에서는 이 규칙이 통째로 무시되고
    예전처럼 즉시 펼쳐지기만 한다 — 내용이 안 보이는 실패는 없다. */
 :root { interpolate-size: allow-keywords; }
-details.feature::details-content,
 details.q::details-content {
   block-size: 0;
   overflow: hidden;
   transition: block-size 0.28s ease, content-visibility 0.28s allow-discrete;
 }
-details.feature[open]::details-content,
 details.q[open]::details-content { block-size: auto; }
-.h-gen     { background: var(--gen-bg);     color: var(--gen-ink); }
-.h-topic   { background: var(--topic-bg);   color: var(--topic-ink); }
-.h-archive { background: var(--archive-bg); color: var(--archive-ink); }
-.h-wrong   { background: var(--wrong-bg);   color: var(--wrong-ink); }
-.h-bone    { background: var(--bone-bg);    color: var(--bone-ink); }
 .feature-body {
-  padding: 19px;
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
-  gap: 13px;
+  gap: 11px;
 }
 .feature-body p { color: var(--ink-soft); font-size: 0.94rem; }
 .feature-body p strong { color: var(--ink); font-weight: 700; }
@@ -300,7 +156,7 @@ ol.howto > li {
   position: relative;
   padding-left: 32px;
   font-size: 0.94rem;
-  line-height: 1.72;
+  line-height: 1.62;
 }
 ol.howto > li::before {
   content: counter(howto);
@@ -339,12 +195,12 @@ ul.plain > li::before {
 }
 ul.plain b, ol.howto b { color: var(--ink); font-weight: 700; }
 
-/* ── 안내 상자 3종 (형태로 성격을 구분한다) ──── */
+/* ── 안내 상자 2종 (형태로 성격을 구분한다) ──── */
 .note {
   border-radius: 11px;
-  padding: 12px 15px;
+  padding: 11px 14px;
   font-size: 0.89rem;
-  line-height: 1.68;
+  line-height: 1.6;
   display: flex;
   gap: 10px;
   align-items: flex-start;
@@ -353,7 +209,6 @@ ul.plain b, ol.howto b { color: var(--ink); font-weight: 700; }
 .note b { font-weight: 800; }
 .note.calm { background: var(--calm-bg); border: 1px solid var(--calm-line); color: var(--calm-ink); }
 .note.care { background: var(--care-bg); border: 1px dashed var(--care-line); color: var(--care-ink); }
-.note.tip  { background: var(--tip-bg);  border: 1px solid var(--tip-line);  color: var(--tip-ink); }
 
 /* ── UI 요소 인용 ─────────────────────────────── */
 .ui {
@@ -375,37 +230,15 @@ table {
   font-size: 0.89rem;
   min-width: 440px;
 }
-th, td {
+/* 머리글 행(thead·th)은 쓰지 않는다 — 각 행의 첫 칸이 항목 이름 역할을 한다 */
+td {
   text-align: left;
-  padding: 9px 11px;
+  padding: 7px 11px;
   border-bottom: 1px solid var(--line-soft);
   vertical-align: top;
 }
-th {
-  font-size: 0.73rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  color: var(--ink-faint);
-  border-bottom: 1px solid var(--line);
-}
 td b { font-weight: 700; }
 tbody tr:last-child td { border-bottom: 0; }
-
-/* ── 안심 코너 ───────────────────────────────── */
-.calm-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(224px, 1fr));
-  gap: 10px;
-}
-.calm-card {
-  background: var(--calm-bg);
-  border: 1px solid var(--calm-line);
-  border-radius: 12px;
-  padding: 14px 16px;
-  color: var(--calm-ink);
-}
-.calm-card b { display: block; font-weight: 800; font-size: 0.93rem; margin-bottom: 3px; }
-.calm-card span { font-size: 0.85rem; line-height: 1.62; display: block; opacity: 0.92; }
 
 /* ── 자주 묻는 질문 ──────────────────────────── */
 .faq { display: flex; flex-direction: column; gap: 7px; }
@@ -418,7 +251,7 @@ details.q {
 details.q summary {
   cursor: pointer;
   list-style: none;
-  padding: 12px 17px;
+  padding: 10px 16px;
   font-weight: 700;
   font-size: 0.94rem;
   display: flex;
@@ -426,7 +259,6 @@ details.q summary {
   align-items: center;
 }
 details.q summary::-webkit-details-marker { display: none; }
-/* 펼침 표시는 기능 카드와 같은 화살표를 쓴다 (한 페이지에 두 가지 기호를 두지 않는다) */
 details.q summary::after {
   content: '';
   margin-left: auto;
@@ -442,35 +274,22 @@ details.q summary::after {
 details.q[open] summary::after { transform: rotate(225deg) translate(-2px, -2px); }
 details.q summary:focus-visible { outline: 3px solid var(--sage); outline-offset: -3px; }
 details.q .a {
-  padding: 0 17px 15px 17px;
+  /* 위 4px — 리셋 전에는 첫 문단의 기본 margin 이 이 간격을 대신하고 있었다 */
+  padding: 4px 17px 15px;
   color: var(--ink-soft);
   font-size: 0.91rem;
 }
 details.q .a p + p { margin-top: 9px; }
-
-/* ── 맺음 ─────────────────────────────────────── */
-.outro {
-  margin-top: 44px;
-  background: var(--sage);
-  color: var(--on-sage);
-  border-radius: 15px;
-  padding: 26px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.outro h2 { font-size: 1.16rem; font-weight: 800; letter-spacing: -0.015em; }
-.outro p { opacity: 0.92; font-size: 0.93rem; }
-.outro .fine { font-size: 0.82rem; opacity: 0.78; }
+/* 답 안에 목록·안내상자·링크가 함께 오는 경우(API 키 발급) 사이를 띄운다 */
+details.q .a > * + * { margin-top: 9px; }
+details.q .a a { color: var(--sage); font-weight: 700; }
 
 @media (max-width: 560px) {
   body { font-size: 15px; }
-  .wrap { padding: 0 16px 56px; }
-  .cover { padding: 36px 0 24px; }
-  .feature-body, .start { padding: 17px 15px; }
-  .feature-head { padding: 12px 15px; }
-  section { padding-top: 36px; }
-  .rule { margin-top: 36px; }
+  .wrap { padding: 0 16px 48px; }
+  .feature-body { padding: 15px 14px; }
+  section { padding-top: 22px; }
+  .rule { margin-top: 22px; }
 }
 </style>
 
@@ -504,335 +323,205 @@ details.q .a p + p { margin-top: 9px; }
 
 <div class="wrap">
 
-  <header class="cover">
-    <p class="eyebrow">MCU 학습 플랫폼 사용법</p>
-    <h1>강의자료랑 기출만 있으면,<br /><em>예상문제는 저희가 만들게요.</em></h1>
-    <p class="lede">
-      PDF 두 종류를 올리면 기출의 유형과 형식을 닮은 새 문제를 만들어 드립니다.
-      뼈 이름만 외우고 싶은 날엔 아무것도 준비하지 않아도 됩니다.
-      이 문서는 처음 오신 분이 헤매지 않도록, 화면에 보이는 것 그대로 순서대로 설명합니다.
-    </p>
-    <div class="cover-meta">
-      <span class="pill">준비물 · PDF 2종</span>
-      <span class="pill">첫 문제까지 약 5분</span>
-      <span class="pill">설치 없이 브라우저에서</span>
-    </div>
-  </header>
+  <h1 class="page-title">MCU 학습 플랫폼 이용가이드</h1>
 
-  <div class="start">
-    <h2>처음이라면, 이 세 가지만</h2>
-    <div class="start-steps">
-      <div class="start-step">
-        <div class="start-num">1</div>
-        <div>
-          <b>먼저 로그인하세요 (오른쪽 위 <span class="ui">로그인</span>)</b>
-          <p>안 해도 다 쓸 수 있습니다. 다만 로그인 없이 만든 기록은 <b>나중에 로그인해도 계정으로 옮겨지지 않습니다.</b> 남겨 둘 생각이면 시작 전에 하는 게 편해요.</p>
-        </div>
-      </div>
-      <div class="start-step">
-        <div class="start-num">2</div>
-        <div>
-          <b>API 키를 붙여넣으세요</b>
-          <p>문제를 만들려면 AI를 불러야 하고, 그때 쓰는 열쇠입니다. 어디서 받는지는 키 입력칸 바로 아래 <span class="ui">발급 방법</span>을 펼치면 나옵니다. 키를 넣으면 쓸 수 있는 모델 목록이 저절로 채워져요.</p>
-        </div>
-      </div>
-      <div class="start-step">
-        <div class="start-num">3</div>
-        <div>
-          <b>PDF를 올리고 <span class="ui">✨ 예상문제 생성하기</span></b>
-          <p>강의자료와 기출문제, 두 칸 모두 채워야 시작됩니다. 나머지 설정은 전부 기본값 그대로 두셔도 괜찮아요.</p>
-        </div>
+  <section id="f-login">
+    <h2>👤 로그인</h2>
+    <div class="feature">
+      <div class="feature-body">
+        <ul class="plain">
+          <li><b>Google 계정</b>으로 로그인합니다.</li>
+          <li>로그인 상태에서는 생성한 문제, 파일 분석 결과, 기출 주제 분석 결과, 오답 노트가 <b>계정에 저장</b>됩니다.</li>
+          <li>비로그인 상태에서도 <b>모든 기능을 이용할 수 있지만</b>, 기록이 브라우저에만 저장되어 <b>다른 기기에서는 접근할 수 없습니다</b>.</li>
+          <li>비로그인 상태에서 생긴 기록은 추후 로그인하더라도 계정으로 이동되지 않습니다. 다만 로그아웃 후에는 다시 해당 기록에 접근할 수 있습니다.</li>
+        </ul>
       </div>
     </div>
-    <div class="note calm">
-      <span class="mark">🌿</span>
-      <div>처음엔 <b>문제 3~5개</b>로 한 번 돌려 보세요. 결과가 마음에 들면 그때 개수를 늘리면 됩니다. 같은 자료로 두 번째부터는 훨씬 빠르고, 토큰도 훨씬 적게 씁니다.</div>
+  </section>
+
+  <hr class="rule" />
+
+  <!-- 발급 절차는 providers/*.py 의 key_help_steps·key_help_note·key_help_url 을 옮긴 것이다
+       (탭에서는 common.js 의 renderKeyHelp() 가 고른 제공사 것만 그린다).
+       ⚠️ 한 군데만 일부러 다르다 — 원문의 "위 칸에 붙여넣으세요"는 입력칸 바로 아래에
+          붙는 도움말이라 성립하는 표현이라, 여기서는 가리킬 칸이 없어 탭 이름을 밝혀 적었다.
+          제공사를 추가하거나 절차가 바뀌면 이 섹션도 함께 고칠 것. -->
+  <section id="f-apikey">
+    <h2>🔑 API 키 발급</h2>
+    <p class="sub">문제 생성과 기출 주제 분석에 필요합니다. 사용하는 제공사를 눌러 펼쳐보세요.</p>
+    <div class="faq">
+
+      <details class="q">
+        <summary>전북대 LLM 게이트웨이</summary>
+        <div class="a">
+          <ol class="howto">
+            <li>gpt.jbnu.ai에 로그인합니다.</li>
+            <li>왼쪽 메뉴 최하단의 &quot;API Gateway&quot;로 들어갑니다.</li>
+            <li>&quot;API 키 관리&quot;에서 [ + API 키 생성 ] 버튼을 누르고, 이름은 아무거나 적습니다.</li>
+            <li>생성된 API 키를 복사해 메모장에 저장해둡니다. 창을 닫으면 키를 다시 확인할 수 없습니다.</li>
+            <li>복사한 키를 문제 생성·기출 주제 분석 탭의 API 키 입력칸에 붙여넣으세요.</li>
+          </ol>
+          <p><a href="https://gpt.jbnu.ai/dashboard/developers" target="_blank" rel="noopener noreferrer">🔗 전북대 LLM 게이트웨이 키 발급 페이지 열기</a></p>
+        </div>
+      </details>
+
+      <details class="q">
+        <summary>OpenAI</summary>
+        <div class="a">
+          <ol class="howto">
+            <li>platform.openai.com에 로그인합니다. (ChatGPT 계정과 같은 계정으로 로그인됩니다)</li>
+            <li>왼쪽 메뉴에서 API keys를 엽니다.</li>
+            <li>Create new secret key 버튼을 누르고, 이름은 아무거나 적어도 됩니다.</li>
+            <li>키는 이때 딱 한 번만 보입니다. 창을 닫으면 다시 볼 수 없으니 바로 복사해서 문제 생성·기출 주제 분석 탭의 API 키 입력칸에 붙여넣으세요.</li>
+            <li>Billing 메뉴에서 결제 수단을 등록하고 크레딧을 충전해야 실제 호출이 됩니다.</li>
+          </ol>
+          <div class="note calm"><span class="mark">💡</span><div>ChatGPT Plus 구독료와 API 요금은 별개입니다. Plus를 쓰고 있어도 API 크레딧은 따로 충전해야 합니다.</div></div>
+          <p><a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">🔗 OpenAI 키 발급 페이지 열기</a></p>
+        </div>
+      </details>
+
+      <details class="q">
+        <summary>Anthropic (Claude)</summary>
+        <div class="a">
+          <ol class="howto">
+            <li>console.anthropic.com에 로그인합니다. (Claude.ai 계정과 같은 계정으로 로그인됩니다)</li>
+            <li>Settings → API keys로 들어갑니다.</li>
+            <li>Create Key 버튼을 누르고, 이름은 아무거나 적어도 됩니다.</li>
+            <li>키는 이때 딱 한 번만 보입니다. 창을 닫으면 다시 볼 수 없으니 바로 복사해서 문제 생성·기출 주제 분석 탭의 API 키 입력칸에 붙여넣으세요.</li>
+            <li>Billing 메뉴에서 크레딧을 구매해야 실제 호출이 됩니다.</li>
+          </ol>
+          <div class="note calm"><span class="mark">💡</span><div>Claude Pro 구독료와 API 요금은 별개입니다. Pro를 쓰고 있어도 API 크레딧은 따로 구매해야 합니다.</div></div>
+          <p><a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">🔗 Anthropic (Claude) 키 발급 페이지 열기</a></p>
+        </div>
+      </details>
+
+      <details class="q">
+        <summary>Google Gemini</summary>
+        <div class="a">
+          <ol class="howto">
+            <li>aistudio.google.com에 Google 계정으로 로그인합니다.</li>
+            <li>API 키 만들기(Get API key) 버튼을 누릅니다.</li>
+            <li>프로젝트를 고르라고 하면 아무거나 골라도 되고, 새로 만들어도 됩니다.</li>
+            <li>만들어진 키를 복사해서 문제 생성·기출 주제 분석 탭의 API 키 입력칸에 붙여넣으세요. (여기서는 나중에 다시 볼 수 있습니다)</li>
+          </ol>
+          <div class="note calm"><span class="mark">💡</span><div>무료 등급이 있어서 결제 수단 없이도 바로 써볼 수 있습니다. 다만 분당·일당 요청 수에 제한이 있습니다.</div></div>
+          <p><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">🔗 Google Gemini 키 발급 페이지 열기</a></p>
+        </div>
+      </details>
+
     </div>
-  </div>
+  </section>
 
   <hr class="rule" />
 
   <section id="f-gen">
     <h2>📝 문제 생성</h2>
-    <p class="sub">이 사이트의 중심 기능입니다. <b>제목을 누르면</b> 자세한 설명이 펼쳐집니다.</p>
 
-    <details class="feature">
-      <summary class="feature-head h-gen">
-        <span class="emoji">📄</span>
-        <h3>어떤 파일을 올리면 되나요</h3>
-        <span class="tag">준비물</span>
-      </summary>
+    <div class="feature">
       <div class="feature-body">
-        <p class="what">
-          <b>강의자료</b>(교수님 슬라이드·필기본)와 <b>기출문제</b>를 각각 올립니다.
-          기출을 보고 "이 과목은 이런 식으로 묻는구나"를 배운 다음, 강의자료 내용으로 새 문제를 씁니다.
-          그래서 <b>두 종류가 모두 있어야</b> 시작됩니다.
-        </p>
+        <p class="what">강의자료와 기출문제 파일을 업로드하면 예상 문제를 생성합니다.</p>
         <div class="table-scroll">
           <table>
-            <thead><tr><th>항목</th><th>제한</th></tr></thead>
             <tbody>
-              <tr><td>형식</td><td><b>PDF만</b> 가능합니다 (ppt·한글 파일은 PDF로 저장해서 올려주세요)</td></tr>
-              <tr><td>개수</td><td>강의자료 <b>최대 7개</b>, 기출 <b>최대 7개</b></td></tr>
-              <tr><td>용량</td><td>둘을 <b>합쳐서 500MB</b>까지 — 화면에 적힌 숫자가 정확한 값입니다</td></tr>
-              <tr><td>문제 수</td><td>한 번에 <b>1~30개</b></td></tr>
+              <tr><td>지원 형식</td><td><b>PDF 파일</b></td></tr>
+              <tr><td>개수</td><td>강의자료 <b>7개</b> · 기출 <b>7개</b></td></tr>
+              <tr><td>용량</td><td>강의자료+기출 총 500MB</td></tr>
+              <tr><td>생성 문제 수</td><td>한 번에 <b>1~30개</b></td></tr>
             </tbody>
           </table>
         </div>
-        <div class="note calm">
-          <span class="mark">🔒</span>
-          <div>올린 PDF는 <b>서버에 쌓이지 않습니다.</b> 읽는 동안만 잠깐 두었다가 끝나면 바로 지웁니다. 남는 건 파일이 아니라 분석 <b>결과</b>뿐이에요.</div>
-        </div>
-        <div class="note tip">
-          <span class="mark">💡</span>
-          <div>파일 <b>개수를 줄이면</b> 한 파일에 배정되는 분량이 늘어 더 깊게 읽습니다. 300쪽짜리 하나가 30쪽짜리 일곱 개보다 나을 때가 많아요.</div>
-        </div>
-      </div>
-    </details>
-
-    <details class="feature">
-      <summary class="feature-head h-gen">
-        <span class="emoji">⏳</span>
-        <h3>만드는 동안</h3>
-        <span class="tag">몇 분 걸려요</span>
-      </summary>
-      <div class="feature-body">
-        <p>진행 상태가 네 단계로 보입니다. 자료가 많으면 몇 분씩 걸리는 게 정상이에요.</p>
-        <ol class="howto">
-          <li><b>PDF 텍스트 추출</b> — 글자를 뽑습니다. 그림으로 된 페이지는 AI가 눈으로 읽어 설명을 남깁니다.</li>
-          <li><b>강의·기출 핵심 개념 분석</b> — 무엇이 중요한지 정리합니다.</li>
-          <li><b>기출 예시 추출 · 형식 분석</b> — 기출이 어떤 말투로 묻는지 배웁니다.</li>
-          <li><b>예상문제 생성</b> — 문제가 <b>하나씩 완성되는 대로</b> 화면에 나타납니다.</li>
-        </ol>
-        <div class="note calm">
-          <span class="mark">🚶</span>
-          <div>기다리는 동안 <b>골학 문제은행이나 보관함으로 옮겨 다녀도 됩니다.</b> 문제는 그대로 만들어져요.</div>
-        </div>
+        <ul class="plain">
+          <li><b>텍스트 추출 → 개념 분석 → 기출 형식 분석 → 문제 생성</b> 4단계로 진행되며, 문제는 완성되는 대로 하나씩 표시됩니다.</li>
+          <li>자료가 길면 내용 일부가 잘릴 수 있습니다. 이 경우 텍스트 추출이 끝난 후 안내 창이 표시됩니다.</li>
+          <li><span class="ui">■ 중지</span>를 눌러도 <b>이미 쓴 토큰은 환불되지 않습니다.</b></li>
+          <li><b>저장된 세션</b> — 강의자료와 기출문제 분석 결과가 자동 저장되어, 이후에는 같은 파일로 문제를 생성할 때 분석 단계를 건너뛰고 빠르게 문제를 생성할 수 있습니다.</li>
+          <li>세션을 삭제하면 <b>그 세션으로 만든 문제 기록도 삭제</b>됩니다. 저장된 세션에 새 파일을 업로드할 수 없습니다.</li>
+        </ul>
         <div class="note care">
           <span class="mark">⚠️</span>
-          <div><b>브라우저 탭을 닫거나 새로고침하면 중단됩니다.</b> 이것 하나만 조심하세요. <span class="ui">■ 중지</span>로 직접 멈출 수도 있지만, 그때까지 쓴 토큰은 돌려받을 수 없습니다.</div>
-        </div>
-        <p><b>「일부 파일이 분량 상한을 넘습니다」 창이 떴다면</b> — 자료가 읽을 수 있는 분량보다 길어서 일부가 잘린다는 뜻입니다. <span class="ui">이대로 진행</span>을 눌러도 되고(앞부분과 뒷부분을 남깁니다), 파일을 줄여 다시 하셔도 됩니다.</p>
-        <div class="note tip">
-          <span class="mark">💡</span>
-          <div>이 창은 <b>바깥을 눌러도 닫히지 않습니다.</b> 실수로 배경을 눌러 이미 토큰을 쓴 작업이 날아가는 걸 막으려고 일부러 그렇게 만들었어요. <span class="ui">이대로 진행</span>을 눌러도 PDF를 다시 읽지 않으니 토큰이 두 번 나가지 않습니다.</div>
+          <div><b>탭을 닫거나 새로고침하면 중단됩니다.</b> 다른 탭으로 이동하는 건 괜찮습니다.</div>
         </div>
       </div>
-    </details>
-
-    <details class="feature">
-      <summary class="feature-head h-gen">
-        <span class="emoji">💾</span>
-        <h3>같은 자료로 또 만들 때 — 저장된 세션</h3>
-        <span class="tag">가장 유용</span>
-      </summary>
-      <div class="feature-body">
-        <p class="what">
-          한 번 분석한 자료는 그 <b>분석 결과가 자동으로 저장</b>됩니다.
-          다음부터는 <span class="ui">저장된 세션</span>에서 고르고 바로 만들면, 가장 오래 걸리고 토큰을 가장 많이 쓰는 분석 단계를 <b>통째로 건너뜁니다.</b>
-          시험 기간에 같은 범위를 여러 번 돌릴 때 체감이 큽니다.
-        </p>
-        <ul class="plain">
-          <li>세션을 고르면 초록색 띠가 뜨고, 버튼이 <span class="ui">이 세션으로 문제 생성 (분석 생략)</span>으로 바뀝니다.</li>
-          <li>✏️로 이름을 바꾸고, 🗑️로 지웁니다. <b>세션을 지우면 그 세션으로 만든 문제 기록도 함께 사라집니다.</b></li>
-          <li>홈 화면 맨 아래 <span class="ui">이어서 하기</span>는 가장 최근 세션입니다. 홈에서 버튼 한 번이면 바로 생성까지 갑니다.</li>
-        </ul>
-        <div class="note tip">
-          <span class="mark">💡</span>
-          <div>세션을 고른 상태에서 <b>새 파일을 올리면 세션이 저절로 해제</b>되고, 반대로 세션을 고르면 올려둔 파일이 비워집니다. 둘이 섞여서 엉뚱하게 다시 분석되는 일이 없도록 한 장치예요.</div>
-        </div>
-      </div>
-    </details>
+    </div>
   </section>
 
   <hr class="rule" />
 
   <section id="f-topic">
     <h2>🔍 기출 주제 분석</h2>
-    <p class="sub">"이 두꺼운 강의록에서 대체 어디가 나왔던 거지?" 에 대한 답.</p>
-
-    <details class="feature">
-      <summary class="feature-head h-topic">
-        <span class="emoji">🗺️</span>
-        <h3>무엇을 해 주나요</h3>
-        <span class="tag">문제는 안 만듭니다</span>
-      </summary>
+    <div class="feature">
       <div class="feature-body">
-        <p class="what">
-          강의록의 주제 중 <b>기출에 실제로 나온 것만</b> 골라
-          <b>어느 강의록 몇 페이지 → 어느 기출 몇 번</b> 형태로 이어 줍니다.
-          주제 이름은 <b>강의록에 적힌 표현 그대로</b> 쓰기 때문에, 결과를 들고 바로 그 페이지를 펼칠 수 있어요.
-        </p>
+        <p class="what">기출에 <b>실제로 나온 주제만</b> 골라 <b>강의록 몇 페이지 → 기출 몇 번</b>으로 연결합니다.</p>
         <ul class="plain">
-          <li>올리는 방법과 제한은 문제 생성과 같습니다 (PDF · 각 7개 · 합쳐서 500MB).</li>
-          <li><span class="ui">🔎 걸러보기</span>에 단어를 치면 주제·파일명·기출 원문까지 한 번에 찾습니다.</li>
-          <li><span class="ui">📋 한 줄 요약 보기</span>를 펼치면 <b>주제: 강의록 12p - 기출 4번</b> 형태의 목록이 나오고, <b>전체 복사</b> 버튼으로 통째로 복사해 노션이나 단톡방에 붙일 수 있습니다.</li>
+          <li>파일 업로드 용량 제한은 문제 생성과 같습니다(총 500MB).</li>
+          <li><span class="ui">📋 한 줄 요약 보기</span>를 누르면 서로 대응되는 강의록/기출문제 페이지 번호 목록만 간단히 표시됩니다. 전체 복사 버튼을 눌러 복사할 수 있습니다.</li>
+          <li>결과가 비어 있다면 <b>강의록과 기출문제의 범위가 일치하지 않는 것</b>입니다.</li>
         </ul>
-        <div class="note tip">
-          <span class="mark">💡</span>
-          <div><b>같은 자료를 다시 올리면</b> "이미 분석한 결과가 있습니다" 창이 뜹니다. <span class="ui">보관된 결과 열기</span>는 <b>토큰을 한 개도 쓰지 않습니다.</b> 특별한 이유가 없으면 이쪽을 고르세요.</div>
-        </div>
-        <div class="note care">
-          <span class="mark">📷</span>
-          <div>결과가 하나도 안 나왔다면 대개 두 경우입니다. <b>강의록과 기출의 범위가 서로 다르거나</b>, <b>PDF가 통째로 스캔 이미지</b>라 페이지·문항 번호를 읽을 수 없거나. 근거를 확인할 수 없는 주제는 지어내지 않고 빼기 때문입니다.</div>
-        </div>
       </div>
-    </details>
+    </div>
   </section>
 
   <hr class="rule" />
 
   <section id="f-archive">
     <h2>🗂️ 보관함</h2>
-    <p class="sub">만들어 둔 것을 다시 보고, 종이로 뽑는 곳.</p>
-
-    <details class="feature">
-      <summary class="feature-head h-archive">
-        <span class="emoji">📄</span>
-        <h3>생성한 문제 · 분석한 주제</h3>
-        <span class="tag">자동 저장됨</span>
-      </summary>
+    <div class="feature">
       <div class="feature-body">
-        <p>보관함에 들어가면 두 갈래가 나옵니다. 만든 <b>문제 세트</b>와, 분석한 <b>주제</b>입니다. 둘 다 따로 저장하지 않아도 알아서 쌓여 있어요.</p>
+        <p class="what">생성된 문제와 기출 주제 분석 결과가 최신순으로 자동 저장됩니다.</p>
         <ul class="plain">
-          <li>한 페이지에 8장씩, 최신순으로 보입니다.</li>
-          <li>어떤 자료(세션)로 만든 것인지 기준으로 걸러 볼 수 있습니다.</li>
-          <li>카드에서 <b>이름 변경 ✏️</b>, <b>삭제 🗑️</b>, <b>인쇄 🖨</b>.</li>
-          <li>한 장을 열면 그때 쓴 <b>토큰·크레딧 기록</b>도 함께 볼 수 있습니다.</li>
+          <li><span class="ui">🖨 문제지</span> · <span class="ui">🖨 정답·해설</span> 버튼을 눌러 인쇄하거나 PDF로 저장할 수 있습니다.</li>
+          <li><b>문제지에 정답은 표시되지 않습니다.</b></li>
+          <li>카카오톡·인스타그램 인앱 브라우저에서는 인쇄 창이 뜨지 않습니다. Safari·Chrome으로 열어주세요.</li>
         </ul>
       </div>
-    </details>
-
-    <details class="feature">
-      <summary class="feature-head h-archive">
-        <span class="emoji">🖨</span>
-        <h3>인쇄하거나 PDF로 저장하기</h3>
-        <span class="tag">스터디용</span>
-      </summary>
-      <div class="feature-body">
-        <p>시험지를 열면 버튼이 두 개입니다. <span class="ui">🖨 문제지</span>와 <span class="ui">🖨 정답·해설</span>. 한 번에 두 벌을 저장할 수는 없으니 <b>각각 한 번씩</b> 눌러주세요.</p>
-        <div class="note calm">
-          <span class="mark">🙈</span>
-          <div><b>문제지에는 정답이 절대 딸려 나가지 않습니다.</b> 화면에서 정답을 다 열어본 뒤에 인쇄해도 마찬가지예요. 스터디에서 나눠 주기 전에 확인하지 않으셔도 됩니다.</div>
-        </div>
-        <ul class="plain">
-          <li>정답지는 위에 <b>번호-정답 한눈표</b>, 아래에 문항별 해설이 실립니다. 채점할 땐 위쪽만 보면 끝나요.</li>
-          <li>빈칸 문제는 손으로 쓸 수 있게 <b>밑줄</b>로 바뀝니다.</li>
-          <li>인쇄 창에서 <b>「머리글 및 바닥글」을 끄면</b> URL과 날짜가 빠져 깔끔합니다. 대신 <b>페이지 번호도 같이 사라집니다.</b></li>
-        </ul>
-        <div class="note care">
-          <span class="mark">📱</span>
-          <div><b>카카오톡이나 인스타그램 안에서 링크를 열면 인쇄 창이 안 뜰 수 있습니다.</b> 그럴 땐 오른쪽 위 메뉴에서 Safari나 Chrome으로 열어 주세요.</div>
-        </div>
-      </div>
-    </details>
+    </div>
   </section>
 
   <hr class="rule" />
 
   <section id="f-wrong">
     <h2>❌ 오답 노트</h2>
-    <p class="sub">틀린 걸 모아두는 폴더. 여기에 담는 건 전부 내가 직접 고른 것뿐입니다.</p>
-
-    <details class="feature">
-      <summary class="feature-head h-wrong">
-        <span class="emoji">🔖</span>
-        <h3>담고, 모아 보고, 다시 풀기</h3>
-        <span class="tag">토큰 안 씀</span>
-      </summary>
+    <div class="feature">
       <div class="feature-body">
-        <ol class="howto">
-          <li>문제 옆 <span class="ui">🔖 오답에 넣기</span>를 누릅니다.</li>
-          <li>기존 폴더를 고르거나, <b>새 폴더 이름</b>을 지어 담습니다. (예: 순환기 오답)</li>
-          <li>오답 노트 탭에서 폴더를 열면 <b>원래 문제 그대로 다시 풀 수 있습니다.</b></li>
-        </ol>
+        <p class="what">생성된 문제 / 골학 문제은행에서 <span class="ui">🔖 오답에 넣기</span> 버튼을 눌러 오답 노트를 만들 수 있습니다.</p>
         <ul class="plain">
-          <li>생성한 문제도, <b>골학 문제은행 문제도 그림째로</b> 담을 수 있습니다.</li>
-          <li>폴더는 이름 변경·삭제가 되고, 문제는 <span class="ui">🗑️ 폴더에서 빼기</span>로 하나씩 뺍니다.</li>
+          <li>폴더를 만들어 오답을 폴더별로 관리할 수 있습니다.</li>
+          <li>토큰을 사용하지 않습니다.</li>
         </ul>
-        <div class="note tip">
-          <span class="mark">💡</span>
-          <div>골학 오답은 <b>번호 그림과 이름이 적힌 원본 그림이 함께</b> 저장됩니다. 오답 노트에서도 <span class="ui">🖼️ 원본 보기</span>로 정답 위치를 바로 확인할 수 있어요.</div>
-        </div>
       </div>
-    </details>
+    </div>
   </section>
 
   <hr class="rule" />
 
   <section id="f-bone">
     <h2>🦴 골학 문제은행</h2>
-    <p class="sub">준비물도, API 키도 필요 없고 토큰도 쓰지 않습니다. 들어가서 바로 풀면 돼요.</p>
-
-    <details class="feature">
-      <summary class="feature-head h-bone">
-        <span class="emoji">📍</span>
-        <h3>범위 고르고, 방식 고르고</h3>
-        <span class="tag">토큰 0</span>
-      </summary>
+    <div class="feature">
       <div class="feature-body">
-        <p><b>Skull · Upper Limb · Lower Limb · Vertebrae &amp; Thorax</b> 중에서 고르고, 그 안에서 <b>Hand bones</b>처럼 더 좁힐 수 있습니다. 아무거나 풀고 싶으면 <b>전체 Random</b>.</p>
-        <div class="table-scroll">
-          <table>
-            <thead><tr><th>방식</th><th>어떻게</th><th>언제 좋은가</th></tr></thead>
-            <tbody>
-              <tr><td><b>🔤 한 문제씩</b></td><td>번호 하나씩 나오면 이름을 직접 타이핑</td><td>처음 외울 때</td></tr>
-              <tr><td><b>🖱️ 단어은행</b></td><td>그림 한 장의 빈칸을 단어 카드로 맞추기</td><td>이름이 가물가물할 때</td></tr>
-              <tr><td><b>✍️ 빈칸 한번에</b></td><td>그림의 번호를 전부 채운 뒤 한 번에 채점</td><td>시험처럼 점검할 때</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <ul class="plain">
-          <li>고른 범위 안에서 <b>중복 없이 한 번씩만</b> 나오고, 다 풀면 🏁 완료 화면에서 멈춥니다. 끝없이 돌지 않아요.</li>
-          <li><span class="ui">🖼️ 원본 보기</span>를 누르면 이름이 적힌 원본 그림을 언제든 볼 수 있습니다.</li>
-          <li>부위 이름 말고 <b>"이 구조물의 이름은?" "어느 방향에서 본 모습인가?"</b> 문제도 섞여 나옵니다.</li>
-        </ul>
-        <div class="note calm">
-          <span class="mark">😌</span>
-          <div>점수는 <b>화면에서만 세고 어디에도 보내지 않습니다.</b> 새로고침하면 초기화돼요. 마음 놓고 틀리셔도 됩니다. 남기고 싶은 문제만 🔖로 담으세요.</div>
-        </div>
-      </div>
-    </details>
+        <p class="what">각 부위에 번호가 매겨진 뼈 그림이 제시되고, 해당 번호에 맞는 부위 이름을 주관식으로 입력해야 합니다.</p>
 
+        <ul class="plain">
+          <li>선택한 범위 안에서 <b>중복 없이</b> 랜덤으로 출제됩니다.</li>
+          <li><b>Skull · Upper Limb · Lower Limb · Vertebrae &amp; Thorax</b> 또는 <b>전체(Random)</b> 범위 중 하나를 선택할 수 있습니다.</li>
+          <li>채점할 때는 대소문자·띄어쓰기·하이픈을 무시하고, <b>동의어는 등록된 것만</b> 인정됩니다.</li>
+          <li>채점 결과는 <b>저장되지 않습니다</b>(새로고침 시 초기화).</li>
+        </ul>
+      </div>
+    </div>
   </section>
 
   <hr class="rule" />
 
   <section id="calm">
-    <h2>안심하셔도 되는 것들</h2>
-    <p class="sub">처음 오신 분들이 가장 많이 물어보시는 것부터.</p>
-    <div class="calm-grid">
-      <div class="calm-card">
-        <b>올린 PDF는 안 쌓여요</b>
-        <span>읽는 동안만 잠깐 두었다가 끝나면 바로 지웁니다. 혹시 오류로 남더라도 한 시간 안에 자동으로 치워집니다.</span>
-      </div>
-      <div class="calm-card">
-        <b>API 키는 저장하지 않아요</b>
-        <span>서버에도, 브라우저에도 남기지 않고 요청에 쓰고 버립니다. 새로고침하면 다시 입력해야 하는 게 그 증거예요.</span>
-      </div>
-      <div class="calm-card">
-        <b>내 기록은 나만 봐요</b>
-        <span>세션·문제·주제·오답은 전부 내 계정(또는 내 브라우저)에만 묶여 있습니다.</span>
-      </div>
-      <div class="calm-card">
-        <b>저장 버튼을 찾지 않아도 돼요</b>
-        <span>만든 문제도, 분석 결과도 자동으로 보관함에 들어갑니다.</span>
-      </div>
-      <div class="calm-card">
-        <b>기다리는 동안 딴짓해도 돼요</b>
-        <span>다른 탭으로 옮겨 다녀도 작업은 계속됩니다. 탭을 닫거나 새로고침하는 것만 피하세요.</span>
-      </div>
-      <div class="calm-card">
-        <b>실수로 토큰이 새지 않아요</b>
-        <span>토큰을 쓰는 확인 창은 바깥을 눌러도 닫히지 않고, 같은 자료는 저장된 결과를 먼저 권합니다.</span>
-      </div>
-      <div class="calm-card">
-        <b>골학은 완전히 공짜예요</b>
-        <span>키도 로그인도 필요 없고 토큰도 안 듭니다. 점수도 서버로 보내지 않아요.</span>
-      </div>
-      <div class="calm-card">
-        <b>문제지에 정답이 안 섞여요</b>
-        <span>인쇄용 문제지에는 정답 글자가 애초에 들어가지 않습니다.</span>
+    <h2>🔒 데이터 처리</h2>
+    <div class="feature">
+      <div class="feature-body">
+        <ul class="plain">
+          <li><b>업로드된 PDF 파일</b> — 분석 중에만 보관하고, 끝나면 즉시 삭제됩니다. 오류로 남아도 1시간 내 자동 삭제됩니다.</li>
+          <li><b>API 키</b> — 서버·브라우저 어디에도 저장하지 않습니다. 새로고침하면 다시 입력해야 합니다.</li>
+          <li><b>내 기록</b> — 세션·만든 문제·주제 분석 결과·오답은 내 계정에만 귀속됩니다.</li>
+          <li><b>저장</b> — 생성된 문제·주제 분석 결과 모두 자동으로 보관함에 저장됩니다.</li>
+        </ul>
       </div>
     </div>
   </section>
@@ -840,21 +529,16 @@ details.q .a p + p { margin-top: 9px; }
   <hr class="rule" />
 
   <section id="save">
-    <h2>토큰을 아끼는 요령</h2>
-    <p class="sub">토큰(전북대 플랫폼이라면 크레딧)을 쓰는 건 <b>문제 생성</b>과 <b>기출 주제 분석</b> 둘뿐입니다. 효과가 큰 순서대로.</p>
+    <h2>💰 토큰 절약 방법</h2>
+    <p class="sub">토큰을 사용하는 기능은 <b>문제 생성</b>과 <b>기출 주제 분석</b>뿐입니다.</p>
     <div class="feature">
       <div class="feature-body">
         <ol class="howto">
-          <li><b>저장된 세션을 쓰세요.</b> 같은 자료라면 두 번째부터 토큰을 가장 많이 쓰는 분석 단계를 통째로 건너뜁니다.</li>
-          <li><b>같은 자료 재분석 창에서는 「보관된 결과 열기」.</b> 주제 분석은 이걸로 토큰을 한 개도 쓰지 않습니다.</li>
-          <li><b>한 번에 넉넉히 만드세요.</b> 30문제 한 번이 6문제씩 다섯 번보다 토큰을 적게 씁니다.</li>
-          <li><b>파일 개수를 줄이세요.</b> 잘려 버려지는 부분이 줄어 같은 값으로 더 깊게 읽습니다.</li>
-          <li><b>그림이 많은 스캔 기출은 토큰을 많이 먹습니다.</b> 페이지마다 AI가 눈으로 읽어야 하거든요. 급하지 않다면 글자가 살아있는 PDF를 쓰세요.</li>
+          <li><b>문제 생성 시 저장된 세션 재사용</b> — 가장 비용이 많이 드는 분석 단계를 건너뜁니다.</li>
+          <li><b>문제는 한 번에 넉넉히 생성하기</b> — 6문제 X 5회 (X) → 30문제 X 1회 (O)</li>
+          <li><b>파일 개수 줄이기</b> — 잘려 버려지는 부분이 감소합니다.</li>
+          <li><b>스캔본 PDF는 피하기</b> — AI가 읽는 비용이 많이 듭니다.</li>
         </ol>
-        <div class="note care">
-          <span class="mark">🛑</span>
-          <div><span class="ui">■ 중지</span>를 눌러도 <b>이미 쓴 토큰은 돌려받을 수 없습니다.</b> 중지는 남은 호출을 멈출 뿐이에요.</div>
-        </div>
       </div>
     </div>
   </section>
@@ -862,148 +546,70 @@ details.q .a p + p { margin-top: 9px; }
   <hr class="rule" />
 
   <section id="faq">
-    <h2>이럴 땐 어떻게 하나요</h2>
-    <p class="sub">막혔을 때 여기부터 보세요.</p>
+    <h2>❓ FAQ</h2>
     <div class="faq">
 
       <details class="q">
         <summary>모델 목록이 안 떠요</summary>
         <div class="a">
-          <p>거의 항상 API 키 문제입니다. 키를 다시 확인하고 옆의 <span class="ui">↻</span> 버튼을 눌러보세요. 고른 <b>제공사와 키가 같은 곳의 것인지</b>도 확인해 주세요 — 다른 회사 키를 넣으면 목록을 불러오지 못합니다.</p>
+          <p>API 키를 확인하고 옆의 <span class="ui">↻</span>를 누르세요. 고른 <b>제공사와 키 발급처가 같아야</b> 합니다.</p>
         </div>
       </details>
 
       <details class="q">
         <summary>새로고침했더니 API 키가 비어 있어요</summary>
         <div class="a">
-          <p>정상입니다. 키를 아예 저장하지 않기 때문이에요. 조금 번거롭지만, 그 덕분에 키가 어딘가에 남아 있을 걱정을 하지 않아도 됩니다. 다시 붙여넣어 주세요.</p>
+          <p>키를 저장하지 않기 때문입니다. 다시 입력해 주세요.</p>
         </div>
       </details>
 
       <details class="q">
-        <summary>만들다가 멈췄어요 / 결과가 안 와요</summary>
+        <summary>생성이 멈췄어요 / 결과가 안 와요</summary>
         <div class="a">
-          <p>탭을 닫거나 새로고침하면 중단됩니다. 그게 아니라면 자료가 너무 많아 시간이 오래 걸린 경우일 수 있어요 — 수백 쪽짜리 스캔본을 한꺼번에 올리면 도중에 연결이 끊길 수 있습니다.</p>
-          <p>파일 수를 줄이거나, 강의자료를 나눠서 여러 번 돌려 보세요.</p>
+          <p>탭을 닫거나 새로고침했거나, 자료가 많아 연결이 끊긴 경우입니다. 파일 수를 줄이거나 강의자료를 나눠서 돌려 보세요.</p>
         </div>
       </details>
 
       <details class="q">
         <summary>업로드가 거부돼요</summary>
         <div class="a">
-          <p>세 가지를 확인해 주세요. <b>PDF가 맞는지</b>, <b>강의자료·기출이 각각 7개 이하인지</b>, <b>둘을 합친 용량이 제한 아래인지</b>. 제한 용량은 업로드 칸 아래 노란 안내에 정확한 숫자로 적혀 있습니다.</p>
+          <p><b>PDF인지</b>, <b>각각 7개 이하인지</b>, <b>합친 용량이 제한(500MB) 아래인지</b> 확인하세요.</p>
         </div>
       </details>
 
       <details class="q">
         <summary>휴대폰에서 파일 선택 창이 비어 보여요</summary>
         <div class="a">
-          <p>PDF만 고를 수 있게 걸러진 상태라 다른 파일이 안 보이는 것입니다. 구글 드라이브 같은 클라우드에 있는 파일은 <b>먼저 휴대폰에 내려받은 뒤</b> 고르면 잘 잡힙니다.</p>
+          <p>PDF만 보이도록 걸러진 것입니다. 클라우드에 있는 파일은 <b>먼저 휴대폰에 내려받은 뒤</b> 고르세요.</p>
         </div>
       </details>
 
       <details class="q">
-        <summary>기출 주제 분석 결과가 하나도 없어요</summary>
+        <summary>기출 주제 분석 결과에 아무것도 표시되지 않아요</summary>
         <div class="a">
-          <p>강의록과 기출이 <b>같은 과목·같은 범위</b>인지 먼저 확인해 주세요. 그리고 PDF가 <b>통째로 스캔한 이미지</b>라면 페이지·문항 번호를 읽을 수 없어 결과가 비어 나옵니다.</p>
-          <p>근거를 확인할 수 없는 주제는 그럴듯하게 지어내는 대신 빼도록 만들어져 있습니다.</p>
+          <p>강의록과 기출이 <b>같은 과목·같은 범위</b>인지 확인하세요.</p>
         </div>
       </details>
 
       <details class="q">
         <summary>다른 기기에서 보니 기록이 없어요</summary>
         <div class="a">
-          <p>로그인하지 않고 만든 기록은 <b>그 브라우저에만</b> 남습니다. 로그인한 뒤에 만든 것부터 기기 사이를 따라다녀요.</p>
-          <p>안타깝지만 이미 만들어 둔 게스트 기록을 계정으로 옮기는 방법은 없습니다. 중요한 자료라면 지금이라도 로그인한 뒤 다시 만들어 두시는 편이 낫습니다.</p>
-        </div>
-      </details>
-
-      <details class="q">
-        <summary>답이 맞는 것 같은데 오답으로 나왔어요</summary>
-        <div class="a">
-          <p>골학은 대소문자·띄어쓰기·하이픈·괄호를 모두 무시하지만, 철자가 다른 <b>동의어는 등록된 것만</b> 인정합니다. 억울한 경우가 있으면 팀에 알려 주세요 — 정답 목록에 추가할 수 있습니다.</p>
-          <p>생성된 문제의 답은 AI가 쓴 것이라 가끔 애매할 수 있습니다. 해설을 함께 보시고, 이상하면 🔖로 담아두었다가 교재로 확인해 보세요.</p>
+          <p>비로그인 기록은 <b>그 브라우저에만</b> 남고 추후 로그인하더라도 계정으로 옮길 수 없습니다. 중요한 자료라면 로그인 후 다시 만들어 두세요.</p>
         </div>
       </details>
 
       <details class="q">
         <summary>만들어진 문제가 이상해요</summary>
         <div class="a">
-          <p>AI가 쓰는 문제라 완벽하지 않습니다. <b>기출 반영 강도를 8~10으로 올리면</b> 기출에 가깝고 안정적인 문제가 나오는 편입니다.</p>
-          <p>강의자료 대신 <b>목차나 표지만 있는 PDF</b>를 올렸거나, 기출이 실제로는 다른 과목이면 결과가 크게 흔들립니다. 올린 파일부터 확인해 보세요.</p>
+          <p><b>기출 반영 강도를 8~10</b>으로 올리면 안정적입니다. <b>목차·표지만 있는 PDF</b>이거나 기출이 다른 과목이면 품질이 크게 떨어지니 올린 파일부터 확인하세요.</p>
         </div>
       </details>
 
     </div>
   </section>
 
-  <div class="outro">
-    <h2>그래도 막히면, 편하게 물어보세요</h2>
-    <p>이 사이트는 같은 학교 학생들이 만들고 있습니다. 안 되는 게 있으면 대체로 저희 잘못이지 여러분 잘못이 아니에요. 어떤 화면에서 뭘 눌렀을 때 그랬는지만 알려주시면 고치겠습니다.</p>
-    <p class="fine">이 안내서는 사이트를 쓰는 분들을 위한 것입니다. 코드를 고치거나 서버를 다루는 방법은 저장소의 팀원 가이드·서버 가이드를 참고하세요.</p>
-  </div>
-
 </div>
 
-
-<script>
-// ── 스크롤 등장 효과 ──────────────────────────────────────
-// 화면에 들어온 요소부터 하나씩 밀려 올라온다. 한 번 나타난 것은 다시 감시하지 않는다
-// (되감기면 위아래로 스크롤할 때 계속 깜빡여서 읽기 어렵다).
-(function () {
-  var reduce = window.matchMedia
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  // 「동작 줄이기」가 켜졌거나 관측 API 가 없으면 손대지 않는다 —
-  // 클래스를 안 붙이므로 CSS 도 함께 꺼지고, 내용은 처음부터 다 보인다.
-  if (reduce || !('IntersectionObserver' in window)) return;
-
-  document.documentElement.classList.add('js-reveal');
-
-  var targets = document.querySelectorAll(
-    '.cover > *, .start, section > h2, section > .sub,' +
-    '.feature, .calm-card, details.q, .outro'
-  );
-
-  // 나란히 놓인 형제들(안심 카드 8장 등)은 순서대로 조금씩 늦춰 물결처럼 뜨게 한다.
-  var seen = new Map();
-  Array.prototype.forEach.call(targets, function (el) {
-    var key = el.parentNode;
-    var n = seen.get(key) || 0;
-    seen.set(key, n + 1);
-    el.style.transitionDelay = Math.min(n * 55, 220) + 'ms';
-    el.classList.add('reveal');
-  });
-
-  var io = new IntersectionObserver(function (entries) {
-    entries.forEach(function (entry) {
-      if (!entry.isIntersecting) return;
-      entry.target.classList.add('in');
-      io.unobserve(entry.target);
-    });
-  }, {
-    // 화면 맨 아래에 걸치자마자가 아니라, 조금 올라온 뒤에 뜨게 한다
-    rootMargin: '0px 0px -7% 0px',
-    threshold: 0.06
-  });
-
-  Array.prototype.forEach.call(targets, function (el) { io.observe(el); });
-
-  // 안전망 — 관측 콜백이 한 번도 안 도는 상황이 있다(백그라운드 탭, 화면을 그리지 않는
-  // 미리보기 창 등). 그대로 두면 첫 화면이 투명한 채로 남으므로, 잠시 뒤에도 아직
-  // 안 뜬 것 중 화면 안에 있는 것은 그냥 띄운다. 정상 동작 중이면 걸리는 게 없다.
-  setTimeout(function () {
-    Array.prototype.forEach.call(targets, function (el) {
-      if (el.classList.contains('in')) return;
-      var box = el.getBoundingClientRect();
-      if (box.top < window.innerHeight && box.bottom > 0) {
-        el.classList.add('in');
-        io.unobserve(el);
-      }
-    });
-  }, 1000);
-})();
-</script>
 
 </body>
 </html>
